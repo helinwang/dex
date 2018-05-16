@@ -6,7 +6,7 @@ type Transition interface {
 	//
 	// returns true on success. The transition will not change if
 	// false is returned.
-	Apply(txn []byte) bool
+	Apply(txn []byte) (valid, future bool)
 	Commit() State
 }
 
@@ -14,12 +14,4 @@ type Transition interface {
 type State interface {
 	Hash() Hash
 	Transition() Transition
-}
-
-// StateStore stores all unfinalized States and the last finalized
-// State.
-type StateStore interface {
-	Add(State)
-	Finalize(State)
-	Dead(State)
 }

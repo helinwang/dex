@@ -1,5 +1,10 @@
 package consensus
 
+import (
+	"bytes"
+	"encoding/gob"
+)
+
 const (
 	hashBytes = 32
 	addrBytes = 20
@@ -27,6 +32,39 @@ type BlockProposal struct {
 	OwnerSig []byte
 }
 
+// Encode encodes the block proposal.
+func (b *BlockProposal) Encode(withSig bool) []byte {
+	use := b
+	if !withSig {
+		newB := *b
+		newB.OwnerSig = nil
+		use = &newB
+	}
+
+	var buf bytes.Buffer
+	enc := gob.NewEncoder(&buf)
+	err := enc.Encode(use)
+	if err != nil {
+		// should never happen
+		panic(err)
+	}
+
+	return buf.Bytes()
+}
+
+// Decode decodes the data into the block proposal
+func (b *BlockProposal) Decode(d []byte) error {
+	var use BlockProposal
+	dec := gob.NewDecoder(bytes.NewBuffer(d))
+	err := dec.Decode(&use)
+	if err != nil {
+		return err
+	}
+
+	*b = use
+	return nil
+}
+
 // Noterization is a noterization for a block proposal.
 type Noterization struct {
 	StateRoot     Hash
@@ -38,8 +76,8 @@ type Noterization struct {
 
 // Block is a noterized block proposal.
 type Block struct {
-	P BlockProposal
-	N Noterization
+	P *BlockProposal
+	N *Noterization
 }
 
 // Chain is a single branch of the blockchain.
@@ -49,6 +87,7 @@ type Chain struct {
 	// The weights of all unfinalized prefix chains, including
 	// itself. In reverse order, e.g., Weights[0] is the weight of
 	// itself if itself is not finalized.
-	Weights []float64
-	Blocks  []*Block
+	Weights   []float64
+	Blocks    []*Block
+	Proposals []*BlockProposal
 }
