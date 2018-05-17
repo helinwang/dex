@@ -1,6 +1,8 @@
 package consensus
 
-import "github.com/dfinity/go-dfinity-crypto/bls"
+import (
+	"github.com/dfinity/go-dfinity-crypto/bls"
+)
 
 const (
 	groupSize      = 401
@@ -11,8 +13,18 @@ const (
 //
 // Group can perform different roles:
 // - random beacon committe
-// - noterization committe
+// - notarization committe
 type Group struct {
-	pks  []bls.PublicKey
-	vVec []bls.SecretKey
+	MemberPK   map[Addr]bls.PublicKey
+	MemberVVec map[Addr]bls.SecretKey
+	PK         bls.PublicKey
+}
+
+// NewGroup creates a new group.
+func NewGroup(pk bls.PublicKey) *Group {
+	return &Group{
+		PK:         pk,
+		MemberPK:   make(map[Addr]bls.PublicKey),
+		MemberVVec: make(map[Addr]bls.SecretKey),
+	}
 }

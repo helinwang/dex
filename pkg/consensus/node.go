@@ -11,18 +11,14 @@ import (
 // Nodes form a group randomly, the randomness comes from the random
 // beacon.
 type Node struct {
-	addr     Addr
-	sk       bls.SecretKey
-	net      *Networking
-	round    uint64
-	curRand  RandVal
-	pastRand map[RandVal]struct{}
-	addrToPK map[Addr]bls.PublicKey
+	addr      Addr
+	sk        bls.SecretKey
+	net       *Networking
+	roundInfo *RoundInfo
+	addrToPK  map[Addr]bls.PublicKey
 
-	// the memberships of random beacon committees
-	rbCommittee []membership
-	// the memberships of noterization committees
-	ntCommittee []membership
+	// the memberships of different groups
+	memberships map[bls.PublicKey]membership
 
 	curChain      *Chain
 	curState      State
@@ -35,9 +31,34 @@ type Node struct {
 	pendingBlocks []*Block
 }
 
+// NewNode creates a new node.
+func NewNode(sk bls.SecretKey, net *Networking, seed Rand) *Node {
+	pk := sk.GetPublicKey()
+	pkHash := hash(pk.Serialize())
+	addr := pkHash.Addr()
+
+	chain := &Chain{Blocks: []*Block{&Genesis}}
+
+	n := &Node{
+		addr:        addr,
+		sk:          sk,
+		roundInfo:   NewRoundInfo(seed),
+		curChain:    chain,
+		aliveChains: []*Chain{chain},
+		addrToPK:    make(map[Addr]bls.PublicKey),
+		memberships: make(map[bls.PublicKey]membership),
+	}
+
+	return n
+}
+
 type membership struct {
 	skShare bls.SecretKey
 	g       *Group
+}
+
+// Sync synchronize the node with its peers.
+func (n *Node) Sync() {
 }
 
 func (n *Node) recvTxn(txn []byte) {
@@ -52,31 +73,28 @@ func (n *Node) recvTxn(txn []byte) {
 	}
 }
 
-func (n *Node) verifySig(b *BlockProposal) bool {
-	pk, ok := n.addrToPK[b.Owner]
-	if !ok {
-		return false
-	}
-
-	if len(b.OwnerSig) == 0 {
-		return false
-	}
-
-	var sign bls.Sign
-	err := sign.Deserialize(b.OwnerSig)
-	if err != nil {
-		return false
-	}
-
-	d := b.Encode(false)
-	return sign.Verify(&pk, string(d))
-}
-
 func (n *Node) recvBlockProposal(b *BlockProposal) {
-	ok := n.verifySig(b)
-	if !ok {
-		log.Println("received block with invalid signature")
+	if round := n.roundInfo.Round; b.Round < round {
+		// stable block proposal, discard without broadcasting
+		return
+	} else if b.Round > round {
+		log.Printf("discard block proposal, bp round: %d > round: %d\n", b.Round, n.roundInfo.Round)
 		return
 	}
 
+	pk, err := n.roundInfo.BlockMakerPK(b.Owner, b.Round)
+	if err == errCommitteeNotSelected {
+		log.Printf("discard block proposal: %v, bp round: %d\n", err, b.Round)
+		return
+	} else if err != nil {
+		log.Printf("discard block proposal: %v, bp round: %d\n", err, b.Round)
+		return
+	}
+
+	if !verifySig(pk, b.OwnerSig, b.Encode(false)) {
+		log.Printf("discard block proposal: sig verify failed, bp round: %d\n", b.Round)
+		return
+	}
+
+	// TODO: broadcast
 }

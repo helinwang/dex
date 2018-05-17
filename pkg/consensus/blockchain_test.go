@@ -1,14 +1,20 @@
-package consensus_test
+package consensus
 
 import (
 	"testing"
 
-	"github.com/helinwang/dex/pkg/consensus"
 	"github.com/stretchr/testify/assert"
 )
 
+func TestAddrID(t *testing.T) {
+	addr := hash([]byte{1}).Addr()
+	assert.Equal(t, addr.ID(), addr.ID())
+	addr1 := hash([]byte{2}).Addr()
+	assert.NotEqual(t, addr.ID(), addr1.ID())
+}
+
 func TestBlockProposalEncodeDecode(t *testing.T) {
-	b := consensus.BlockProposal{
+	b := BlockProposal{
 		Data:     []byte{1, 2, 3},
 		OwnerSig: []byte{4, 5, 6},
 	}
@@ -17,14 +23,14 @@ func TestBlockProposalEncodeDecode(t *testing.T) {
 	withoutSig := b.Encode(false)
 	assert.NotEqual(t, withSig, withoutSig)
 
-	var b0 consensus.BlockProposal
+	var b0 BlockProposal
 	err := b0.Decode(withSig)
 	if err != nil {
 		panic(err)
 	}
 	assert.Equal(t, b, b0)
 
-	var b1 consensus.BlockProposal
+	var b1 BlockProposal
 	err = b1.Decode(withoutSig)
 	if err != nil {
 		panic(err)
@@ -34,12 +40,66 @@ func TestBlockProposalEncodeDecode(t *testing.T) {
 	assert.Equal(t, b0, b1)
 }
 
+func TestNotarizationEncodeDecode(t *testing.T) {
+	b := Notarization{
+		StateRoot: Hash{1},
+		GroupSig:  []byte{4, 5, 6},
+	}
+
+	withSig := b.Encode(true)
+	withoutSig := b.Encode(false)
+	assert.NotEqual(t, withSig, withoutSig)
+
+	var b0 Notarization
+	err := b0.Decode(withSig)
+	if err != nil {
+		panic(err)
+	}
+	assert.Equal(t, b, b0)
+
+	var b1 Notarization
+	err = b1.Decode(withoutSig)
+	if err != nil {
+		panic(err)
+	}
+
+	b0.GroupSig = nil
+	assert.Equal(t, b0, b1)
+}
+
+func TestRandSigEncodeDecode(t *testing.T) {
+	b := RandBeaconSig{
+		LastRandVal: Hash{1},
+		Sig:         []byte{4, 5, 6},
+	}
+
+	withSig := b.Encode(true)
+	withoutSig := b.Encode(false)
+	assert.NotEqual(t, withSig, withoutSig)
+
+	var b0 RandBeaconSig
+	err := b0.Decode(withSig)
+	if err != nil {
+		panic(err)
+	}
+	assert.Equal(t, b, b0)
+
+	var b1 RandBeaconSig
+	err = b1.Decode(withoutSig)
+	if err != nil {
+		panic(err)
+	}
+
+	b0.Sig = nil
+	assert.Equal(t, b0, b1)
+}
+
 func TestEncodeSlice(t *testing.T) {
-	b := consensus.BlockProposal{
+	b := BlockProposal{
 		Data: []byte{},
 	}
 
-	b0 := consensus.BlockProposal{
+	b0 := BlockProposal{
 		Data: nil,
 	}
 
