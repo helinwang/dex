@@ -40,30 +40,30 @@ func TestBlockProposalEncodeDecode(t *testing.T) {
 	assert.Equal(t, b0, b1)
 }
 
-func TestNotarizationEncodeDecode(t *testing.T) {
-	b := Notarization{
+func TestBlockEncodeDecode(t *testing.T) {
+	b := Block{
 		StateRoot: Hash{1},
-		GroupSig:  []byte{4, 5, 6},
+		NtSig:     []byte{4, 5, 6},
 	}
 
 	withSig := b.Encode(true)
 	withoutSig := b.Encode(false)
 	assert.NotEqual(t, withSig, withoutSig)
 
-	var b0 Notarization
+	var b0 Block
 	err := b0.Decode(withSig)
 	if err != nil {
 		panic(err)
 	}
 	assert.Equal(t, b, b0)
 
-	var b1 Notarization
+	var b1 Block
 	err = b1.Decode(withoutSig)
 	if err != nil {
 		panic(err)
 	}
 
-	b0.GroupSig = nil
+	b0.NtSig = nil
 	assert.Equal(t, b0, b1)
 }
 

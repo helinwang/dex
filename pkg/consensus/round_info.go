@@ -66,14 +66,14 @@ var errRoundTooBig = errors.New("round too big")
 // RecvNt handles the newly received notarization.
 //
 // return true if entered into next round.
-func (r *RoundInfo) RecvNt(nt *Notarization) error {
+func (r *RoundInfo) RecvNt(nt *Block) error {
 	idx := nt.Round - 1
 	if idx >= len(r.nextNtCmteHistory) {
 		return errRoundTooBig
 	}
 
 	pk := r.groups[r.nextNtCmteHistory[idx]].PK
-	if !verifySig(pk, nt.GroupSig, nt.Encode(false)) {
+	if !verifySig(pk, nt.NtSig, nt.Encode(false)) {
 		return errInvalidSig
 	}
 

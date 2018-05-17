@@ -74,12 +74,22 @@ func (b *RandBeaconSig) Decode(d []byte) error {
 	return nil
 }
 
-// BlockProposal is a block proposal, or a unnotarized block.
+// SysTxnType is the type of a SysTxn.
+type SysTxnType int
+
+// SysTxn is the consensus system transaction.
+type SysTxn struct {
+	Type SysTxnType
+	Data []byte
+}
+
+// BlockProposal is a block proposal.
 type BlockProposal struct {
-	Round            int
-	PrevNotarization Hash
-	Data             []byte
-	Owner            Addr
+	Round     int
+	PrevBlock Hash
+	Data      []byte
+	SysTxns   []SysTxn
+	Owner     Addr
 	// The signature of the gob serialized BlockProposal with
 	// OwnerSig set to nil.
 	OwnerSig []byte
@@ -118,23 +128,26 @@ func (b *BlockProposal) Decode(d []byte) error {
 	return nil
 }
 
-// Notarization is a notarization for a block proposal.
-type Notarization struct {
+// Block is generated from a block proposal collaboratively by the
+// notarization committee, it is notarized by the notarization
+// signature.
+type Block struct {
 	Round         int
 	StateRoot     Hash
 	BlockProposal Hash
 	PrevNt        Hash
-	// The signature of the gob serialized Notarization with
-	// GroupSig set to nil.
-	GroupSig []byte
+	SysTxns       []SysTxn
+	// The signature of the gob serialized block with NtSig set
+	// to nil.
+	NtSig []byte
 }
 
-// Encode encodes the notarization.
-func (n *Notarization) Encode(withSig bool) []byte {
+// Encode encodes the block.
+func (n *Block) Encode(withSig bool) []byte {
 	use := n
 	if !withSig {
 		newB := *n
-		newB.GroupSig = nil
+		newB.NtSig = nil
 		use = &newB
 	}
 
@@ -149,9 +162,9 @@ func (n *Notarization) Encode(withSig bool) []byte {
 	return buf.Bytes()
 }
 
-// Decode decodes the data into the notarization.
-func (n *Notarization) Decode(d []byte) error {
-	var use Notarization
+// Decode decodes the data into the block.
+func (n *Block) Decode(d []byte) error {
+	var use Block
 	dec := gob.NewDecoder(bytes.NewBuffer(d))
 	err := dec.Decode(&use)
 	if err != nil {
@@ -162,20 +175,47 @@ func (n *Notarization) Decode(d []byte) error {
 	return nil
 }
 
-// Block is a notarized block proposal.
-type Block struct {
-	P *BlockProposal
-	N *Notarization
+type unNotarized struct {
+	Weight float64
+	BP     *BlockProposal
+
+	Parent *notarized
+}
+
+type notarized struct {
+	Nt     *Block
+	State  State
+	Weight float64
+
+	NtChildren    *notarized
+	NonNtChildren *unNotarized
+
+	// The two fields below will be cleared to save space when the
+	// block is finalized.
+	BP     *BlockProposal
+	Parent *notarized
 }
 
 // Chain is a single branch of the blockchain.
 //
 // There will be multiple chains if the blockchain has forks.
 type Chain struct {
-	// The weights of all unfinalized prefix chains, including
-	// itself. In reverse order, e.g., Weights[0] is the weight of
-	// itself if itself is not finalized.
-	Weights   []float64
-	Blocks    []*Block
-	Proposals []*BlockProposal
+	// Finalized notarizations, the block proposals are discarded
+	// to save space.
+	Finalized []*notarized
+	Fork      []*notarized
+	Leader    *notarized
+}
+
+// NewChain creates a new chain.
+func NewChain() *Chain {
+	n := &notarized{
+		Nt:    &Genesis,
+		State: GenesisState,
+	}
+
+	return &Chain{
+		Finalized: []*notarized{n},
+		Leader:    n,
+	}
 }

@@ -19,16 +19,8 @@ type Node struct {
 
 	// the memberships of different groups
 	memberships map[bls.PublicKey]membership
-
-	curChain      *Chain
-	curState      State
-	curTransition Transition
-
-	aliveChains []*Chain
-	store       *StateStore
-
-	pendingTxns   [][]byte
-	pendingBlocks []*Block
+	chain       *Chain
+	pendingTxns [][]byte
 }
 
 // NewNode creates a new node.
@@ -37,14 +29,11 @@ func NewNode(sk bls.SecretKey, net *Networking, seed Rand) *Node {
 	pkHash := hash(pk.Serialize())
 	addr := pkHash.Addr()
 
-	chain := &Chain{Blocks: []*Block{&Genesis}}
-
 	n := &Node{
 		addr:        addr,
 		sk:          sk,
 		roundInfo:   NewRoundInfo(seed),
-		curChain:    chain,
-		aliveChains: []*Chain{chain},
+		chain:       NewChain(),
 		addrToPK:    make(map[Addr]bls.PublicKey),
 		memberships: make(map[bls.PublicKey]membership),
 	}
@@ -62,7 +51,7 @@ func (n *Node) Sync() {
 }
 
 func (n *Node) recvTxn(txn []byte) {
-	valid, future := n.curTransition.Apply(txn)
+	valid, future := n.chain.Leader.State.Transition().Apply(txn)
 	if !valid {
 		log.Printf("received invalid txn, len: %d\n", len(txn))
 		return
