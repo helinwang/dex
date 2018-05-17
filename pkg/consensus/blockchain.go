@@ -74,15 +74,6 @@ func (b *RandBeaconSig) Decode(d []byte) error {
 	return nil
 }
 
-// SysTxnType is the type of a SysTxn.
-type SysTxnType int
-
-// SysTxn is the consensus system transaction.
-type SysTxn struct {
-	Type SysTxnType
-	Data []byte
-}
-
 // BlockProposal is a block proposal.
 type BlockProposal struct {
 	Round     int
@@ -135,10 +126,10 @@ type Block struct {
 	Round         int
 	StateRoot     Hash
 	BlockProposal Hash
-	PrevNt        Hash
+	PrevBlock     Hash
 	SysTxns       []SysTxn
-	// The signature of the gob serialized block with NtSig set
-	// to nil.
+	// The signature of the gob serialized block with NtSig set to
+	// nil.
 	NtSig []byte
 }
 
@@ -183,17 +174,16 @@ type unNotarized struct {
 }
 
 type notarized struct {
-	Nt     *Block
+	Block  *Block
 	State  State
 	Weight float64
 
 	NtChildren    *notarized
 	NonNtChildren *unNotarized
 
-	// The two fields below will be cleared to save space when the
-	// block is finalized.
-	BP     *BlockProposal
-	Parent *notarized
+	// for a finalized block, its block proposal can be deleted to
+	// save space.
+	BP *BlockProposal
 }
 
 // Chain is a single branch of the blockchain.
@@ -210,7 +200,7 @@ type Chain struct {
 // NewChain creates a new chain.
 func NewChain() *Chain {
 	n := &notarized{
-		Nt:    &Genesis,
+		Block: &Genesis,
 		State: GenesisState,
 	}
 

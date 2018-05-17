@@ -63,10 +63,10 @@ func (r *RoundInfo) BlockMakerPK(addr Addr, round int) (bls.PublicKey, error) {
 var errInvalidSig = errors.New("invalid signature")
 var errRoundTooBig = errors.New("round too big")
 
-// RecvNt handles the newly received notarization.
+// RecvBlock handles the newly received block.
 //
 // return true if entered into next round.
-func (r *RoundInfo) RecvNt(nt *Block) error {
+func (r *RoundInfo) RecvBlock(nt *Block) error {
 	idx := nt.Round - 1
 	if idx >= len(r.nextNtCmteHistory) {
 		return errRoundTooBig
