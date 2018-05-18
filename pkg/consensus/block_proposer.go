@@ -38,6 +38,7 @@ func (b *BlockProposer) CollectTxn(ctx context.Context, txCh chan []byte, sysTxC
 		case <-ctx.Done():
 			bp.SysTxns = sysTransition.Txns()
 			bp.Data = transition.Encode()
+			bp.OwnerSig = b.sk.Sign(string(bp.Encode(false))).Serialize()
 			close(pendingTx)
 			return &bp
 		case tx := <-txCh:
