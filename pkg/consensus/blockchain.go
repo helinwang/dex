@@ -14,7 +14,6 @@ type finalized struct {
 
 type notarized struct {
 	Block  *Block
-	State  State
 	Weight float64
 
 	NtChildren    *notarized
@@ -24,8 +23,9 @@ type notarized struct {
 }
 
 type leader struct {
-	Block *Block
-	State State
+	Block    *Block
+	State    State
+	SysState *SysState
 }
 
 // Chain is the blockchain.
@@ -42,8 +42,9 @@ type Chain struct {
 	// block proposals starting from LastHistoryState, verify the
 	// new state root hash against the one stored in the next
 	// block.
-	Finalized          []*finalized
-	LastFinalizedState State
+	Finalized             []*finalized
+	LastFinalizedState    State
+	LastFinalizedSysState *SysState
 
 	Fork   []*notarized
 	Leader *leader

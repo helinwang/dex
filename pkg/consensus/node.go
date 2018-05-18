@@ -163,18 +163,6 @@ func (n *Node) applySysTxns(txns []SysTxn, noCheck bool) error {
 	return nil
 }
 
-func (n *Node) recvTxn(txn []byte) {
-	valid, future := n.chain.Leader.State.Transition().Apply(txn)
-	if !valid {
-		log.Printf("received invalid txn, len: %d\n", len(txn))
-		return
-	}
-
-	if future {
-		n.pendingTxns = append(n.pendingTxns, txn)
-	}
-}
-
 func (n *Node) recvBlockProposal(b *BlockProposal) {
 	if round := n.roundInfo.Round; b.Round < round {
 		// stable block proposal, discard without broadcasting
