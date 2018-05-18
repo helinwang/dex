@@ -50,15 +50,7 @@ func (b *RandBeaconSig) Encode(withSig bool) []byte {
 		use = &newB
 	}
 
-	var buf bytes.Buffer
-	enc := gob.NewEncoder(&buf)
-	err := enc.Encode(use)
-	if err != nil {
-		// should never happen
-		panic(err)
-	}
-
-	return buf.Bytes()
+	return gobEncode(use)
 }
 
 // Decode decodes the data into the random beacon signature.
@@ -95,15 +87,7 @@ func (b *BlockProposal) Encode(withSig bool) []byte {
 		use = &newB
 	}
 
-	var buf bytes.Buffer
-	enc := gob.NewEncoder(&buf)
-	err := enc.Encode(use)
-	if err != nil {
-		// should never happen
-		panic(err)
-	}
-
-	return buf.Bytes()
+	return gobEncode(use)
 }
 
 // Decode decodes the data into the block proposal
@@ -128,9 +112,9 @@ type Block struct {
 	BlockProposal Hash
 	PrevBlock     Hash
 	SysTxns       []SysTxn
-	// The signature of the gob serialized block with NtSig set to
-	// nil.
-	NtSig []byte
+	// The signature of the gob serialized block with
+	// NotarizationSig set to nil.
+	NotarizationSig []byte
 }
 
 // Encode encodes the block.
@@ -138,19 +122,10 @@ func (n *Block) Encode(withSig bool) []byte {
 	use := n
 	if !withSig {
 		newB := *n
-		newB.NtSig = nil
+		newB.NotarizationSig = nil
 		use = &newB
 	}
-
-	var buf bytes.Buffer
-	enc := gob.NewEncoder(&buf)
-	err := enc.Encode(use)
-	if err != nil {
-		// should never happen
-		panic(err)
-	}
-
-	return buf.Bytes()
+	return gobEncode(use)
 }
 
 // Decode decodes the data into the block.
@@ -198,10 +173,10 @@ type Chain struct {
 }
 
 // NewChain creates a new chain.
-func NewChain() *Chain {
+func NewChain(genesis *Block, genesisState State) *Chain {
 	n := &notarized{
-		Block: &Genesis,
-		State: GenesisState,
+		Block: genesis,
+		State: genesisState,
 	}
 
 	return &Chain{

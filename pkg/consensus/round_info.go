@@ -73,7 +73,7 @@ func (r *RoundInfo) RecvBlock(nt *Block) error {
 	}
 
 	pk := r.groups[r.nextNtCmteHistory[idx]].PK
-	if !verifySig(pk, nt.NtSig, nt.Encode(false)) {
+	if !verifySig(pk, nt.NotarizationSig, nt.Encode(false)) {
 		return errInvalidSig
 	}
 

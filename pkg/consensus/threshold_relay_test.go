@@ -6,17 +6,12 @@ import (
 	"github.com/dfinity/go-dfinity-crypto/bls"
 )
 
-func makeShares(t int, nodes []*Node, rand Rand) (bls.PublicKey, []bls.SecretKey, Rand) {
+func makeShares(t int, idVec []bls.ID, rand Rand) (bls.PublicKey, []bls.SecretKey, Rand) {
 	sk := rand.SK()
 	rand = rand.Derive(rand[:])
 
-	idVec := make([]bls.ID, len(nodes))
-	for i := range idVec {
-		idVec[i] = nodes[i].addr.ID()
-	}
-
 	msk := sk.GetMasterSecretKey(t)
-	skShares := make([]bls.SecretKey, len(nodes))
+	skShares := make([]bls.SecretKey, len(idVec))
 
 	for i := range skShares {
 		skShares[i].Set(msk, &idVec[i])
@@ -25,26 +20,7 @@ func makeShares(t int, nodes []*Node, rand Rand) (bls.PublicKey, []bls.SecretKey
 	return *sk.GetPublicKey(), skShares, rand
 }
 
-func makeGroup(t, n int, nodes []*Node, rand Rand) (*Group, Rand) {
-	members := make([]*Node, n)
-	perm := rand.Perm(n, len(nodes))
-	rand = rand.Derive(rand[:])
-
-	for i := range members {
-		members[i] = nodes[perm[i]]
-	}
-
-	pk, shares, rand := makeShares(t, members, rand)
-	g := NewGroup(pk)
-	for i := range members {
-		members[i].memberships[g.PK] = membership{skShare: shares[i], g: g}
-		g.MemberPK[members[i].addr] = *members[i].sk.GetPublicKey()
-	}
-
-	return g, rand
-}
-
-func TestThresholdRelay(t *testing.T) {
+func setupNodes() []*Node {
 	const (
 		numNode   = 10
 		numGroup  = 20
@@ -55,19 +31,67 @@ func TestThresholdRelay(t *testing.T) {
 	rand := Rand(hash([]byte("seed")))
 	nodeSeed := rand.Derive([]byte("node"))
 
+	genesis := &Block{}
+	nodeSKs := make([]bls.SecretKey, numNode)
+	for i := range nodeSKs {
+		nodeSKs[i] = rand.SK()
+		rand = rand.Derive(rand[:])
+		txn := ReadyJoinGroupTxn{
+			ID: i,
+			PK: nodeSKs[i].GetPublicKey().Serialize(),
+		}
+		genesis.SysTxns = append(genesis.SysTxns, SysTxn{
+			Type: ReadyJoinGroup,
+			Data: gobEncode(txn),
+		})
+	}
+
+	gs := make([]*Group, numGroup)
+	groupIDs := make([]int, numGroup)
+	sharesVec := make([][]bls.SecretKey, numGroup)
+	perms := make([][]int, numGroup)
+	for i := range groupIDs {
+		perm := rand.Perm(groupSize, numNode)
+		perms[i] = perm
+		rand = rand.Derive(rand[:])
+		idVec := make([]bls.ID, groupSize)
+		for i := range idVec {
+			pk := nodeSKs[perm[i]].GetPublicKey()
+			idVec[i] = hash(pk.Serialize()).Addr().ID()
+		}
+
+		var groupPK bls.PublicKey
+		groupPK, sharesVec[i], rand = makeShares(threshold, idVec, rand)
+		gs[i] = NewGroup(groupPK)
+		txn := RegGroupTxn{
+			ID:        i,
+			PK:        groupPK.Serialize(),
+			MemberIDs: perm,
+		}
+		genesis.SysTxns = append(genesis.SysTxns, SysTxn{
+			Type: RegGroup,
+			Data: gobEncode(txn),
+		})
+		groupIDs[i] = i
+	}
+
+	l := ListGroupsTxn{
+		GroupIDs: groupIDs,
+	}
+
+	genesis.SysTxns = append(genesis.SysTxns, SysTxn{
+		Type: ListGroups,
+		Data: gobEncode(l),
+	})
+
 	nodes := make([]*Node, numNode)
 	for i := range nodes {
-		sk := rand.SK()
-		rand = rand.Derive(rand[:])
-		nodes[i] = NewNode(sk, nil, nodeSeed)
+		nodes[i] = NewNode(genesis, nil, nodeSKs[i], nil, nodeSeed)
 	}
 
-	gs := make([]*Group, groupSize)
-	for i := range gs {
-		gs[i], rand = makeGroup(threshold, groupSize, nodes, rand)
-	}
+	return nodes
+}
 
-	for i := range nodes {
-		nodes[i].roundInfo.groups = gs
-	}
+func TestThresholdRelay(t *testing.T) {
+	setupNodes()
 }

@@ -26,8 +26,9 @@ type SysTxn struct {
 // selected randomly by the random beacon, same as which group is the
 // notary committe group.
 type ReadyJoinGroupTxn struct {
-	ID int
-	PK []byte
+	ID    int
+	PK    []byte
+	Proof []byte
 }
 
 // RegGroupTxn registers a group to the blockchain.
@@ -51,5 +52,5 @@ type RegGroupTxn struct {
 // proposer is not able to censor the groups because they are selected
 // deterministically.
 type ListGroupsTxn struct {
-	GroupIDs int
+	GroupIDs []int
 }

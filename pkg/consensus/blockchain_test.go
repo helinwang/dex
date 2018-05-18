@@ -42,8 +42,8 @@ func TestBlockProposalEncodeDecode(t *testing.T) {
 
 func TestBlockEncodeDecode(t *testing.T) {
 	b := Block{
-		StateRoot: Hash{1},
-		NtSig:     []byte{4, 5, 6},
+		StateRoot:       Hash{1},
+		NotarizationSig: []byte{4, 5, 6},
 	}
 
 	withSig := b.Encode(true)
@@ -63,7 +63,7 @@ func TestBlockEncodeDecode(t *testing.T) {
 		panic(err)
 	}
 
-	b0.NtSig = nil
+	b0.NotarizationSig = nil
 	assert.Equal(t, b0, b1)
 }
 
