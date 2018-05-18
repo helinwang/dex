@@ -112,6 +112,7 @@ func (n *Node) applyListGroups(t ListGroupsTxn) error {
 	return nil
 }
 
+// nolint: gocyclo
 func (n *Node) applySysTxns(txns []SysTxn, noCheck bool) error {
 	// TODO: apply sys txn should be atomic. E.g., when error
 	// happens in the middle, nothing will be changed.
