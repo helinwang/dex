@@ -1,5 +1,7 @@
 package consensus
 
+import "sync"
+
 type unNotarized struct {
 	Weight float64
 	BP     *BlockProposal
@@ -30,12 +32,12 @@ type leader struct {
 
 // Chain is the blockchain.
 type Chain struct {
+	mu sync.RWMutex
 	// the finalized block burried deep enough becomes part of the
 	// history. Its block proposal and state will be discarded to
 	// save space.
 	History          []*Block
 	LastHistoryState State
-
 	// reorg will never happen to the finalized block, we will
 	// discard its associated state. The block proposal will not
 	// be discarded, so when a new client joins, he can replay the
@@ -45,9 +47,8 @@ type Chain struct {
 	Finalized             []*finalized
 	LastFinalizedState    State
 	LastFinalizedSysState *SysState
-
-	Fork   []*notarized
-	Leader *leader
+	Fork                  []*notarized
+	Leader                *leader
 }
 
 // NewChain creates a new chain.
