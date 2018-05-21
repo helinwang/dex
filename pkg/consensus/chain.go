@@ -40,7 +40,7 @@ type leader struct {
 
 // Chain is the blockchain.
 type Chain struct {
-	roundInfo RoundInfo
+	RandomBeacon RandomBeacon
 
 	mu sync.RWMutex
 	// the finalized block burried deep enough becomes part of the
@@ -203,5 +203,5 @@ func (c *Chain) addBlock(b *Block, weight float64) error {
 
 func (c *Chain) validateGroupSig(sig bls.Sign, groupID int, bp *BlockProposal) bool {
 	msg := bp.Encode(true)
-	return sig.Verify(&c.roundInfo.groups[groupID].PK, string(msg))
+	return sig.Verify(&c.RandomBeacon.groups[groupID].PK, string(msg))
 }

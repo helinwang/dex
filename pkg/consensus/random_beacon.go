@@ -9,11 +9,11 @@ import (
 var errCommitteeNotSelected = errors.New("committee not selected yet")
 var errAddrNotInCommittee = errors.New("addr not in committee")
 
-// RoundInfo is the round information.
+// RandomBeacon is the round information.
 //
 // The random beacon, block proposal, block notarization advance to
 // the next round in lockstep.
-type RoundInfo struct {
+type RandomBeacon struct {
 	mu                sync.Mutex
 	nextRBCmteHistory []int
 	nextNtCmteHistory []int
@@ -27,14 +27,12 @@ type RoundInfo struct {
 	curRoundShares []*RandBeaconSigShare
 }
 
-// TODO: maybe rename RoundInfo to Context, or RandomBeacon
-
-// NewRoundInfo creates a new round info.
-func NewRoundInfo(seed Rand, groups []*Group) *RoundInfo {
+// NewRandomBeacon creates a new random beacon
+func NewRandomBeacon(seed Rand, groups []*Group) *RandomBeacon {
 	rbRand := seed.Derive([]byte("random beacon committee rand seed"))
 	bpRand := seed.Derive([]byte("block proposer committee rand seed"))
 	ntRand := seed.Derive([]byte("notarization committee rand seed"))
-	return &RoundInfo{
+	return &RandomBeacon{
 		groups:            groups,
 		rbRand:            rbRand,
 		bpRand:            bpRand,
@@ -47,7 +45,7 @@ func NewRoundInfo(seed Rand, groups []*Group) *RoundInfo {
 
 // RecvRandBeaconSigShare receives one share of the random beacon
 // signature.
-func (r *RoundInfo) RecvRandBeaconSigShare(s *RandBeaconSigShare, groupID int) (*RandBeaconSig, error) {
+func (r *RandomBeacon) RecvRandBeaconSigShare(s *RandBeaconSigShare, groupID int) (*RandBeaconSig, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -73,7 +71,7 @@ func (r *RoundInfo) RecvRandBeaconSigShare(s *RandBeaconSigShare, groupID int) (
 }
 
 // RecvRandBeaconSig adds the random beacon signature.
-func (r *RoundInfo) RecvRandBeaconSig(s *RandBeaconSig) error {
+func (r *RandomBeacon) RecvRandBeaconSig(s *RandBeaconSig) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -86,11 +84,11 @@ func (r *RoundInfo) RecvRandBeaconSig(s *RandBeaconSig) error {
 	return nil
 }
 
-func (r *RoundInfo) randRound() int {
+func (r *RandomBeacon) randRound() int {
 	return len(r.nextRBCmteHistory)
 }
 
-func (r *RoundInfo) deriveRand(h Hash) {
+func (r *RandomBeacon) deriveRand(h Hash) {
 	r.rbRand = r.rbRand.Derive(h[:])
 	r.nextRBCmteHistory = append(r.nextRBCmteHistory, r.rbRand.Mod(len(r.groups)))
 	r.ntRand = r.ntRand.Derive(h[:])

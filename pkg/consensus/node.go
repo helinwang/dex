@@ -9,10 +9,10 @@ import (
 // Nodes form a group randomly, the randomness comes from the random
 // beacon.
 type Node struct {
-	addr      Addr
-	sk        bls.SecretKey
-	net       *Networking
-	roundInfo *RoundInfo
+	addr         Addr
+	sk           bls.SecretKey
+	net          *Networking
+	randomBeacon *RandomBeacon
 
 	// the memberships of different groups
 	memberships map[bls.PublicKey]membership
@@ -50,6 +50,6 @@ func NewNode(genesis *Block, genesisState State, sk bls.SecretKey, net *Networki
 	sysState = t.Apply()
 	sysState.Finalized()
 	n.chain.LastFinalizedSysState = sysState
-	n.roundInfo = NewRoundInfo(seed, sysState.groups)
+	n.randomBeacon = NewRandomBeacon(seed, sysState.groups)
 	return n
 }

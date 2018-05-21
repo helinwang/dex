@@ -47,10 +47,9 @@ type Network interface {
 // Networking is the component that enables the node to talk to its
 // peers over the network.
 type Networking struct {
-	net       Network
-	v         *validator
-	roundInfo *RoundInfo
-	chain     *Chain
+	net   Network
+	v     *validator
+	chain *Chain
 }
 
 // NewNetworking creates a new networking component.
@@ -75,7 +74,7 @@ func (n *Networking) recvRandBeaconSig(r *RandBeaconSig) {
 		return
 	}
 
-	err := n.roundInfo.RecvRandBeaconSig(r)
+	err := n.chain.RandomBeacon.RecvRandBeaconSig(r)
 	if err != nil {
 		log.Println(err)
 		return
@@ -92,7 +91,7 @@ func (n *Networking) recvRandBeaconSigShare(r *RandBeaconSigShare) {
 		return
 	}
 
-	sig, err := n.roundInfo.RecvRandBeaconSigShare(r, groupID)
+	sig, err := n.chain.RandomBeacon.RecvRandBeaconSigShare(r, groupID)
 	if err != nil {
 		log.Println(err)
 		return
