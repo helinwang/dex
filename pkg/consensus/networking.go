@@ -10,6 +10,7 @@ type Peer interface {
 	Inventory(sender Peer, items []ItemID) error
 	GetData(requester Peer, items []ItemID) error
 	PeerList(requester Peer) ([]string, error)
+	Addr() string
 }
 
 // ItemType is the different type of items.
@@ -32,7 +33,7 @@ type ItemID struct {
 
 // Network is used to connect to the peers.
 type Network interface {
-	Start(addr string, myself Peer) error
+	Start(myself Peer) error
 	Connect(addr string) (Peer, error)
 }
 
@@ -50,7 +51,7 @@ func NewNetworking(net Network, v *validator) *Networking {
 
 // Start starts the networking component.
 func (n *Networking) Start(addr string) {
-	n.net.Start(addr, &receiver{n: n})
+	n.net.Start(&receiver{addr: addr, n: n})
 }
 
 func (n *Networking) recvTxn(sender Peer, t []byte) {
@@ -81,7 +82,12 @@ func (n *Networking) peerList(requester Peer) ([]string, error) {
 }
 
 type receiver struct {
-	n *Networking
+	addr string
+	n    *Networking
+}
+
+func (r *receiver) Addr() string {
+	return r.addr
 }
 
 func (r *receiver) Txn(sender Peer, t []byte) error {
