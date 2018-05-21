@@ -28,3 +28,8 @@ func (v *validator) ValidateRandBeaconSig(r *RandBeaconSig) bool {
 	// TODO: validate sig, owner, round
 	return true
 }
+
+func (v *validator) ValidateRandBeaconSigShare(r *RandBeaconSigShare) bool {
+	// TODO: validate sig, owner, round
+	return true
+}

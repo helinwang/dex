@@ -66,6 +66,40 @@ func (b *RandBeaconSig) Decode(d []byte) error {
 	return nil
 }
 
+// RandBeaconSigShare is one share of the random beacon signature.
+type RandBeaconSigShare struct {
+	Owner       Addr
+	Round       int
+	LastRandVal Hash
+	Share       []byte
+	OwnerSig    []byte
+}
+
+// Encode encodes the random beacon signature share.
+func (b *RandBeaconSigShare) Encode(withSig bool) []byte {
+	use := b
+	if !withSig {
+		newB := *b
+		newB.OwnerSig = nil
+		use = &newB
+	}
+
+	return gobEncode(use)
+}
+
+// Decode decodes the data into the random beacon signature share.
+func (b *RandBeaconSigShare) Decode(d []byte) error {
+	var use RandBeaconSigShare
+	dec := gob.NewDecoder(bytes.NewBuffer(d))
+	err := dec.Decode(&use)
+	if err != nil {
+		return err
+	}
+
+	*b = use
+	return nil
+}
+
 // NtShare is one share of the notarization.
 //
 // Each member of the notarization committee will broadcast its own

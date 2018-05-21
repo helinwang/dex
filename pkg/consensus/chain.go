@@ -160,3 +160,11 @@ func (c *Chain) validateGroupSig(sig bls.Sign, groupID int, bp *BlockProposal) b
 	msg := bp.Encode(true)
 	return sig.Verify(&c.roundInfo.groups[groupID].PK, string(msg))
 }
+
+func (c *Chain) addRandBeaconSigShare(r *RandBeaconSigShare) (*RandBeaconSig, error) {
+	return nil, nil
+}
+
+func (c *Chain) addRandBeaconSig(r *RandBeaconSig) error {
+	return nil
+}
