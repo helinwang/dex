@@ -19,6 +19,7 @@ type RandomBeacon struct {
 	nextNtCmteHistory []int
 	nextBPCmteHistory []int
 	groups            []*Group
+	sigHash           Hash
 
 	rbRand Rand
 	ntRand Rand
@@ -37,6 +38,7 @@ func NewRandomBeacon(seed Rand, groups []*Group) *RandomBeacon {
 		rbRand:            rbRand,
 		bpRand:            bpRand,
 		ntRand:            ntRand,
+		sigHash:           Hash(seed),
 		nextRBCmteHistory: []int{rbRand.Mod(len(groups))},
 		nextNtCmteHistory: []int{ntRand.Mod(len(groups))},
 		nextBPCmteHistory: []int{bpRand.Mod(len(groups))},
@@ -50,14 +52,18 @@ func (r *RandomBeacon) RecvRandBeaconSigShare(s *RandBeaconSigShare, groupID int
 	defer r.mu.Unlock()
 
 	if r.randRound() != s.Round {
-		return nil, fmt.Errorf("unexpected RandBeaconSigShare round: %d, expected: %d", s.Round, r.randRound())
+		return nil, fmt.Errorf("unexpected RandBeaconSigShare.Round: %d, expected: %d", s.Round, r.randRound())
+	}
+
+	if r.sigHash != s.LastSigHash {
+		return nil, fmt.Errorf("unexpected RandBeaconSigShare.LastSigHash: %x, expected: %x", s.LastSigHash, r.sigHash)
 	}
 
 	r.curRoundShares = append(r.curRoundShares, s)
 	if len(r.curRoundShares) >= groupThreshold {
 		sig := recoverRandBeaconSig(r.curRoundShares)
 		var rbs RandBeaconSig
-		rbs.LastRandVal = s.LastRandVal
+		rbs.LastRandVal = s.LastSigHash
 		rbs.Round = s.Round
 		msg := rbs.Encode(false)
 		if !sig.Verify(&r.groups[groupID].PK, string(msg)) {

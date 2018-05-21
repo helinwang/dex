@@ -70,7 +70,7 @@ func (b *RandBeaconSig) Decode(d []byte) error {
 type RandBeaconSigShare struct {
 	Owner       Addr
 	Round       int
-	LastRandVal Hash
+	LastSigHash Hash
 	Share       []byte
 	OwnerSig    []byte
 }
