@@ -75,7 +75,6 @@ func NewChain(genesis *Block, genesisState State, seed Rand) *Chain {
 
 	sysState = t.Apply()
 	sysState.Finalized()
-
 	gh := genesis.Hash()
 	return &Chain{
 		RandomBeacon:        NewRandomBeacon(seed, sysState.groups),

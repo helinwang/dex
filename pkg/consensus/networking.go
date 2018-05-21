@@ -20,6 +20,7 @@ type Peer interface {
 	PeerList() ([]string, error)
 	Addr() string
 	Ping(ctx context.Context) error
+	RandomBeacon(start int) ([]*RandBeaconSig, error)
 }
 
 // TODO: networking should ensure that adding things to the chain is
@@ -97,6 +98,21 @@ func (n *Networking) Start(seedAddr string) error {
 	n.mu.Unlock()
 
 	// TODO: connect to more peers
+
+	// TODO: sync random beacon from other peers rather than the
+	// seed
+
+	rb, err := p.RandomBeacon(len(n.chain.RandomBeacon.History()))
+	if err != nil {
+		return err
+	}
+
+	for _, r := range rb {
+		err = n.chain.RandomBeacon.RecvRandBeaconSig(r)
+		if err != nil {
+			return err
+		}
+	}
 
 	return nil
 }
@@ -232,6 +248,17 @@ func (n *Networking) recvInventory(sender string, ids []ItemID) {
 	}
 }
 
+func (n *Networking) getRandomBeacon(start int) []*RandBeaconSig {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	history := n.chain.RandomBeacon.History()
+	if len(history) <= start {
+		return nil
+	}
+
+	return history[start:]
+}
+
 func (n *Networking) serveData(requester string, ids []ItemID) {
 }
 
@@ -298,6 +325,10 @@ func (r *receiver) Inventory(sender string, ids []ItemID) error {
 func (r *receiver) GetData(requester string, ids []ItemID) error {
 	r.n.serveData(requester, ids)
 	return nil
+}
+
+func (r *receiver) RandomBeacon(start int) ([]*RandBeaconSig, error) {
+	return r.n.getRandomBeacon(start), nil
 }
 
 func (r *receiver) PeerList() ([]string, error) {

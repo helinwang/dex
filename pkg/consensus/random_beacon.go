@@ -26,6 +26,7 @@ type RandomBeacon struct {
 	bpRand Rand
 
 	curRoundShares []*RandBeaconSigShare
+	sigHistory     []*RandBeaconSig
 }
 
 // NewRandomBeacon creates a new random beacon
@@ -51,8 +52,8 @@ func (r *RandomBeacon) RecvRandBeaconSigShare(s *RandBeaconSigShare, groupID int
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if r.randRound() != s.Round {
-		return nil, fmt.Errorf("unexpected RandBeaconSigShare.Round: %d, expected: %d", s.Round, r.randRound())
+	if r.round() != s.Round {
+		return nil, fmt.Errorf("unexpected RandBeaconSigShare.Round: %d, expected: %d", s.Round, r.round())
 	}
 
 	if r.sigHash != s.LastSigHash {
@@ -81,17 +82,32 @@ func (r *RandomBeacon) RecvRandBeaconSig(s *RandBeaconSig) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if r.randRound() != s.Round {
-		return fmt.Errorf("unexpected RandBeaconSig round: %d, expected: %d", s.Round, r.randRound())
+	if r.round() != s.Round {
+		return fmt.Errorf("unexpected RandBeaconSig round: %d, expected: %d", s.Round, r.round())
 	}
 
 	r.deriveRand(hash(s.Sig))
 	r.curRoundShares = nil
+	r.sigHistory = append(r.sigHistory, s)
 	return nil
 }
 
-func (r *RandomBeacon) randRound() int {
-	return len(r.nextRBCmteHistory)
+func (r *RandomBeacon) round() int {
+	// +1 because there is no signature history for the completion
+	// of the 0th round
+	return len(r.sigHistory) + 1
+}
+
+// Round returns the round of the random beacon.
+//
+// This round will be always >= the block round. For example, when a
+// stale node is syncing, it will sync the random beacon first, and
+// then sync the blocks.
+func (r *RandomBeacon) Round() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	return r.round()
 }
 
 func (r *RandomBeacon) deriveRand(h Hash) {
@@ -101,4 +117,12 @@ func (r *RandomBeacon) deriveRand(h Hash) {
 	r.nextNtCmteHistory = append(r.nextNtCmteHistory, r.ntRand.Mod(len(r.groups)))
 	r.bpRand = r.bpRand.Derive(h[:])
 	r.nextBPCmteHistory = append(r.nextBPCmteHistory, r.bpRand.Mod(len(r.groups)))
+}
+
+// History returns the random beacon signature history.
+func (r *RandomBeacon) History() []*RandBeaconSig {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	return r.sigHistory
 }
