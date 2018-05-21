@@ -74,7 +74,6 @@ func (n *Networking) recvInventory(sender Peer, ids []ItemID) {
 }
 
 func (n *Networking) serveData(requester Peer, ids []ItemID) {
-	return
 }
 
 func (n *Networking) peerList(requester Peer) ([]string, error) {
