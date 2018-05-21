@@ -66,6 +66,11 @@ func (b *RandBeaconSig) Decode(d []byte) error {
 	return nil
 }
 
+// Hash returns the hash of the random beacon signature.
+func (b *RandBeaconSig) Hash() Hash {
+	return hash(b.Encode(true))
+}
+
 // RandBeaconSigShare is one share of the random beacon signature.
 type RandBeaconSigShare struct {
 	Owner       Addr
@@ -98,6 +103,11 @@ func (b *RandBeaconSigShare) Decode(d []byte) error {
 
 	*b = use
 	return nil
+}
+
+// Hash returns the hash of the random beacon signature share.
+func (b *RandBeaconSigShare) Hash() Hash {
+	return hash(b.Encode(true))
 }
 
 // NtShare is one share of the notarization.

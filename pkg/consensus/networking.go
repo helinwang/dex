@@ -1,6 +1,10 @@
 package consensus
 
-import "log"
+import (
+	"context"
+	"log"
+	"sync"
+)
 
 // Peer is a peer node in the DEX network.
 type Peer interface {
@@ -11,10 +15,11 @@ type Peer interface {
 	Block(b *Block) error
 	BlockProposal(b *BlockProposal) error
 	NotarizationShare(n *NtShare) error
-	Inventory(sender Peer, items []ItemID) error
-	GetData(requester Peer, items []ItemID) error
+	Inventory(sender string, items []ItemID) error
+	GetData(requester string, items []ItemID) error
 	PeerList() ([]string, error)
 	Addr() string
+	Ping(ctx context.Context) error
 }
 
 // TODO: networking should ensure that adding things to the chain is
@@ -30,6 +35,8 @@ const (
 	BlockItem
 	BlockProposalItem
 	NtShareItem
+	RandBeaconShareItem
+	RandBeaconItem
 )
 
 // ItemID is the identification of an item that the current node owns.
@@ -48,24 +55,70 @@ type Network interface {
 // peers over the network.
 type Networking struct {
 	net   Network
+	addr  string
 	v     *validator
 	chain *Chain
+
+	mu        sync.Mutex
+	peers     map[string]Peer
+	peerAddrs []string
 }
 
 // NewNetworking creates a new networking component.
-func NewNetworking(net Network, v *validator) *Networking {
-	return &Networking{net: net, v: v}
+func NewNetworking(net Network, v *validator, addr string) *Networking {
+	return &Networking{
+		net:   net,
+		v:     v,
+		peers: make(map[string]Peer),
+	}
 }
 
 // Start starts the networking component.
-func (n *Networking) Start(addr string) {
-	n.net.Start(&receiver{addr: addr, n: n})
+func (n *Networking) Start(seedAddr string) error {
+	err := n.net.Start(&receiver{addr: n.addr, n: n})
+	if err != nil {
+		return err
+	}
+
+	p, err := n.net.Connect(seedAddr)
+	if err != nil {
+		return err
+	}
+
+	peerAddrs, err := p.PeerList()
+	if err != nil {
+		return err
+	}
+
+	n.mu.Lock()
+	n.peers[seedAddr] = p
+	n.peerAddrs = peerAddrs
+	n.mu.Unlock()
+
+	// TODO: connect to more peers
+
+	return nil
+}
+
+// BroadcastItem broadcast the item id to its peers.
+func (n *Networking) BroadcastItem(item ItemID) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+
+	for _, p := range n.peers {
+		p := p
+		go func() {
+			p.Inventory(n.addr, []ItemID{item})
+		}()
+	}
 }
 
 func (n *Networking) recvTxn(t []byte) {
+	panic("not implemented")
 }
 
 func (n *Networking) recvSysTxn(t *SysTxn) {
+	panic("not implemented")
 }
 
 func (n *Networking) recvRandBeaconSig(r *RandBeaconSig) {
@@ -80,7 +133,7 @@ func (n *Networking) recvRandBeaconSig(r *RandBeaconSig) {
 		return
 	}
 
-	// TODO: broadcast
+	go n.BroadcastItem(ItemID{T: RandBeaconItem, Hash: r.Hash()})
 }
 
 func (n *Networking) recvRandBeaconSigShare(r *RandBeaconSigShare) {
@@ -102,7 +155,7 @@ func (n *Networking) recvRandBeaconSigShare(r *RandBeaconSigShare) {
 		return
 	}
 
-	// TODO: broadcast
+	go n.BroadcastItem(ItemID{T: RandBeaconShareItem, Hash: r.Hash()})
 }
 
 func (n *Networking) recvBlock(b *Block) {
@@ -122,7 +175,7 @@ func (n *Networking) recvBlock(b *Block) {
 		return
 	}
 
-	// TODO: broadcast
+	go n.BroadcastItem(ItemID{T: BlockItem, Hash: b.Hash()})
 }
 
 func (n *Networking) recvBlockProposal(bp *BlockProposal) {
@@ -138,7 +191,7 @@ func (n *Networking) recvBlockProposal(bp *BlockProposal) {
 		return
 	}
 
-	// TODO: broadcast
+	go n.BroadcastItem(ItemID{T: BlockProposalItem, Hash: bp.Hash()})
 }
 
 func (n *Networking) recvNtShare(s *NtShare) {
@@ -159,19 +212,26 @@ func (n *Networking) recvNtShare(s *NtShare) {
 		return
 	}
 
-	// TODO: broadcast nt share
+	go n.BroadcastItem(ItemID{T: NtShareItem, Hash: s.Hash()})
 }
 
-func (n *Networking) recvInventory(sender Peer, ids []ItemID) {
+func (n *Networking) recvInventory(sender string, ids []ItemID) {
 }
 
-func (n *Networking) serveData(requester Peer, ids []ItemID) {
+func (n *Networking) serveData(requester string, ids []ItemID) {
 }
 
-func (n *Networking) peerList() ([]string, error) {
-	return nil, nil
+func (n *Networking) peerList() []string {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+
+	// TODO: periodically verify the addrs in peerAddrs are valid
+	// by using Ping.
+	return n.peerAddrs
 }
 
+// receiver implements the Peer interface. It forwards the peers'
+// queries to the networking component.
 type receiver struct {
 	addr string
 	n    *Networking
@@ -216,16 +276,20 @@ func (r *receiver) NotarizationShare(n *NtShare) error {
 	return nil
 }
 
-func (r *receiver) Inventory(sender Peer, ids []ItemID) error {
+func (r *receiver) Inventory(sender string, ids []ItemID) error {
 	r.n.recvInventory(sender, ids)
 	return nil
 }
 
-func (r *receiver) GetData(requester Peer, ids []ItemID) error {
+func (r *receiver) GetData(requester string, ids []ItemID) error {
 	r.n.serveData(requester, ids)
 	return nil
 }
 
 func (r *receiver) PeerList() ([]string, error) {
-	return r.n.peerList()
+	return r.n.peerList(), nil
+}
+
+func (r *receiver) Ping(context.Context) error {
+	return nil
 }
