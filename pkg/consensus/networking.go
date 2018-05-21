@@ -1,12 +1,14 @@
 package consensus
 
+import "log"
+
 // Peer is a peer node in the DEX network.
 type Peer interface {
 	Txn(sender Peer, txn []byte) error
 	SysTxn(sender Peer, s *SysTxn) error
 	Block(sender Peer, b *Block) error
 	BlockProposal(sender Peer, b *BlockProposal) error
-	NotarizationShare(sender Peer, bp Hash, sig []byte) error
+	NotarizationShare(sender Peer, n *NtShare) error
 	Inventory(sender Peer, items []ItemID) error
 	GetData(requester Peer, items []ItemID) error
 	PeerList(requester Peer) ([]string, error)
@@ -40,18 +42,24 @@ type Network interface {
 // Networking is the component that enables the node to talk to its
 // peers over the network.
 type Networking struct {
-	net Network
-	v   *validator
+	mySelf    Peer
+	net       Network
+	v         *validator
+	roundInfo *RoundInfo
+	chain     *Chain
 }
 
 // NewNetworking creates a new networking component.
-func NewNetworking(net Network, v *validator) *Networking {
-	return &Networking{net: net, v: v}
+func NewNetworking(net Network, addr string, v *validator) *Networking {
+	r := &receiver{addr: addr}
+	n := &Networking{net: net, v: v, mySelf: r}
+	r.n = n
+	return n
 }
 
 // Start starts the networking component.
-func (n *Networking) Start(addr string) {
-	n.net.Start(&receiver{addr: addr, n: n})
+func (n *Networking) Start() {
+	n.net.Start(n.mySelf)
 }
 
 func (n *Networking) recvTxn(sender Peer, t []byte) {
@@ -61,13 +69,52 @@ func (n *Networking) recvSysTxn(sender Peer, t *SysTxn) {
 }
 
 func (n *Networking) recvBlock(sender Peer, b *Block) {
-	n.v.ValidateBlock(b)
+	if !n.v.ValidateBlock(b) {
+		return
+	}
+
+	err := n.chain.addBlock(b)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	// TODO: broadcast
 }
 
-func (n *Networking) recvBlockProposal(sender Peer, b *BlockProposal) {
+func (n *Networking) recvBlockProposal(sender Peer, bp *BlockProposal) {
+	weight, valid := n.v.ValidateBlockProposal(bp)
+	if !valid {
+		return
+	}
+
+	err := n.chain.addBP(bp, weight)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	// TODO: broadcast
 }
 
-func (n *Networking) recvNtShare(sender Peer, bp Hash, sig []byte) {
+func (n *Networking) recvNtShare(sender Peer, s *NtShare) {
+	groupID, valid := n.v.ValidateNtShare(s)
+	if !valid {
+		return
+	}
+
+	b, err := n.chain.addNtShare(s, groupID)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	if b != nil {
+		go n.recvBlock(n.mySelf, b)
+		return
+	}
+
+	// TODO: broadcast nt share
 }
 
 func (n *Networking) recvInventory(sender Peer, ids []ItemID) {
@@ -109,8 +156,8 @@ func (r *receiver) BlockProposal(sender Peer, bp *BlockProposal) error {
 	return nil
 }
 
-func (r *receiver) NotarizationShare(sender Peer, bp Hash, sig []byte) error {
-	r.n.recvNtShare(sender, bp, sig)
+func (r *receiver) NotarizationShare(sender Peer, n *NtShare) error {
+	r.n.recvNtShare(sender, n)
 	return nil
 }
 

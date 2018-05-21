@@ -10,13 +10,21 @@ func newValidator(chain *Chain) *validator {
 }
 
 func (v *validator) ValidateBlock(b *Block) bool {
+	// TODO: validate sig, validate txns, validate sig
 	return false
 }
 
-func (v *validator) ValidateBlockProposal(bp *BlockProposal) bool {
-	return false
+func (v *validator) ValidateBlockProposal(bp *BlockProposal) (float64, bool) {
+	// TODO: validate sig, validate txns, validate owner, validate round is correct
+	return 0, false
 }
 
-func (v *validator) ValidateNtShare(bp Hash) bool {
+func (v *validator) ValidateNtShare(n *NtShare) (int, bool) {
+	// TODO: validate sig, validate owner, validate round is correct
+	return 0, true
+}
+
+func (v *validator) ValidateRandBeaconSig(r *RandBeaconSig) bool {
+	// TODO: validate sig, owner, round
 	return true
 }

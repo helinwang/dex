@@ -25,6 +25,10 @@ type RoundInfo struct {
 	bpRand Rand
 }
 
+// TODO: maybe rename RoundInfo to Context
+
+// TODO: thread safety
+
 // NewRoundInfo creates a new round info.
 func NewRoundInfo(seed Rand) *RoundInfo {
 	r := &RoundInfo{}

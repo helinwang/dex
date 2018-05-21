@@ -66,6 +66,51 @@ func (b *RandBeaconSig) Decode(d []byte) error {
 	return nil
 }
 
+// NtShare is one share of the notarization.
+//
+// Each member of the notarization committee will broadcast its own
+// notarization signature share. which threshold numbers of signature
+// shares from different members, the notarization signature can be
+// recovered, and a block can be made from the signature and the block
+// proposal.
+type NtShare struct {
+	Round     int
+	Owner     Addr
+	BP        Hash
+	StateRoot Hash
+	SigShare  []byte
+}
+
+// Encode encodes the notarization share.
+func (n *NtShare) Encode(withSig bool) []byte {
+	use := n
+	if !withSig {
+		newN := *n
+		newN.SigShare = nil
+		use = &newN
+	}
+
+	return gobEncode(use)
+}
+
+// Decode decodes the data into the notarization share.
+func (n *NtShare) Decode(d []byte) error {
+	var use NtShare
+	dec := gob.NewDecoder(bytes.NewBuffer(d))
+	err := dec.Decode(&use)
+	if err != nil {
+		return err
+	}
+
+	*n = use
+	return nil
+}
+
+// Hash returns the hash of the notarization share.
+func (n *NtShare) Hash() Hash {
+	return hash(n.Encode(true))
+}
+
 // BlockProposal is a block proposal.
 type BlockProposal struct {
 	Round     int
@@ -103,6 +148,11 @@ func (b *BlockProposal) Decode(d []byte) error {
 	return nil
 }
 
+// Hash returns the hash of the block proposal.
+func (b *BlockProposal) Hash() Hash {
+	return hash(b.Encode(true))
+}
+
 // Block is generated from a block proposal collaboratively by the
 // notarization committee, it is notarized by the notarization
 // signature.
@@ -118,10 +168,10 @@ type Block struct {
 }
 
 // Encode encodes the block.
-func (n *Block) Encode(withSig bool) []byte {
-	use := n
+func (b *Block) Encode(withSig bool) []byte {
+	use := b
 	if !withSig {
-		newB := *n
+		newB := *b
 		newB.NotarizationSig = nil
 		use = &newB
 	}
@@ -129,7 +179,7 @@ func (n *Block) Encode(withSig bool) []byte {
 }
 
 // Decode decodes the data into the block.
-func (n *Block) Decode(d []byte) error {
+func (b *Block) Decode(d []byte) error {
 	var use Block
 	dec := gob.NewDecoder(bytes.NewBuffer(d))
 	err := dec.Decode(&use)
@@ -137,6 +187,11 @@ func (n *Block) Decode(d []byte) error {
 		return err
 	}
 
-	*n = use
+	*b = use
 	return nil
+}
+
+// Hash returns the hash of the block.
+func (b *Block) Hash() Hash {
+	return hash(b.Encode(true))
 }
