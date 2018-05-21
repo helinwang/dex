@@ -102,12 +102,17 @@ func (n *Networking) recvRandBeaconSigShare(r *RandBeaconSigShare) {
 }
 
 func (n *Networking) recvBlock(b *Block) {
-	if !n.v.ValidateBlock(b) {
+	weight, valid := n.v.ValidateBlock(b)
+
+	if !valid {
 		log.Println("ValidateBlock failed")
 		return
 	}
 
-	err := n.chain.addBlock(b)
+	// TODO: make sure received all block's parents and block
+	// proposal before processing this block.
+
+	err := n.chain.addBlock(b, weight)
 	if err != nil {
 		log.Println(err)
 		return

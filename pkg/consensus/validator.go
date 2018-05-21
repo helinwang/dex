@@ -9,9 +9,9 @@ func newValidator(chain *Chain) *validator {
 	return &validator{chain: chain}
 }
 
-func (v *validator) ValidateBlock(b *Block) bool {
+func (v *validator) ValidateBlock(b *Block) (float64, bool) {
 	// TODO: validate sig, validate txns, validate sig
-	return false
+	return 0, false
 }
 
 func (v *validator) ValidateBlockProposal(bp *BlockProposal) (float64, bool) {
