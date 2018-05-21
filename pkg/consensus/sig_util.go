@@ -21,7 +21,12 @@ func verifySig(pk bls.PublicKey, sig []byte, msg []byte) bool {
 	return sign.Verify(&pk, string(msg))
 }
 
-func recoverGroupSig(shares []*NtShare) bls.Sign {
+func recoverNtSig(shares []*NtShare) bls.Sign {
+	// TODO
+	return bls.Sign{}
+}
+
+func recoverRandBeaconSig(shares []*RandBeaconSigShare) bls.Sign {
 	// TODO
 	return bls.Sign{}
 }

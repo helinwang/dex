@@ -17,6 +17,9 @@ type Peer interface {
 	Addr() string
 }
 
+// TODO: networking should ensure that adding things to the chain is
+// in order: from lower round to higher round.
+
 // ItemType is the different type of items.
 type ItemType int
 
@@ -72,7 +75,7 @@ func (n *Networking) recvRandBeaconSig(r *RandBeaconSig) {
 		return
 	}
 
-	err := n.chain.addRandBeaconSig(r)
+	err := n.roundInfo.RecvRandBeaconSig(r)
 	if err != nil {
 		log.Println(err)
 		return
@@ -82,12 +85,14 @@ func (n *Networking) recvRandBeaconSig(r *RandBeaconSig) {
 }
 
 func (n *Networking) recvRandBeaconSigShare(r *RandBeaconSigShare) {
-	if !n.v.ValidateRandBeaconSigShare(r) {
+	groupID, valid := n.v.ValidateRandBeaconSigShare(r)
+
+	if !valid {
 		log.Printf("ValidateRandBeaconSigShare failed, owner: %x, round: %d\n", r.Owner, r.Round)
 		return
 	}
 
-	sig, err := n.chain.addRandBeaconSigShare(r)
+	sig, err := n.roundInfo.RecvRandBeaconSigShare(r, groupID)
 	if err != nil {
 		log.Println(err)
 		return

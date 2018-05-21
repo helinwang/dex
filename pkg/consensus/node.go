@@ -1,8 +1,6 @@
 package consensus
 
 import (
-	"log"
-
 	"github.com/dfinity/go-dfinity-crypto/bls"
 )
 
@@ -36,7 +34,6 @@ func NewNode(genesis *Block, genesisState State, sk bls.SecretKey, net *Networki
 	n := &Node{
 		addr:        addr,
 		sk:          sk,
-		roundInfo:   NewRoundInfo(seed),
 		chain:       NewChain(genesis, genesisState),
 		memberships: make(map[bls.PublicKey]membership),
 	}
@@ -53,35 +50,6 @@ func NewNode(genesis *Block, genesisState State, sk bls.SecretKey, net *Networki
 	sysState = t.Apply()
 	sysState.Finalized()
 	n.chain.LastFinalizedSysState = sysState
-	n.roundInfo.groups = sysState.groups
-
-	// advance from the 0th round to the 1st round
-	n.roundInfo.Advance(Hash(seed))
+	n.roundInfo = NewRoundInfo(seed, sysState.groups)
 	return n
-}
-
-func (n *Node) recvBlockProposal(b *BlockProposal) {
-	if round := n.roundInfo.Round; b.Round < round {
-		// stable block proposal, discard without broadcasting
-		return
-	} else if b.Round > round {
-		log.Printf("discard block proposal, bp round: %d > round: %d\n", b.Round, n.roundInfo.Round)
-		return
-	}
-
-	pk, err := n.roundInfo.BlockMakerPK(b.Owner, b.Round)
-	if err == errCommitteeNotSelected {
-		log.Printf("discard block proposal: %v, bp round: %d\n", err, b.Round)
-		return
-	} else if err != nil {
-		log.Printf("discard block proposal: %v, bp round: %d\n", err, b.Round)
-		return
-	}
-
-	if !verifySig(pk, b.OwnerSig, b.Encode(false)) {
-		log.Printf("discard block proposal: sig verify failed, bp round: %d\n", b.Round)
-		return
-	}
-
-	// TODO: broadcast
 }

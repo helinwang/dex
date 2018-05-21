@@ -2,8 +2,8 @@ package consensus
 
 import (
 	"errors"
-
-	"github.com/dfinity/go-dfinity-crypto/bls"
+	"fmt"
+	"sync"
 )
 
 var errCommitteeNotSelected = errors.New("committee not selected yet")
@@ -14,7 +14,7 @@ var errAddrNotInCommittee = errors.New("addr not in committee")
 // The random beacon, block proposal, block notarization advance to
 // the next round in lockstep.
 type RoundInfo struct {
-	Round             int
+	mu                sync.Mutex
 	nextRBCmteHistory []int
 	nextNtCmteHistory []int
 	nextBPCmteHistory []int
@@ -23,96 +23,78 @@ type RoundInfo struct {
 	rbRand Rand
 	ntRand Rand
 	bpRand Rand
+
+	curRoundShares []*RandBeaconSigShare
 }
 
-// TODO: maybe rename RoundInfo to Context
-
-// TODO: thread safety
+// TODO: maybe rename RoundInfo to Context, or RandomBeacon
 
 // NewRoundInfo creates a new round info.
-func NewRoundInfo(seed Rand) *RoundInfo {
-	r := &RoundInfo{}
-	r.rbRand = seed.Derive([]byte("random beacon committee rand seed"))
-	r.bpRand = seed.Derive([]byte("block maker committee rand seed"))
-	r.ntRand = seed.Derive([]byte("notarization committee rand seed"))
-	return r
+func NewRoundInfo(seed Rand, groups []*Group) *RoundInfo {
+	rbRand := seed.Derive([]byte("random beacon committee rand seed"))
+	bpRand := seed.Derive([]byte("block proposer committee rand seed"))
+	ntRand := seed.Derive([]byte("notarization committee rand seed"))
+	return &RoundInfo{
+		groups:            groups,
+		rbRand:            rbRand,
+		bpRand:            bpRand,
+		ntRand:            ntRand,
+		nextRBCmteHistory: []int{rbRand.Mod(len(groups))},
+		nextNtCmteHistory: []int{ntRand.Mod(len(groups))},
+		nextBPCmteHistory: []int{bpRand.Mod(len(groups))},
+	}
 }
 
-// Advance advances round info into the next round.
-func (r *RoundInfo) Advance(h Hash) {
+// RecvRandBeaconSigShare receives one share of the random beacon
+// signature.
+func (r *RoundInfo) RecvRandBeaconSigShare(s *RandBeaconSigShare, groupID int) (*RandBeaconSig, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.randRound() != s.Round {
+		return nil, fmt.Errorf("unexpected RandBeaconSigShare round: %d, expected: %d", s.Round, r.randRound())
+	}
+
+	r.curRoundShares = append(r.curRoundShares, s)
+	if len(r.curRoundShares) >= groupThreshold {
+		sig := recoverRandBeaconSig(r.curRoundShares)
+		var rbs RandBeaconSig
+		rbs.LastRandVal = s.LastRandVal
+		rbs.Round = s.Round
+		msg := rbs.Encode(false)
+		if !sig.Verify(&r.groups[groupID].PK, string(msg)) {
+			panic("impossible: random beacon group signature verification failed")
+		}
+
+		rbs.Sig = sig.Serialize()
+		return &rbs, nil
+	}
+	return nil, nil
+}
+
+// RecvRandBeaconSig adds the random beacon signature.
+func (r *RoundInfo) RecvRandBeaconSig(s *RandBeaconSig) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.randRound() != s.Round {
+		return fmt.Errorf("unexpected RandBeaconSig round: %d, expected: %d", s.Round, r.randRound())
+	}
+
+	r.deriveRand(hash(s.Sig))
+	r.curRoundShares = nil
+	return nil
+}
+
+func (r *RoundInfo) randRound() int {
+	return len(r.nextRBCmteHistory)
+}
+
+func (r *RoundInfo) deriveRand(h Hash) {
 	r.rbRand = r.rbRand.Derive(h[:])
 	r.nextRBCmteHistory = append(r.nextRBCmteHistory, r.rbRand.Mod(len(r.groups)))
 	r.ntRand = r.ntRand.Derive(h[:])
 	r.nextNtCmteHistory = append(r.nextNtCmteHistory, r.ntRand.Mod(len(r.groups)))
 	r.bpRand = r.bpRand.Derive(h[:])
 	r.nextBPCmteHistory = append(r.nextBPCmteHistory, r.bpRand.Mod(len(r.groups)))
-}
-
-// BlockMakerPK returns the public key of the given block maker
-func (r *RoundInfo) BlockMakerPK(addr Addr, round int) (bls.PublicKey, error) {
-	idx := round - 1
-	if idx >= len(r.nextBPCmteHistory) {
-		return bls.PublicKey{}, errCommitteeNotSelected
-	}
-
-	g := r.groups[r.nextBPCmteHistory[idx]]
-	pk, ok := g.MemberPK[addr]
-	if !ok {
-		return bls.PublicKey{}, errAddrNotInCommittee
-	}
-
-	return pk, nil
-}
-
-var errInvalidSig = errors.New("invalid signature")
-var errRoundTooBig = errors.New("round too big")
-
-// RecvBlock handles the newly received block.
-//
-// return true if entered into next round.
-func (r *RoundInfo) RecvBlock(nt *Block) error {
-	idx := nt.Round - 1
-	if idx >= len(r.nextNtCmteHistory) {
-		return errRoundTooBig
-	}
-
-	pk := r.groups[r.nextNtCmteHistory[idx]].PK
-	if !verifySig(pk, nt.NotarizationSig, nt.Encode(false)) {
-		return errInvalidSig
-	}
-
-	if nt.Round == r.Round {
-		// enter next round
-		r.Round++
-	}
-
-	// TODO: broadcast
-
-	return nil
-}
-
-// ReceiveRandBeaconSig handles the newly received random value.
-func (r *RoundInfo) ReceiveRandBeaconSig(rs *RandBeaconSig) error {
-	idx := rs.Round - 1
-	if idx >= len(r.nextRBCmteHistory) {
-		// TODO: handle the case that random beacon sigature
-		// received before the notarization.
-		return errRoundTooBig
-	}
-
-	// rs.Round is the value for the new round, use the old round
-	// number to get the group index.
-	pk := r.groups[r.nextRBCmteHistory[idx]].PK
-	if !verifySig(pk, rs.Sig, rs.Encode(false)) {
-		return errInvalidSig
-	}
-
-	if rs.Round == r.Round {
-		// select new groups
-		h := hash(rs.Encode(true))
-		r.Advance(h)
-		return nil
-	}
-
-	return nil
 }

@@ -2,7 +2,6 @@ package consensus
 
 import (
 	"errors"
-	"fmt"
 	"sync"
 
 	"github.com/dfinity/go-dfinity-crypto/bls"
@@ -142,10 +141,9 @@ func (c *Chain) addNtShare(n *NtShare, groupID int) (*Block, error) {
 
 	c.BPToNtShares[n.BP] = append(c.BPToNtShares[n.BP], n)
 	if len(c.BPToNtShares[n.BP]) >= groupThreshold {
-		sig := recoverGroupSig(c.BPToNtShares[n.BP])
+		sig := recoverNtSig(c.BPToNtShares[n.BP])
 		if !c.validateGroupSig(sig, groupID, bp) {
-			c.BPToNtShares[n.BP] = nil
-			return nil, fmt.Errorf("fatal: group (%d) sig not valid", groupID)
+			panic("impossible: group sig not valid")
 		}
 
 		b := &Block{
@@ -206,15 +204,4 @@ func (c *Chain) addBlock(b *Block, weight float64) error {
 func (c *Chain) validateGroupSig(sig bls.Sign, groupID int, bp *BlockProposal) bool {
 	msg := bp.Encode(true)
 	return sig.Verify(&c.roundInfo.groups[groupID].PK, string(msg))
-}
-
-func (c *Chain) addRandBeaconSigShare(r *RandBeaconSigShare) (*RandBeaconSig, error) {
-	return nil, nil
-}
-
-func (c *Chain) addRandBeaconSig(r *RandBeaconSig) error {
-	if r.Round != c.roundInfo.Round+1 {
-		return fmt.Errorf("unexpected RandBeaconSig round: %d, expected: %d", r.Round, c.roundInfo.Round+1)
-	}
-	return nil
 }
