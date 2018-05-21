@@ -15,24 +15,26 @@ type Validator interface {
 // BlockProposer produces one block proposal if it is in the block
 // proposal committee in the current round.
 type BlockProposer struct {
-	sk     bls.SecretKey
-	leader leader
+	sk       bls.SecretKey
+	Block    *Block
+	State    State
+	SysState *SysState
 }
 
 // NewBlockProposer creates a new block proposer.
-func NewBlockProposer(sk bls.SecretKey, leader leader) *BlockProposer {
-	return &BlockProposer{sk: sk, leader: leader}
+func NewBlockProposer(sk bls.SecretKey, b *Block, s State, sys *SysState) *BlockProposer {
+	return &BlockProposer{sk: sk, Block: b, State: s, SysState: sys}
 }
 
 // CollectTxn collects transactions and returns a block proposal when
 // the context is done.
 func (b *BlockProposer) CollectTxn(ctx context.Context, txCh chan []byte, sysTxCh chan SysTxn, pendingTx chan []byte) *BlockProposal {
 	var bp BlockProposal
-	bp.PrevBlock = hash(b.leader.Block.Encode(true))
-	bp.Round = b.leader.Block.Round + 1
+	bp.PrevBlock = hash(b.Block.Encode(true))
+	bp.Round = b.Block.Round + 1
 	bp.Owner = hash(b.sk.GetPublicKey().Serialize()).Addr()
-	transition := b.leader.State.Transition()
-	sysTransition := b.leader.SysState.Transition()
+	transition := b.State.Transition()
+	sysTransition := b.SysState.Transition()
 	for {
 		select {
 		case <-ctx.Done():

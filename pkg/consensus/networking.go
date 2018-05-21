@@ -41,8 +41,9 @@ const (
 
 // ItemID is the identification of an item that the current node owns.
 type ItemID struct {
-	T    ItemType
-	Hash Hash
+	SenderRound int
+	T           ItemType
+	Hash        Hash
 }
 
 // Network is used to connect to the peers.
@@ -216,6 +217,19 @@ func (n *Networking) recvNtShare(s *NtShare) {
 }
 
 func (n *Networking) recvInventory(sender string, ids []ItemID) {
+	for _, id := range ids {
+		switch id.T {
+		case TxnItem:
+			panic("not implemented")
+		case SysTxnItem:
+			panic("not implemented")
+		case BlockItem:
+		case BlockProposalItem:
+		case NtShareItem:
+		case RandBeaconShareItem:
+		case RandBeaconItem:
+		}
+	}
 }
 
 func (n *Networking) serveData(requester string, ids []ItemID) {
