@@ -50,7 +50,7 @@ type ItemID struct {
 
 // Network is used to connect to the peers.
 type Network interface {
-	Start(myself Peer) error
+	Start(addr string, myself Peer) error
 	Connect(addr string) (Peer, error)
 }
 
@@ -68,17 +68,18 @@ type Networking struct {
 }
 
 // NewNetworking creates a new networking component.
-func NewNetworking(net Network, v *validator, addr string) *Networking {
+func NewNetworking(net Network, v *validator, addr string, chain *Chain) *Networking {
 	return &Networking{
 		net:   net,
 		v:     v,
 		peers: make(map[string]Peer),
+		chain: chain,
 	}
 }
 
 // Start starts the networking component.
 func (n *Networking) Start(seedAddr string) error {
-	err := n.net.Start(&receiver{addr: n.addr, n: n})
+	err := n.net.Start(n.addr, &receiver{addr: n.addr, n: n})
 	if err != nil {
 		return err
 	}

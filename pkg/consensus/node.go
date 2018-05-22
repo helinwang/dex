@@ -25,22 +25,21 @@ type membership struct {
 }
 
 // NewNode creates a new node.
-func NewNode(genesis *Block, genesisState State, sk bls.SecretKey, net *Networking, seed Rand) *Node {
+func NewNode(chain *Chain, sk bls.SecretKey, net *Networking) *Node {
 	pk := sk.GetPublicKey()
 	pkHash := hash(pk.Serialize())
 	addr := pkHash.Addr()
-
 	n := &Node{
 		addr:  addr,
 		sk:    sk,
-		chain: NewChain(genesis, genesisState, seed),
+		chain: chain,
+		net:   net,
 	}
-	n.chain.n = n
-
+	chain.n = n
 	return n
 }
 
-func (n *Node) startRound(round int) {
+func (n *Node) StartRound(round int) {
 	lastSigHash := hash(n.chain.RandomBeacon.History()[round-1].Sig)
 	rbGroup := n.chain.RandomBeacon.RandBeaconGroupID()
 	for _, m := range n.memberships {

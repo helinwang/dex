@@ -264,7 +264,7 @@ func (c *Chain) addBlock(b *Block, weight float64) error {
 
 	round := c.round()
 	if round == c.RandomBeacon.Round() {
-		go c.n.startRound(round)
+		go c.n.StartRound(round)
 	}
 	return nil
 }

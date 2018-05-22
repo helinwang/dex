@@ -1,6 +1,8 @@
 package consensus
 
 import (
+	"fmt"
+	"sync"
 	"testing"
 
 	"github.com/dfinity/go-dfinity-crypto/bls"
@@ -84,14 +86,63 @@ func setupNodes() []*Node {
 		Data: gobEncode(l),
 	})
 
+	net := &LocalNet{}
 	nodes := make([]*Node, numNode)
 	for i := range nodes {
-		nodes[i] = NewNode(genesis, nil, nodeSKs[i], nil, nodeSeed)
+		chain := NewChain(genesis, nil, nodeSeed)
+		networking := NewNetworking(net, &validator{}, fmt.Sprintf("node-%d", i), chain)
+		nodes[i] = NewNode(chain, nodeSKs[i], networking)
+	}
+
+	for i, p := range perms {
+		for j, nodeIdx := range p {
+			m := membership{groupID: i, skShare: sharesVec[i][j]}
+			nodes[nodeIdx].memberships = append(nodes[nodeIdx].memberships, m)
+		}
 	}
 
 	return nodes
 }
 
 func TestThresholdRelay(t *testing.T) {
-	setupNodes()
+	nodes := setupNodes()
+	for _, n := range nodes {
+		n.StartRound(1)
+	}
+}
+
+// LocalNet is a local network implementation
+type LocalNet struct {
+	mu    sync.Mutex
+	peers map[string]Peer
+}
+
+// Start starts the network for the given address.
+func (n *LocalNet) Start(addr string, p Peer) error {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+
+	if n.peers == nil {
+		n.peers = make(map[string]Peer)
+	}
+
+	n.peers[addr] = p
+	return nil
+}
+
+// Connect connects to the peer.
+func (n *LocalNet) Connect(addr string) (Peer, error) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+
+	if n.peers == nil {
+		return nil, fmt.Errorf("peer not found: %s", addr)
+	}
+
+	p, ok := n.peers[addr]
+	if !ok {
+		return nil, fmt.Errorf("peer not found: %s", addr)
+	}
+
+	return p, nil
 }
