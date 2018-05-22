@@ -100,9 +100,10 @@ func (r *RandomBeacon) round() int {
 
 // Round returns the round of the random beacon.
 //
-// This round will be always >= the block round. For example, when a
-// stale node is syncing, it will sync the random beacon first, and
-// then sync the blocks.
+// This round will be always greater or equal to Chain.Round():
+// - greater: when the node is synchronizing. It will synchronize the
+// random beacon first, and then synchronize the chain's blocks.
+// - equal: when the node is synchronized.
 func (r *RandomBeacon) Round() int {
 	r.mu.Lock()
 	defer r.mu.Unlock()
