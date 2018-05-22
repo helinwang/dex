@@ -2,6 +2,7 @@ package consensus
 
 import (
 	"context"
+	"errors"
 	"log"
 	"sync"
 )
@@ -17,10 +18,10 @@ type Peer interface {
 	NotarizationShare(n *NtShare) error
 	Inventory(sender string, items []ItemID) error
 	GetData(requester string, items []ItemID) error
-	PeerList() ([]string, error)
-	Addr() string
+	Peers() ([]string, error)
+	UpdatePeers([]string) error
 	Ping(ctx context.Context) error
-	RandomBeacon(start int) ([]*RandBeaconSig, error)
+	Sync(start int) ([]*RandBeaconSig, []*Block, error)
 }
 
 // TODO: networking should ensure that adding things to the chain is
@@ -87,7 +88,7 @@ func (n *Networking) Start(seedAddr string) error {
 		return err
 	}
 
-	peerAddrs, err := p.PeerList()
+	peerAddrs, err := p.Peers()
 	if err != nil {
 		return err
 	}
@@ -102,7 +103,7 @@ func (n *Networking) Start(seedAddr string) error {
 	// TODO: sync random beacon from other peers rather than the
 	// seed
 
-	rb, err := p.RandomBeacon(len(n.chain.RandomBeacon.History()))
+	rb, bs, err := p.Sync(len(n.chain.RandomBeacon.History()))
 	if err != nil {
 		return err
 	}
@@ -114,8 +115,21 @@ func (n *Networking) Start(seedAddr string) error {
 		}
 	}
 
+	for _, b := range bs {
+		weight, valid := n.v.ValidateBlock(b)
+		if !valid {
+			return errors.New("invalid block when syncing")
+		}
+		err = n.chain.addBlock(b, weight)
+		if err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
+
+// TODO: don't broadcast when syncing.
 
 // BroadcastItem broadcast the item id to its peers.
 func (n *Networking) BroadcastItem(item ItemID) {
@@ -248,15 +262,22 @@ func (n *Networking) recvInventory(sender string, ids []ItemID) {
 	}
 }
 
-func (n *Networking) getRandomBeacon(start int) []*RandBeaconSig {
+func (n *Networking) getSyncData(start int) ([]*RandBeaconSig, []*Block) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	history := n.chain.RandomBeacon.History()
 	if len(history) <= start {
-		return nil
+		return nil, nil
 	}
 
-	return history[start:]
+	blocks := n.chain.FinalizedChain()
+	if len(blocks) <= start {
+		blocks = nil
+	} else {
+		blocks = blocks[start:]
+	}
+
+	return history[start:], blocks
 }
 
 func (n *Networking) serveData(requester string, ids []ItemID) {
@@ -269,6 +290,13 @@ func (n *Networking) peerList() []string {
 	// TODO: periodically verify the addrs in peerAddrs are valid
 	// by using Ping.
 	return n.peerAddrs
+}
+
+func (n *Networking) updatePeers([]string) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+
+	// TODO: validate, dedup the peer list
 }
 
 // receiver implements the Peer interface. It forwards the peers'
@@ -327,14 +355,20 @@ func (r *receiver) GetData(requester string, ids []ItemID) error {
 	return nil
 }
 
-func (r *receiver) RandomBeacon(start int) ([]*RandBeaconSig, error) {
-	return r.n.getRandomBeacon(start), nil
+func (r *receiver) Sync(start int) ([]*RandBeaconSig, []*Block, error) {
+	rb, bs := r.n.getSyncData(start)
+	return rb, bs, nil
 }
 
-func (r *receiver) PeerList() ([]string, error) {
+func (r *receiver) Peers() ([]string, error) {
 	return r.n.peerList(), nil
 }
 
-func (r *receiver) Ping(context.Context) error {
+func (r *receiver) UpdatePeers(peers []string) error {
+	r.n.updatePeers(peers)
+	return nil
+}
+
+func (r *receiver) Ping(ctx context.Context) error {
 	return nil
 }

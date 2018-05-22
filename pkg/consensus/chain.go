@@ -13,8 +13,6 @@ var errBPParentNotFound = errors.New("block proposal parent not found")
 type unNotarized struct {
 	Weight float64
 	BP     Hash
-
-	Parent *notarized
 }
 
 type finalized struct {
@@ -29,7 +27,7 @@ type notarized struct {
 	NtChildren    []*notarized
 	NonNtChildren []*unNotarized
 
-	BP       *BlockProposal
+	BP       Hash
 	State    State
 	SysState *SysState
 }
@@ -89,6 +87,20 @@ func NewChain(genesis *Block, genesisState State, seed Rand) *Chain {
 	}
 }
 
+// FinalizedChain returns the finalized block chain.
+func (c *Chain) FinalizedChain() []*Block {
+	var bs []*Block
+	for _, b := range c.History {
+		bs = append(bs, c.HashToBlock[b])
+	}
+
+	for _, b := range c.Finalized {
+		bs = append(bs, c.HashToBlock[b.Block])
+	}
+
+	return bs
+}
+
 // Round returns the current round.
 func (c *Chain) Round() int {
 	c.mu.Lock()
@@ -141,7 +153,7 @@ func (c *Chain) addBP(bp *BlockProposal, weight float64) error {
 	}
 
 	c.HashToBP[h] = bp
-	u := &unNotarized{Weight: weight, BP: h, Parent: notarized}
+	u := &unNotarized{Weight: weight, BP: h}
 	notarized.NonNtChildren = append(notarized.NonNtChildren, u)
 	c.bpNeedNotarize[h] = true
 	return nil
@@ -203,15 +215,14 @@ func (c *Chain) addBlock(b *Block, weight float64) error {
 		return errors.New("block already exists")
 	}
 
-	bp, ok := c.HashToBP[b.BlockProposal]
-	if !ok {
+	if _, ok := c.HashToBP[b.BlockProposal]; !ok {
 		return errors.New("block's proposal not found")
 	}
 
 	var prevState State
 	var prevSysState *SysState
 
-	nt := &notarized{Block: h, Weight: weight, BP: bp}
+	nt := &notarized{Block: h, Weight: weight, BP: b.BlockProposal}
 	prev := findPrevBlock(b.PrevBlock, c.Fork)
 	if prev != nil {
 		prevState = prev.State
