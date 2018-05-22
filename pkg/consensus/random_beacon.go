@@ -43,6 +43,9 @@ func NewRandomBeacon(seed Rand, groups []*Group) *RandomBeacon {
 		nextRBCmteHistory: []int{rbRand.Mod(len(groups))},
 		nextNtCmteHistory: []int{ntRand.Mod(len(groups))},
 		nextBPCmteHistory: []int{bpRand.Mod(len(groups))},
+		sigHistory: []*RandBeaconSig{
+			{Sig: []byte("DEX random beacon 0th signature")},
+		},
 	}
 }
 
@@ -93,9 +96,7 @@ func (r *RandomBeacon) RecvRandBeaconSig(s *RandBeaconSig) error {
 }
 
 func (r *RandomBeacon) round() int {
-	// +1 because there is no signature history for the completion
-	// of the 0th round
-	return len(r.sigHistory) + 1
+	return len(r.sigHistory)
 }
 
 // Round returns the round of the random beacon.
@@ -118,6 +119,13 @@ func (r *RandomBeacon) deriveRand(h Hash) {
 	r.nextNtCmteHistory = append(r.nextNtCmteHistory, r.ntRand.Mod(len(r.groups)))
 	r.bpRand = r.bpRand.Derive(h[:])
 	r.nextBPCmteHistory = append(r.nextBPCmteHistory, r.bpRand.Mod(len(r.groups)))
+}
+
+func (r *RandomBeacon) RandBeaconGroupID() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	return r.nextRBCmteHistory[len(r.nextRBCmteHistory)-1]
 }
 
 // History returns the random beacon signature history.

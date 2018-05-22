@@ -35,6 +35,7 @@ type notarized struct {
 // Chain is the blockchain.
 type Chain struct {
 	RandomBeacon *RandomBeacon
+	n            *Node
 
 	mu sync.RWMutex
 	// the finalized block burried deep enough becomes part of the
@@ -101,15 +102,19 @@ func (c *Chain) FinalizedChain() []*Block {
 	return bs
 }
 
+func (c *Chain) round() int {
+	round := len(c.History)
+	round += len(c.Finalized)
+	round += maxHeight(c.Fork)
+	return round
+}
+
 // Round returns the current round.
 func (c *Chain) Round() int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	round := len(c.History)
-	round += len(c.Finalized)
-	round += maxHeight(c.Fork)
-	return round
+	return c.round()
 }
 
 func maxHeight(ns []*notarized) int {
@@ -256,6 +261,11 @@ func (c *Chain) addBlock(b *Block, weight float64) error {
 	c.HashToBlock[h] = b
 	delete(c.bpNeedNotarize, b.BlockProposal)
 	delete(c.BPToNtShares, b.BlockProposal)
+
+	round := c.round()
+	if round == c.RandomBeacon.Round() {
+		go c.n.startRound(round)
+	}
 	return nil
 }
 

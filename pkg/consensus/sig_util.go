@@ -30,3 +30,17 @@ func recoverRandBeaconSig(shares []*RandBeaconSigShare) bls.Sign {
 	// TODO
 	return bls.Sign{}
 }
+
+func signRandBeaconShare(sk, keyShare bls.SecretKey, round int, lastSigHash Hash) *RandBeaconSigShare {
+	share := keyShare.Sign(string(lastSigHash[:])).Serialize()
+	s := &RandBeaconSigShare{
+		Owner:       hash(sk.GetPublicKey().Serialize()).Addr(),
+		Round:       round,
+		LastSigHash: lastSigHash,
+		Share:       share,
+	}
+
+	sig := sk.Sign(string(s.Encode(false))).Serialize()
+	s.OwnerSig = sig
+	return s
+}
