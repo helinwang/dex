@@ -33,15 +33,25 @@ func NewRandomBeacon(seed Rand, groups []*Group, cfg Config) *RandomBeacon {
 	rbRand := seed.Derive([]byte("random beacon committee rand seed"))
 	bpRand := seed.Derive([]byte("block proposer committee rand seed"))
 	ntRand := seed.Derive([]byte("notarization committee rand seed"))
+	initRBGroup := 0
+	initNtGroup := 0
+	initBPGroup := 0
+
+	if len(groups) > 0 {
+		initRBGroup = rbRand.Mod(len(groups))
+		initNtGroup = ntRand.Mod(len(groups))
+		initBPGroup = bpRand.Mod(len(groups))
+	}
+
 	return &RandomBeacon{
 		cfg:               cfg,
 		groups:            groups,
 		rbRand:            rbRand,
 		bpRand:            bpRand,
 		ntRand:            ntRand,
-		nextRBCmteHistory: []int{rbRand.Mod(len(groups))},
-		nextNtCmteHistory: []int{ntRand.Mod(len(groups))},
-		nextBPCmteHistory: []int{bpRand.Mod(len(groups))},
+		nextRBCmteHistory: []int{initRBGroup},
+		nextNtCmteHistory: []int{initNtGroup},
+		nextBPCmteHistory: []int{initBPGroup},
 		curRoundShares:    make(map[Hash]*RandBeaconSigShare),
 		sigHistory: []*RandBeaconSig{
 			{Sig: []byte("DEX random beacon 0th signature")},

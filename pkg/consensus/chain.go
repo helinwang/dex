@@ -3,6 +3,7 @@ package consensus
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/dfinity/go-dfinity-crypto/bls"
@@ -370,4 +371,81 @@ func (c *Chain) addBlock(b *Block, weight float64) error {
 func (c *Chain) validateGroupSig(sig bls.Sign, groupID int, bp *BlockProposal) bool {
 	msg := bp.Encode(true)
 	return sig.Verify(&c.RandomBeacon.groups[groupID].PK, string(msg))
+}
+
+// Graphviz returns the Graphviz dot formate encoded chain
+// visualization.
+func (c *Chain) Graphviz() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	const (
+		arrow = " -> "
+		begin = `digraph chain {
+rankdir=LR;
+size="8,5"`
+		end = `}
+`
+		historyNode     = `node [shape = rect, style=filled, color = forestgreen];`
+		finalizedNode   = `node [shape = rect, style=filled, color = chartreuse2];`
+		notarizedNode   = `node [shape = rect, style=filled, color = aquamarine];`
+		unNotarizedNode = `node [shape = octagon, style=filled, color = aliceblue];`
+	)
+
+	history := historyNode
+	finalized := finalizedNode
+	notarized := notarizedNode
+	unNotarized := unNotarizedNode
+
+	var start string
+	graph := ""
+	for _, n := range c.History {
+		str := fmt.Sprintf("block_%x", n[:2])
+		start = str
+		history += " " + str
+		if graph == "" {
+			graph += str
+		} else {
+			graph += arrow + str
+		}
+	}
+
+	for _, f := range c.Finalized {
+		str := fmt.Sprintf("block_%x", f.Block[:2])
+		start = str
+		finalized += " " + str
+		graph += arrow + str
+	}
+
+	graph += "\n"
+
+	graph, unNotarized = updateUnNt(c.UnNotarizedNotOnFork, start, graph, unNotarized)
+	graph, notarized, unNotarized = updateNt(c.Fork, start, graph, notarized, unNotarized)
+	return strings.Join([]string{begin, history, finalized, notarized, unNotarized, graph, end}, "\n")
+}
+
+func updateUnNt(ns []*unNotarized, start, graph, unNotarized string) (string, string) {
+	for _, u := range ns {
+		str := fmt.Sprintf("proposal_%x", u.BP[:2])
+		unNotarized += " " + str
+		graph += start + " -> " + str + "\n"
+	}
+	return graph, unNotarized
+}
+
+func updateNt(ns []*notarized, start, graph, notarized, unNotarized string) (string, string, string) {
+	for _, u := range ns {
+		str := fmt.Sprintf("block_%x", u.Block[:2])
+		notarized += " " + str
+		graph += start + " -> " + str + "\n"
+
+		if len(u.NtChildren) > 0 {
+			graph, notarized, unNotarized = updateNt(u.NtChildren, str, graph, notarized, unNotarized)
+		}
+
+		if len(u.NonNtChildren) > 0 {
+			graph, unNotarized = updateUnNt(u.NonNtChildren, str, graph, unNotarized)
+		}
+	}
+	return graph, notarized, unNotarized
 }
