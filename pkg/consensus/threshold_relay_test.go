@@ -10,6 +10,10 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func init() {
+	bls.Init(int(bls.CurveFp254BNb))
+}
+
 func makeShares(t int, idVec []bls.ID, rand Rand) (bls.PublicKey, []bls.SecretKey, Rand) {
 	sk := rand.SK()
 	rand = rand.Derive(rand[:])
@@ -105,7 +109,7 @@ func setupNodes() []*Node {
 
 	for i := range nodes {
 		chain := NewChain(genesis, &emptyState{}, nodeSeed, cfg)
-		networking := NewNetworking(net, newValidator(chain), fmt.Sprintf("node-%d", (i+len(nodes)-1)%len(nodes)), chain)
+		networking := NewNetworking(net, fmt.Sprintf("node-%d", (i+len(nodes)-1)%len(nodes)), chain)
 		nodes[i] = NewNode(chain, nodeSKs[i], networking, cfg)
 
 		nodes[i].net.mu.Lock()
@@ -135,11 +139,11 @@ func TestThresholdRelay(t *testing.T) {
 		n.StartRound(1)
 	}
 
-	time.Sleep(500 * time.Millisecond)
+	time.Sleep(250 * time.Millisecond)
 	for _, n := range nodes {
 		round := n.chain.Round()
-		assert.Equal(t, 4, round)
-		assert.Equal(t, 5, n.chain.RandomBeacon.Round())
+		assert.Equal(t, 2, round)
+		assert.Equal(t, 3, n.chain.RandomBeacon.Round())
 	}
 }
 

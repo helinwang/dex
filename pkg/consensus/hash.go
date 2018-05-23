@@ -1,8 +1,6 @@
 package consensus
 
 import (
-	"math/big"
-
 	"golang.org/x/crypto/sha3"
 )
 
@@ -26,13 +24,6 @@ func hash(b ...[]byte) Hash {
 	var hash Hash
 	copy(hash[:], h)
 	return hash
-}
-
-func hashMod(h Hash, n int) int {
-	var b big.Int
-	b.SetBytes(h[:])
-	b.Mod(&b, big.NewInt(int64(n)))
-	return int(b.Int64())
 }
 
 // Addr returns the address associated to the hash.

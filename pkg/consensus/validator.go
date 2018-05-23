@@ -25,7 +25,11 @@ func (v *validator) ValidateBlockProposal(bp *BlockProposal) (float64, bool) {
 }
 
 func (v *validator) ValidateNtShare(n *NtShare) (int, bool) {
-	round := v.chain.RandomBeacon.Round() - 1
+	round := v.chain.Round()
+	if n.Round != round {
+		return 0, false
+	}
+
 	_, _, nt := v.chain.RandomBeacon.Committees(round)
 	// TODO: validate sig, validate owner, validate round is
 	// correct, validate share is signed correctly.
@@ -34,11 +38,16 @@ func (v *validator) ValidateNtShare(n *NtShare) (int, bool) {
 
 func (v *validator) ValidateRandBeaconSig(r *RandBeaconSig) bool {
 	// TODO: validate sig, owner, round, share
-	return true
+	round := v.chain.Round()
+	return r.Round == round
 }
 
 func (v *validator) ValidateRandBeaconSigShare(r *RandBeaconSigShare) (int, bool) {
-	round := v.chain.RandomBeacon.Round()
+	round := v.chain.Round()
+	if r.Round != round {
+		return 0, false
+	}
+
 	rb, _, _ := v.chain.RandomBeacon.Committees(round)
 	// TODO: validate sig, owner, round
 	return rb, true

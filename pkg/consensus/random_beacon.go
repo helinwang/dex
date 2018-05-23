@@ -8,9 +8,6 @@ import (
 	log "github.com/helinwang/log15"
 )
 
-var errCommitteeNotSelected = errors.New("committee not selected yet")
-var errAddrNotInCommittee = errors.New("addr not in committee")
-
 // RandomBeacon is the round information.
 //
 // The random beacon, block proposal, block notarization advance to

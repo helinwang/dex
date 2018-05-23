@@ -70,11 +70,11 @@ type Networking struct {
 }
 
 // NewNetworking creates a new networking component.
-func NewNetworking(net Network, v *validator, addr string, chain *Chain) *Networking {
+func NewNetworking(net Network, addr string, chain *Chain) *Networking {
 	return &Networking{
 		addr:      addr,
 		net:       net,
-		v:         v,
+		v:         newValidator(chain),
 		peers:     make(map[string]Peer),
 		peerAddrs: make(map[string]bool),
 		chain:     chain,
@@ -82,6 +82,8 @@ func NewNetworking(net Network, v *validator, addr string, chain *Chain) *Networ
 }
 
 // Start starts the networking component.
+// TODO: fix lint
+// nolint: gocyclo
 func (n *Networking) Start(seedAddr string) error {
 	err := n.net.Start(n.addr, &receiver{addr: n.addr, n: n})
 	if err != nil {
@@ -112,7 +114,6 @@ func (n *Networking) Start(seedAddr string) error {
 			log.Error("connect to peer", "err", err, "addr", addr)
 		}
 	}
-
 	n.mu.Unlock()
 
 	// TODO: sync random beacon from other peers rather than the
@@ -155,7 +156,12 @@ func (n *Networking) BroadcastItem(item ItemID) {
 		p := p
 
 		go func() {
-			p.Inventory(n.addr, []ItemID{item})
+			err := p.Inventory(n.addr, []ItemID{item})
+			if err != nil {
+				log.Error("send inventory error", "err", err)
+				n.removePeer(p)
+			}
+
 		}()
 	}
 }
@@ -263,6 +269,23 @@ func (n *Networking) recvNtShare(s *NtShare) {
 	go n.BroadcastItem(ItemID{T: NtShareItem, Hash: s.Hash(), ItemRound: s.Round, Ref: s.BP})
 }
 
+// RemovePeer removes the peer.
+func (n *Networking) RemovePeer(p Peer) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+
+	n.removePeer(p)
+}
+
+func (n *Networking) removePeer(p Peer) {
+	for k, v := range n.peers {
+		if v == p {
+			delete(n.peers, k)
+			return
+		}
+	}
+}
+
 // must be called with mutex held.
 func (n *Networking) findOrConnect(addr string) (Peer, error) {
 	if p, ok := n.peers[addr]; ok {
@@ -278,6 +301,8 @@ func (n *Networking) findOrConnect(addr string) (Peer, error) {
 	return p, nil
 }
 
+// TODO: fix lint
+// nolint: gocyclo
 func (n *Networking) recvInventory(sender string, ids []ItemID) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
@@ -298,7 +323,11 @@ func (n *Networking) recvInventory(sender string, ids []ItemID) {
 		case BlockItem:
 			// TODO: improve logic of what to get, e.g., using id.Ref
 			if _, ok := n.chain.Block(id.Hash); !ok {
-				p.GetData(n.addr, []ItemID{id})
+				err := p.GetData(n.addr, []ItemID{id})
+				if err != nil {
+					log.Error("get data from peer error", "err", err)
+					n.removePeer(p)
+				}
 			}
 		case BlockProposalItem:
 			if id.ItemRound != round {
@@ -310,7 +339,11 @@ func (n *Networking) recvInventory(sender string, ids []ItemID) {
 				continue
 			}
 
-			p.GetData(n.addr, []ItemID{id})
+			err := p.GetData(n.addr, []ItemID{id})
+			if err != nil {
+				log.Error("get data from peer error", "err", err)
+				n.removePeer(p)
+			}
 		case NtShareItem:
 			if id.ItemRound != round {
 				log.Debug("received notarization share for a different round", "round", id.ItemRound, "expecting", round)
@@ -325,7 +358,11 @@ func (n *Networking) recvInventory(sender string, ids []ItemID) {
 				continue
 			}
 
-			p.GetData(n.addr, []ItemID{id})
+			err := p.GetData(n.addr, []ItemID{id})
+			if err != nil {
+				log.Error("get data from peer error", "err", err)
+				n.removePeer(p)
+			}
 		case RandBeaconShareItem:
 			if id.ItemRound != round {
 				log.Debug("received random beacon share for a different round", "round", id.ItemRound, "expecting", round)
@@ -336,14 +373,22 @@ func (n *Networking) recvInventory(sender string, ids []ItemID) {
 			if share != nil {
 				continue
 			}
-			p.GetData(n.addr, []ItemID{id})
+			err := p.GetData(n.addr, []ItemID{id})
+			if err != nil {
+				log.Error("get data from peer error", "err", err)
+				n.removePeer(p)
+			}
 		case RandBeaconItem:
 			if id.ItemRound != round {
 				log.Debug("received random beacon share for a different round", "round", id.ItemRound, "expecting", round)
 				continue
 			}
 
-			p.GetData(n.addr, []ItemID{id})
+			err := p.GetData(n.addr, []ItemID{id})
+			if err != nil {
+				log.Error("get data from peer error", "err", err)
+				n.removePeer(p)
+			}
 		}
 	}
 }
@@ -366,6 +411,8 @@ func (n *Networking) getSyncData(start int) ([]*RandBeaconSig, []*Block) {
 	return history[start:], blocks
 }
 
+// TODO: fix lint
+// nolint: gocyclo
 func (n *Networking) serveData(requester string, ids []ItemID) {
 	p, err := n.findOrConnect(requester)
 	if err != nil {
@@ -384,26 +431,42 @@ func (n *Networking) serveData(requester string, ids []ItemID) {
 			if !ok {
 				continue
 			}
-			p.Block(b)
+			err := p.Block(b)
+			if err != nil {
+				log.Error("send block to peer error", "err", err)
+				n.removePeer(p)
+			}
 		case BlockProposalItem:
 			bp, ok := n.chain.BlockProposal(id.Hash)
 			if !ok {
 				continue
 			}
-			p.BlockProposal(bp)
+			err := p.BlockProposal(bp)
+			if err != nil {
+				log.Error("send block proposal to peer error", "err", err)
+				n.removePeer(p)
+			}
 		case NtShareItem:
 			nts, ok := n.chain.NtShare(id.Hash)
 			if !ok {
 				continue
 			}
-			p.NotarizationShare(nts)
+			err := p.NotarizationShare(nts)
+			if err != nil {
+				log.Error("send notarization share to peer error", "err", err)
+				n.removePeer(p)
+			}
 		case RandBeaconShareItem:
 			share := n.chain.RandomBeacon.GetShare(id.Hash)
 			if share == nil {
 				continue
 			}
 
-			p.RandBeaconSigShare(share)
+			err := p.RandBeaconSigShare(share)
+			if err != nil {
+				log.Error("send random beacon sig share to peer error", "err", err)
+				n.removePeer(p)
+			}
 		case RandBeaconItem:
 			if rbr := n.chain.RandomBeacon.Round(); id.ItemRound >= rbr {
 				log.Warn("peer requested random beacon of too high round, need to be smaller than random beacon round\n", "peer", requester, "requested round", id.ItemRound, "random beacon round", rbr)
@@ -411,7 +474,11 @@ func (n *Networking) serveData(requester string, ids []ItemID) {
 			}
 
 			history := n.chain.RandomBeacon.History()
-			p.RandBeaconSig(history[id.ItemRound])
+			err := p.RandBeaconSig(history[id.ItemRound])
+			if err != nil {
+				log.Error("send rand beacon sig to peer error", "err", err)
+				n.removePeer(p)
+			}
 		}
 	}
 }

@@ -24,7 +24,6 @@ type Node struct {
 	mu sync.Mutex
 	// the memberships of different groups
 	memberships    []membership
-	pendingTxns    [][]byte
 	notarizeChs    []chan *BlockProposal
 	cancelNotarize func()
 }

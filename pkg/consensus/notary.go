@@ -26,6 +26,8 @@ func NewNotary(owner Addr, sk, share bls.SecretKey, chain *Chain) *Notary {
 //
 // ctx will be cancelled when reaching the next round: when a
 // notarized block of the current round is received.
+// TODO: fix lint
+// nolint: gocyclo
 func (n *Notary) Notarize(ctx, cancel context.Context, bCh chan *BlockProposal) []*NtShare {
 	// TODO: validate BlockProposal, perhaps should be done by the
 	// data layer.

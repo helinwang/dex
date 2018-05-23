@@ -1,25 +1,8 @@
 package consensus
 
 import (
-	log "github.com/helinwang/log15"
-
 	"github.com/dfinity/go-dfinity-crypto/bls"
 )
-
-func verifySig(pk bls.PublicKey, sig []byte, msg []byte) bool {
-	if len(sig) == 0 {
-		return false
-	}
-
-	var sign bls.Sign
-	err := sign.Deserialize(sig)
-	if err != nil {
-		log.Error("verify sig error", "err", err)
-		return false
-	}
-
-	return sign.Verify(&pk, string(msg))
-}
 
 func recoverNtSig(shares []*NtShare) (bls.Sign, error) {
 	idVec := make([]bls.ID, len(shares))
