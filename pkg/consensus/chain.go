@@ -359,9 +359,9 @@ func (c *Chain) addBlock(b *Block, weight float64) error {
 	delete(c.bpToNtShares, b.BlockProposal)
 
 	round := c.round()
-	// when round n is started, round n - 2 can be finalized. See
+	// when round n is started, round n - 3 can be finalized. See
 	// corollary 9.19 in https://arxiv.org/abs/1805.04548
-	c.finalize(round - 2)
+	c.finalize(round - 3)
 
 	if round == prevRound+1 && round == c.RandomBeacon.Depth() {
 		// entered a new round, and in sync
