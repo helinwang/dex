@@ -119,10 +119,11 @@ func (b *RandBeaconSigShare) Hash() Hash {
 // proposal.
 type NtShare struct {
 	Round     int
-	Owner     Addr
 	BP        Hash
 	StateRoot Hash
 	SigShare  []byte
+	Owner     Addr
+	OwnerSig  []byte
 }
 
 // Encode encodes the notarization share.
@@ -130,7 +131,7 @@ func (n *NtShare) Encode(withSig bool) []byte {
 	use := n
 	if !withSig {
 		newN := *n
-		newN.SigShare = nil
+		newN.OwnerSig = nil
 		use = &newN
 	}
 

@@ -2,7 +2,6 @@ package consensus
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"time"
 
@@ -35,8 +34,10 @@ type membership struct {
 
 // Config is the consensus layer configuration.
 type Config struct {
-	BlockTime time.Duration
-	// TODO: add group size and threhold to here
+	BlockTime      time.Duration
+	NtWaitTime     time.Duration
+	GroupSize      int
+	GroupThreshold int
 }
 
 // NewNode creates a new node.
@@ -66,8 +67,7 @@ func (n *Node) StartRound(round int) {
 	}
 
 	var ntCancelCtx context.Context
-	rb, bp, nt := n.chain.RandomBeacon.ActiveGroups()
-	fmt.Println(rb, bp, nt)
+	rb, bp, nt := n.chain.RandomBeacon.Committees()
 	for _, m := range n.memberships {
 		if m.groupID == rb {
 			// Current node is a member of the random
@@ -103,16 +103,16 @@ func (n *Node) StartRound(round int) {
 				ntCancelCtx, n.cancelNotarize = context.WithCancel(context.Background())
 			}
 
-			notary := NewNotary(n.sk)
+			notary := NewNotary(n.addr, n.sk, m.skShare, n.chain.RandomBeacon)
 			inCh := make(chan *BlockProposal, 20)
 			n.notarizeChs = append(n.notarizeChs, inCh)
-			ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(n.cfg.BlockTime))
+			ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(n.cfg.NtWaitTime))
 			go func() {
-				blocks := notary.Notarize(ctx, ntCancelCtx, inCh)
+				shares := notary.Notarize(ctx, ntCancelCtx, inCh)
 				cancel()
 
-				for _, b := range blocks {
-					go n.net.recvBlock(b)
+				for _, b := range shares {
+					go n.net.recvNtShare(b)
 				}
 			}()
 		}

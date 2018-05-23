@@ -108,7 +108,8 @@ func (s *SysState) applyRegGroup(t RegGroupTxn) error {
 		}
 
 		addr := hash(pk.Serialize()).Addr()
-		g.MemberPK[addr] = pk
+		g.Members = append(g.Members, addr)
+		g.MemberPKs = append(g.MemberPKs, pk)
 	}
 
 	// TODO: parse vvec

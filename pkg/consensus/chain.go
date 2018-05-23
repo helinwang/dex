@@ -34,6 +34,7 @@ type notarized struct {
 
 // Chain is the blockchain.
 type Chain struct {
+	cfg          Config
 	RandomBeacon *RandomBeacon
 	n            *Node
 
@@ -55,15 +56,15 @@ type Chain struct {
 	LastFinalizedSysState *SysState
 	Fork                  []*notarized
 	UnNotarizedNotOnFork  []*unNotarized
-	HashToBlock           map[Hash]*Block
-	HashToBP              map[Hash]*BlockProposal
-	HashToNtShare         map[Hash]*NtShare
-	BPToNtShares          map[Hash][]*NtShare
+	hashToBlock           map[Hash]*Block
+	hashToBP              map[Hash]*BlockProposal
+	hashToNtShare         map[Hash]*NtShare
+	bpToNtShares          map[Hash][]*NtShare
 	bpNeedNotarize        map[Hash]bool
 }
 
 // NewChain creates a new chain.
-func NewChain(genesis *Block, genesisState State, seed Rand) *Chain {
+func NewChain(genesis *Block, genesisState State, seed Rand, cfg Config) *Chain {
 	sysState := NewSysState()
 	t := sysState.Transition()
 	for _, txn := range genesis.SysTxns {
@@ -77,27 +78,69 @@ func NewChain(genesis *Block, genesisState State, seed Rand) *Chain {
 	sysState.Finalized()
 	gh := genesis.Hash()
 	return &Chain{
-		RandomBeacon:        NewRandomBeacon(seed, sysState.groups),
+		cfg:                 cfg,
+		RandomBeacon:        NewRandomBeacon(seed, sysState.groups, cfg),
 		History:             []Hash{gh},
 		LastHistoryState:    genesisState,
 		LastHistorySysState: sysState,
-		HashToBlock:         map[Hash]*Block{gh: genesis},
-		HashToBP:            make(map[Hash]*BlockProposal),
-		HashToNtShare:       make(map[Hash]*NtShare),
-		BPToNtShares:        make(map[Hash][]*NtShare),
+		hashToBlock:         map[Hash]*Block{gh: genesis},
+		hashToBP:            make(map[Hash]*BlockProposal),
+		hashToNtShare:       make(map[Hash]*NtShare),
+		bpToNtShares:        make(map[Hash][]*NtShare),
 		bpNeedNotarize:      make(map[Hash]bool),
 	}
+}
+
+// Block returns the block of the given hash.
+func (c *Chain) Block(h Hash) (*Block, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	b, ok := c.hashToBlock[h]
+	return b, ok
+}
+
+// BlockProposal returns the block of the given hash.
+func (c *Chain) BlockProposal(h Hash) (*BlockProposal, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	b, ok := c.hashToBP[h]
+	return b, ok
+}
+
+// NtShare returns the notarization share of the given hash.
+func (c *Chain) NtShare(h Hash) (*NtShare, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	b, ok := c.hashToNtShare[h]
+	return b, ok
+}
+
+// NeedNotarize returns if the block proposal of the given hash needs
+// to be notarized.
+func (c *Chain) NeedNotarize(h Hash) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	b, ok := c.bpNeedNotarize[h]
+	if ok {
+		return b
+	}
+
+	return false
 }
 
 // FinalizedChain returns the finalized block chain.
 func (c *Chain) FinalizedChain() []*Block {
 	var bs []*Block
 	for _, b := range c.History {
-		bs = append(bs, c.HashToBlock[b])
+		bs = append(bs, c.hashToBlock[b])
 	}
 
 	for _, b := range c.Finalized {
-		bs = append(bs, c.HashToBlock[b.Block])
+		bs = append(bs, c.hashToBlock[b.Block])
 	}
 
 	return bs
@@ -147,16 +190,16 @@ func (c *Chain) Leader() (*Block, State, *SysState) {
 
 	if len(c.Finalized) == 0 {
 		if len(c.Fork) == 0 {
-			return c.HashToBlock[c.History[len(c.History)-1]], c.LastHistoryState, c.LastHistorySysState
+			return c.hashToBlock[c.History[len(c.History)-1]], c.LastHistoryState, c.LastHistorySysState
 		}
 	} else {
 		if len(c.Fork) == 0 {
-			return c.HashToBlock[c.Finalized[len(c.Finalized)-1].Block], c.LastFinalizedState, c.LastFinalizedSysState
+			return c.hashToBlock[c.Finalized[len(c.Finalized)-1].Block], c.LastFinalizedState, c.LastFinalizedSysState
 		}
 	}
 
 	n := c.heaviestFork()
-	return c.HashToBlock[n.Block], n.State, n.SysState
+	return c.hashToBlock[n.Block], n.State, n.SysState
 }
 
 func findPrevBlock(prevBlock Hash, ns []*notarized) *notarized {
@@ -179,7 +222,7 @@ func (c *Chain) addBP(bp *BlockProposal, weight float64) error {
 	defer c.mu.Unlock()
 	h := bp.Hash()
 
-	if _, ok := c.HashToBP[h]; ok {
+	if _, ok := c.hashToBP[h]; ok {
 		return errChainDataAlreadyExists
 	}
 
@@ -196,7 +239,7 @@ func (c *Chain) addBP(bp *BlockProposal, weight float64) error {
 		}
 	}
 
-	c.HashToBP[h] = bp
+	c.hashToBP[h] = bp
 	u := &unNotarized{Weight: weight, BP: h}
 
 	if notarized != nil {
@@ -214,7 +257,7 @@ func (c *Chain) addNtShare(n *NtShare, groupID int) (*Block, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	bp, ok := c.HashToBP[n.BP]
+	bp, ok := c.hashToBP[n.BP]
 	if !ok {
 		return nil, errors.New("block proposal not found")
 	}
@@ -223,15 +266,21 @@ func (c *Chain) addNtShare(n *NtShare, groupID int) (*Block, error) {
 		return nil, errors.New("block proposal do not need notarization")
 	}
 
-	for _, s := range c.BPToNtShares[n.BP] {
+	for _, s := range c.bpToNtShares[n.BP] {
 		if s.Owner == n.Owner {
 			return nil, errors.New("notarization share from the owner already received")
 		}
 	}
 
-	c.BPToNtShares[n.BP] = append(c.BPToNtShares[n.BP], n)
-	if len(c.BPToNtShares[n.BP]) >= groupThreshold {
-		sig := recoverNtSig(c.BPToNtShares[n.BP])
+	c.bpToNtShares[n.BP] = append(c.bpToNtShares[n.BP], n)
+
+	if len(c.bpToNtShares[n.BP]) >= c.cfg.GroupThreshold {
+		sig, err := recoverNtSig(c.bpToNtShares[n.BP])
+		if err != nil {
+			// should not happen
+			panic(err)
+		}
+
 		if !c.validateGroupSig(sig, groupID, bp) {
 			panic("impossible: group sig not valid")
 		}
@@ -246,14 +295,15 @@ func (c *Chain) addNtShare(n *NtShare, groupID int) (*Block, error) {
 		}
 
 		delete(c.bpNeedNotarize, n.BP)
-		for _, share := range c.BPToNtShares[n.BP] {
-			delete(c.HashToNtShare, share.Hash())
+		for _, share := range c.bpToNtShares[n.BP] {
+			delete(c.hashToNtShare, share.Hash())
 		}
-		delete(c.BPToNtShares, n.BP)
+		delete(c.bpToNtShares, n.BP)
+		fmt.Println("block")
 		return b, nil
 	}
 
-	c.HashToNtShare[n.Hash()] = n
+	c.hashToNtShare[n.Hash()] = n
 	return nil, nil
 }
 
@@ -264,11 +314,11 @@ func (c *Chain) addBlock(b *Block, weight float64) error {
 	prevRound := c.round()
 
 	h := b.Hash()
-	if _, ok := c.HashToBlock[h]; ok {
+	if _, ok := c.hashToBlock[h]; ok {
 		return errors.New("block already exists")
 	}
 
-	if _, ok := c.HashToBP[b.BlockProposal]; !ok {
+	if _, ok := c.hashToBP[b.BlockProposal]; !ok {
 		return errors.New("block's proposal not found")
 	}
 
@@ -306,11 +356,12 @@ func (c *Chain) addBlock(b *Block, weight float64) error {
 
 	// TODO: finalize blocks
 
-	c.HashToBlock[h] = b
+	c.hashToBlock[h] = b
 	delete(c.bpNeedNotarize, b.BlockProposal)
-	delete(c.BPToNtShares, b.BlockProposal)
+	delete(c.bpToNtShares, b.BlockProposal)
 
 	round := c.round()
+	fmt.Println(round, prevRound, c.RandomBeacon.Round(), len(c.Fork))
 	if round == prevRound+1 && round == c.RandomBeacon.Round() {
 		go c.n.StartRound(round)
 	}

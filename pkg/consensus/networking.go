@@ -43,9 +43,10 @@ const (
 
 // ItemID is the identification of an item that the current node owns.
 type ItemID struct {
-	SenderRound int
-	T           ItemType
-	Hash        Hash
+	T         ItemType
+	ItemRound int
+	Ref       Hash
+	Hash      Hash
 }
 
 // Network is used to connect to the peers.
@@ -64,16 +65,18 @@ type Networking struct {
 
 	mu        sync.Mutex
 	peers     map[string]Peer
-	peerAddrs []string
+	peerAddrs map[string]bool
 }
 
 // NewNetworking creates a new networking component.
 func NewNetworking(net Network, v *validator, addr string, chain *Chain) *Networking {
 	return &Networking{
-		net:   net,
-		v:     v,
-		peers: make(map[string]Peer),
-		chain: chain,
+		addr:      addr,
+		net:       net,
+		v:         v,
+		peers:     make(map[string]Peer),
+		peerAddrs: make(map[string]bool),
+		chain:     chain,
 	}
 }
 
@@ -96,10 +99,19 @@ func (n *Networking) Start(seedAddr string) error {
 
 	n.mu.Lock()
 	n.peers[seedAddr] = p
-	n.peerAddrs = peerAddrs
+	for _, addr := range peerAddrs {
+		// TODO: check peers is online
+		n.peerAddrs[addr] = true
+	}
 	n.mu.Unlock()
 
-	// TODO: connect to more peers
+	// TODO: limit the number of peers connected to
+	for addr := range n.peerAddrs {
+		_, err = n.findOrConnect(addr)
+		if err != nil {
+			log.Println(err)
+		}
+	}
 
 	// TODO: sync random beacon from other peers rather than the
 	// seed
@@ -165,7 +177,7 @@ func (n *Networking) recvRandBeaconSig(r *RandBeaconSig) {
 		return
 	}
 
-	go n.BroadcastItem(ItemID{T: RandBeaconItem, Hash: r.Hash()})
+	go n.BroadcastItem(ItemID{T: RandBeaconItem, Hash: r.Hash(), ItemRound: r.Round})
 }
 
 func (n *Networking) recvRandBeaconSigShare(r *RandBeaconSigShare) {
@@ -187,7 +199,7 @@ func (n *Networking) recvRandBeaconSigShare(r *RandBeaconSigShare) {
 		return
 	}
 
-	go n.BroadcastItem(ItemID{T: RandBeaconShareItem, Hash: r.Hash()})
+	go n.BroadcastItem(ItemID{T: RandBeaconShareItem, Hash: r.Hash(), ItemRound: r.Round})
 }
 
 func (n *Networking) recvBlock(b *Block) {
@@ -207,7 +219,7 @@ func (n *Networking) recvBlock(b *Block) {
 		return
 	}
 
-	go n.BroadcastItem(ItemID{T: BlockItem, Hash: b.Hash()})
+	go n.BroadcastItem(ItemID{T: BlockItem, Hash: b.Hash(), ItemRound: b.Round, Ref: b.PrevBlock})
 }
 
 func (n *Networking) recvBlockProposal(bp *BlockProposal) {
@@ -223,7 +235,7 @@ func (n *Networking) recvBlockProposal(bp *BlockProposal) {
 		return
 	}
 
-	go n.BroadcastItem(ItemID{T: BlockProposalItem, Hash: bp.Hash()})
+	go n.BroadcastItem(ItemID{T: BlockProposalItem, Hash: bp.Hash(), ItemRound: bp.Round, Ref: bp.PrevBlock})
 }
 
 func (n *Networking) recvNtShare(s *NtShare) {
@@ -244,10 +256,36 @@ func (n *Networking) recvNtShare(s *NtShare) {
 		return
 	}
 
-	go n.BroadcastItem(ItemID{T: NtShareItem, Hash: s.Hash()})
+	// TODO: use multicast rather than broadcast
+	go n.BroadcastItem(ItemID{T: NtShareItem, Hash: s.Hash(), ItemRound: s.Round, Ref: s.BP})
+}
+
+// must be called with mutex held.
+func (n *Networking) findOrConnect(addr string) (Peer, error) {
+	if p, ok := n.peers[addr]; ok {
+		return p, nil
+	}
+
+	p, err := n.net.Connect(addr)
+	if err != nil {
+		return nil, err
+	}
+
+	n.peers[addr] = p
+	return p, nil
 }
 
 func (n *Networking) recvInventory(sender string, ids []ItemID) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+
+	p, err := n.findOrConnect(sender)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	round := n.chain.Round()
 	for _, id := range ids {
 		switch id.T {
 		case TxnItem:
@@ -255,10 +293,54 @@ func (n *Networking) recvInventory(sender string, ids []ItemID) {
 		case SysTxnItem:
 			panic("not implemented")
 		case BlockItem:
+			// TODO: improve logic of what to get, e.g., using id.Ref
+			if _, ok := n.chain.Block(id.Hash); !ok {
+				p.GetData(n.addr, []ItemID{id})
+			}
 		case BlockProposalItem:
+			if id.ItemRound != round {
+				log.Printf("recv bp for round: %d, handling: %d\n", id.ItemRound, round)
+				continue
+			}
+
+			if _, ok := n.chain.BlockProposal(id.Hash); ok {
+				continue
+			}
+
+			p.GetData(n.addr, []ItemID{id})
 		case NtShareItem:
+			if id.ItemRound != round {
+				log.Printf("recv nt for round: %d, handling: %d\n", id.ItemRound, round)
+				continue
+			}
+
+			if _, ok := n.chain.NtShare(id.Hash); ok {
+				continue
+			}
+
+			if !n.chain.NeedNotarize(id.Ref) {
+				continue
+			}
+
+			p.GetData(n.addr, []ItemID{id})
 		case RandBeaconShareItem:
+			if id.ItemRound != round {
+				log.Printf("recv random beacon share for round: %d, handling: %d\n", id.ItemRound, round)
+				continue
+			}
+
+			share := n.chain.RandomBeacon.GetShare(id.Hash)
+			if share != nil {
+				continue
+			}
+			p.GetData(n.addr, []ItemID{id})
 		case RandBeaconItem:
+			if id.ItemRound != round {
+				log.Printf("recv random beacon share for round: %d, handling: %d\n", id.ItemRound, round)
+				continue
+			}
+
+			p.GetData(n.addr, []ItemID{id})
 		}
 	}
 }
@@ -282,15 +364,67 @@ func (n *Networking) getSyncData(start int) ([]*RandBeaconSig, []*Block) {
 }
 
 func (n *Networking) serveData(requester string, ids []ItemID) {
+	p, err := n.findOrConnect(requester)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	for _, id := range ids {
+		switch id.T {
+		case TxnItem:
+			panic("not implemented")
+		case SysTxnItem:
+			panic("not implemented")
+		case BlockItem:
+			b, ok := n.chain.Block(id.Hash)
+			if !ok {
+				continue
+			}
+			p.Block(b)
+		case BlockProposalItem:
+			bp, ok := n.chain.BlockProposal(id.Hash)
+			if !ok {
+				continue
+			}
+			p.BlockProposal(bp)
+		case NtShareItem:
+			nts, ok := n.chain.NtShare(id.Hash)
+			if !ok {
+				continue
+			}
+			p.NotarizationShare(nts)
+		case RandBeaconShareItem:
+			share := n.chain.RandomBeacon.GetShare(id.Hash)
+			if share == nil {
+				continue
+			}
+
+			p.RandBeaconSigShare(share)
+		case RandBeaconItem:
+			history := n.chain.RandomBeacon.History()
+			if id.ItemRound >= len(history) {
+				log.Printf("%s requested random beacon of too high round: %d, need to be smaller than current round: %d\n", requester, id.ItemRound, len(history))
+				continue
+			}
+
+			p.RandBeaconSig(history[id.ItemRound])
+		}
+	}
 }
 
 func (n *Networking) peerList() []string {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 
+	list := make([]string, 0, len(n.peerAddrs))
+	for addr := range n.peerAddrs {
+		list = append(list, addr)
+	}
+
 	// TODO: periodically verify the addrs in peerAddrs are valid
 	// by using Ping.
-	return n.peerAddrs
+	return list
 }
 
 func (n *Networking) updatePeers([]string) {

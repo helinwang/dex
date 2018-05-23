@@ -89,10 +89,28 @@ func setupNodes() []*Node {
 
 	net := &LocalNet{}
 	nodes := make([]*Node, numNode)
+
+	peers := make(map[string]bool)
 	for i := range nodes {
-		chain := NewChain(genesis, &emptyState{}, nodeSeed)
-		networking := NewNetworking(net, &validator{}, fmt.Sprintf("node-%d", i), chain)
-		nodes[i] = NewNode(chain, nodeSKs[i], networking, Config{BlockTime: 100 * time.Millisecond})
+		peers[fmt.Sprintf("node-%d", i)] = true
+	}
+
+	cfg := Config{
+		BlockTime:      100 * time.Millisecond,
+		NtWaitTime:     150 * time.Millisecond,
+		GroupSize:      groupSize,
+		GroupThreshold: threshold,
+	}
+
+	for i := range nodes {
+		chain := NewChain(genesis, &emptyState{}, nodeSeed, cfg)
+		networking := NewNetworking(net, newValidator(chain), fmt.Sprintf("node-%d", (i+len(nodes)-1)%len(nodes)), chain)
+		nodes[i] = NewNode(chain, nodeSKs[i], networking, cfg)
+		nodes[i].net.peerAddrs = peers
+	}
+
+	for i := range nodes {
+		go nodes[i].net.Start(nodes[(i-1+len(nodes))%len(nodes)].net.addr)
 	}
 
 	for i, p := range perms {
@@ -111,9 +129,9 @@ func TestThresholdRelay(t *testing.T) {
 		n.StartRound(1)
 	}
 
-	time.Sleep(220 * time.Millisecond)
+	time.Sleep(2200 * time.Millisecond)
 	for _, n := range nodes {
-		rb, bp, nt := n.chain.RandomBeacon.ActiveGroups()
+		rb, bp, nt := n.chain.RandomBeacon.Committees()
 		fmt.Println(n.chain.Round(), n.chain.RandomBeacon.Round(), rb, bp, nt)
 	}
 }
@@ -140,17 +158,21 @@ func (n *LocalNet) Start(addr string, p Peer) error {
 // Connect connects to the peer.
 func (n *LocalNet) Connect(addr string) (Peer, error) {
 	n.mu.Lock()
-	defer n.mu.Unlock()
 
 	if n.peers == nil {
-		return nil, fmt.Errorf("peer not found: %s", addr)
+		time.Sleep(10 * time.Millisecond)
+		n.mu.Unlock()
+		return n.Connect(addr)
 	}
 
 	p, ok := n.peers[addr]
 	if !ok {
-		return nil, fmt.Errorf("peer not found: %s", addr)
+		time.Sleep(10 * time.Millisecond)
+		n.mu.Unlock()
+		return n.Connect(addr)
 	}
 
+	n.mu.Unlock()
 	return p, nil
 }
 

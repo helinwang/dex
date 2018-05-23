@@ -14,6 +14,7 @@ var errAddrNotInCommittee = errors.New("addr not in committee")
 // The random beacon, block proposal, block notarization advance to
 // the next round in lockstep.
 type RandomBeacon struct {
+	cfg               Config
 	mu                sync.Mutex
 	nextRBCmteHistory []int
 	nextNtCmteHistory []int
@@ -24,16 +25,17 @@ type RandomBeacon struct {
 	ntRand Rand
 	bpRand Rand
 
-	curRoundShares []*RandBeaconSigShare
+	curRoundShares map[Hash]*RandBeaconSigShare
 	sigHistory     []*RandBeaconSig
 }
 
 // NewRandomBeacon creates a new random beacon
-func NewRandomBeacon(seed Rand, groups []*Group) *RandomBeacon {
+func NewRandomBeacon(seed Rand, groups []*Group, cfg Config) *RandomBeacon {
 	rbRand := seed.Derive([]byte("random beacon committee rand seed"))
 	bpRand := seed.Derive([]byte("block proposer committee rand seed"))
 	ntRand := seed.Derive([]byte("notarization committee rand seed"))
 	return &RandomBeacon{
+		cfg:               cfg,
 		groups:            groups,
 		rbRand:            rbRand,
 		bpRand:            bpRand,
@@ -41,10 +43,20 @@ func NewRandomBeacon(seed Rand, groups []*Group) *RandomBeacon {
 		nextRBCmteHistory: []int{rbRand.Mod(len(groups))},
 		nextNtCmteHistory: []int{ntRand.Mod(len(groups))},
 		nextBPCmteHistory: []int{bpRand.Mod(len(groups))},
+		curRoundShares:    make(map[Hash]*RandBeaconSigShare),
 		sigHistory: []*RandBeaconSig{
 			{Sig: []byte("DEX random beacon 0th signature")},
 		},
 	}
+}
+
+// GetShare returns the randome beacon signature share of the current
+// round.
+func (r *RandomBeacon) GetShare(h Hash) *RandBeaconSigShare {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	return r.curRoundShares[h]
 }
 
 // RecvRandBeaconSigShare receives one share of the random beacon
@@ -61,8 +73,9 @@ func (r *RandomBeacon) RecvRandBeaconSigShare(s *RandBeaconSigShare, groupID int
 		return nil, fmt.Errorf("unexpected RandBeaconSigShare.LastSigHash: %x, expected: %x", s.LastSigHash, h)
 	}
 
-	r.curRoundShares = append(r.curRoundShares, s)
-	if len(r.curRoundShares) >= groupThreshold {
+	r.curRoundShares[s.Hash()] = s
+	fmt.Println(len(r.curRoundShares), r.cfg.GroupThreshold)
+	if len(r.curRoundShares) >= r.cfg.GroupThreshold {
 		sig := recoverRandBeaconSig(r.curRoundShares)
 		var rbs RandBeaconSig
 		rbs.LastRandVal = s.LastSigHash
@@ -88,7 +101,7 @@ func (r *RandomBeacon) RecvRandBeaconSig(s *RandBeaconSig) error {
 	}
 
 	r.deriveRand(hash(s.Sig))
-	r.curRoundShares = nil
+	r.curRoundShares = make(map[Hash]*RandBeaconSigShare)
 	r.sigHistory = append(r.sigHistory, s)
 	return nil
 }
@@ -110,6 +123,27 @@ func (r *RandomBeacon) Round() int {
 	return r.round()
 }
 
+// Rank returns the rank for the given member in the current block
+// proposal committee.
+func (r *RandomBeacon) Rank(addr Addr) (int, error) {
+	bp := r.nextBPCmteHistory[len(r.nextBPCmteHistory)-1]
+	g := r.groups[bp]
+	idx := -1
+	for i := range g.Members {
+		if addr == g.Members[i] {
+			idx = i
+			break
+		}
+	}
+
+	if idx < 0 {
+		return 0, errors.New("addr not in the current block proposal committee")
+	}
+
+	perm := r.bpRand.Perm(idx+1, len(g.Members))
+	return perm[idx], nil
+}
+
 func (r *RandomBeacon) deriveRand(h Hash) {
 	r.rbRand = r.rbRand.Derive(h[:])
 	r.nextRBCmteHistory = append(r.nextRBCmteHistory, r.rbRand.Mod(len(r.groups)))
@@ -119,7 +153,9 @@ func (r *RandomBeacon) deriveRand(h Hash) {
 	r.nextBPCmteHistory = append(r.nextBPCmteHistory, r.bpRand.Mod(len(r.groups)))
 }
 
-func (r *RandomBeacon) ActiveGroups() (rb, bp, nt int) {
+// Committees returns the current random beacon, block proposal,
+// notarization committees.
+func (r *RandomBeacon) Committees() (rb, bp, nt int) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 

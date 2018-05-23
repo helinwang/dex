@@ -21,12 +21,30 @@ func verifySig(pk bls.PublicKey, sig []byte, msg []byte) bool {
 	return sign.Verify(&pk, string(msg))
 }
 
-func recoverNtSig(shares []*NtShare) bls.Sign {
-	// TODO
-	return bls.Sign{}
+func recoverNtSig(shares []*NtShare) (bls.Sign, error) {
+	idVec := make([]bls.ID, len(shares))
+	signs := make([]bls.Sign, len(shares))
+	for i := range shares {
+		var sign bls.Sign
+		err := sign.Deserialize(shares[i].SigShare)
+		if err != nil {
+			return bls.Sign{}, err
+		}
+
+		signs[i] = sign
+		idVec[i] = shares[i].Owner.ID()
+	}
+
+	var sign bls.Sign
+	err := sign.Recover(signs, idVec)
+	if err != nil {
+		return bls.Sign{}, err
+	}
+
+	return sign, nil
 }
 
-func recoverRandBeaconSig(shares []*RandBeaconSigShare) bls.Sign {
+func recoverRandBeaconSig(shares map[Hash]*RandBeaconSigShare) bls.Sign {
 	// TODO
 	return bls.Sign{}
 }
