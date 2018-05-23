@@ -203,19 +203,19 @@ func (c *Chain) Leader() (*Block, State, *SysState) {
 	return c.hashToBlock[n.Block], n.State, n.SysState
 }
 
-func findPrevBlock(prevBlock Hash, ns []*notarized) *notarized {
-	for _, notarized := range ns {
+func findPrevBlock(prevBlock Hash, ns []*notarized) (*notarized, int) {
+	for i, notarized := range ns {
 		if notarized.Block == prevBlock {
-			return notarized
+			return notarized, i
 		}
 
-		n := findPrevBlock(prevBlock, notarized.NtChildren)
+		n, idx := findPrevBlock(prevBlock, notarized.NtChildren)
 		if n != nil {
-			return n
+			return n, idx
 		}
 	}
 
-	return nil
+	return nil, 0
 }
 
 func (c *Chain) addBP(bp *BlockProposal, weight float64) error {
@@ -227,15 +227,13 @@ func (c *Chain) addBP(bp *BlockProposal, weight float64) error {
 		return errChainDataAlreadyExists
 	}
 
-	notarized := findPrevBlock(bp.PrevBlock, c.Fork)
+	notarized, _ := findPrevBlock(bp.PrevBlock, c.Fork)
 	if notarized == nil {
 		if len(c.Finalized) > 0 {
 			if c.Finalized[len(c.Finalized)-1].Block != bp.PrevBlock {
 				return fmt.Errorf("block proposal's parent not found: %x, round: %d", bp.PrevBlock, bp.Round)
 			}
-		}
-
-		if c.History[len(c.History)-1] != bp.PrevBlock {
+		} else if c.History[len(c.History)-1] != bp.PrevBlock {
 			return fmt.Errorf("block proposal's parent not found: %x, round: %d", bp.PrevBlock, bp.Round)
 		}
 	}
@@ -247,7 +245,6 @@ func (c *Chain) addBP(bp *BlockProposal, weight float64) error {
 		notarized.NonNtChildren = append(notarized.NonNtChildren, u)
 	} else {
 		c.UnNotarizedNotOnFork = append(c.UnNotarizedNotOnFork, u)
-		// TODO: delete unnotarized when receive notarized
 	}
 	c.bpNeedNotarize[h] = true
 	go c.n.RecvBlockProposal(bp)
@@ -326,7 +323,7 @@ func (c *Chain) addBlock(b *Block, weight float64) error {
 	var prevSysState *SysState
 
 	nt := &notarized{Block: h, Weight: weight, BP: b.BlockProposal}
-	prev := findPrevBlock(b.PrevBlock, c.Fork)
+	prev, removeIdx := findPrevBlock(b.PrevBlock, c.Fork)
 	if prev != nil {
 		prevState = prev.State
 		prevSysState = prev.SysState
@@ -350,8 +347,21 @@ func (c *Chain) addBlock(b *Block, weight float64) error {
 
 	if prev != nil {
 		prev.NtChildren = append(prev.NtChildren, nt)
+		prev.NonNtChildren = append(prev.NonNtChildren[:removeIdx], prev.NonNtChildren[removeIdx+1:]...)
 	} else {
 		c.Fork = append(c.Fork, nt)
+		removeIdx := -1
+		for i, e := range c.UnNotarizedNotOnFork {
+			if e.BP == nt.BP {
+				removeIdx = i
+			}
+		}
+
+		if removeIdx <= 0 {
+			return errors.New("block's proposal not found on chain")
+		}
+
+		c.UnNotarizedNotOnFork = append(c.UnNotarizedNotOnFork[:removeIdx], c.UnNotarizedNotOnFork[removeIdx+1:]...)
 	}
 
 	c.hashToBlock[h] = b
