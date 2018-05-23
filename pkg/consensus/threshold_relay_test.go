@@ -148,7 +148,7 @@ func TestThresholdRelay(t *testing.T) {
 	for _, n := range nodes {
 		round := n.chain.Round()
 		assert.Equal(t, 2, round)
-		assert.Equal(t, 3, n.chain.RandomBeacon.Round())
+		assert.Equal(t, 3, n.chain.RandomBeacon.Depth())
 	}
 }
 

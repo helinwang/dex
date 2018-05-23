@@ -17,7 +17,7 @@ func (v *validator) ValidateBlock(b *Block) (float64, bool) {
 func (v *validator) ValidateBlockProposal(bp *BlockProposal) (float64, bool) {
 	// TODO: validate sig, validate txns, validate owner, validate
 	// round is correct
-	round := v.chain.RandomBeacon.Round() - 1
+	round := v.chain.RandomBeacon.Depth() - 1
 	if bp.Round != round {
 		return 0, false
 	}
@@ -38,12 +38,12 @@ func (v *validator) ValidateNtShare(n *NtShare) (int, bool) {
 
 func (v *validator) ValidateRandBeaconSig(r *RandBeaconSig) bool {
 	// TODO: validate sig, owner, round, share
-	round := v.chain.RandomBeacon.Round()
+	round := v.chain.RandomBeacon.Depth()
 	return r.Round == round
 }
 
 func (v *validator) ValidateRandBeaconSigShare(r *RandBeaconSigShare) (int, bool) {
-	round := v.chain.RandomBeacon.Round()
+	round := v.chain.RandomBeacon.Depth()
 	if r.Round != round {
 		return 0, false
 	}

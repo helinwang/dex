@@ -64,8 +64,8 @@ func (r *RandomBeacon) RecvRandBeaconSigShare(s *RandBeaconSigShare, groupID int
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if round := r.round(); round != s.Round {
-		return nil, fmt.Errorf("unexpected RandBeaconSigShare.Round: %d, expected: %d", s.Round, r.round())
+	if round := r.depth(); round != s.Round {
+		return nil, fmt.Errorf("unexpected RandBeaconSigShare.Round: %d, expected: %d", s.Round, r.depth())
 	}
 
 	if h := hash(r.sigHistory[s.Round-1].Sig); h != s.LastSigHash {
@@ -100,8 +100,8 @@ func (r *RandomBeacon) RecvRandBeaconSig(s *RandBeaconSig) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if round := r.round(); round != s.Round {
-		return fmt.Errorf("unexpected RandBeaconSig round: %d, expected: %d", s.Round, r.round())
+	if round := r.depth(); round != s.Round {
+		return fmt.Errorf("unexpected RandBeaconSig round: %d, expected: %d", s.Round, r.depth())
 	}
 
 	r.deriveRand(hash(s.Sig))
@@ -110,21 +110,21 @@ func (r *RandomBeacon) RecvRandBeaconSig(s *RandBeaconSig) error {
 	return nil
 }
 
-func (r *RandomBeacon) round() int {
+func (r *RandomBeacon) depth() int {
 	return len(r.sigHistory)
 }
 
-// Round returns the round of the random beacon.
+// Depth returns the depth of the random beacon.
 //
-// This round will be always greater or equal to Chain.Round():
+// This round will be always greater or equal to Chain.Depth():
 // - greater: when the node is synchronizing. It will synchronize the
 // random beacon first, and then synchronize the chain's blocks.
 // - equal: when the node is synchronized.
-func (r *RandomBeacon) Round() int {
+func (r *RandomBeacon) Depth() int {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	return r.round()
+	return r.depth()
 }
 
 // Rank returns the rank for the given member in the current block

@@ -472,7 +472,7 @@ func (n *Networking) serveData(requester string, ids []ItemID) {
 				n.removePeer(p)
 			}
 		case RandBeaconItem:
-			if rbr := n.chain.RandomBeacon.Round(); id.ItemRound >= rbr {
+			if rbr := n.chain.RandomBeacon.Depth(); id.ItemRound >= rbr {
 				log.Warn("peer requested random beacon of too high round, need to be smaller than random beacon round\n", "peer", requester, "requested round", id.ItemRound, "random beacon round", rbr)
 				continue
 			}
