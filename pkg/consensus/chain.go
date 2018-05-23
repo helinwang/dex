@@ -354,18 +354,68 @@ func (c *Chain) addBlock(b *Block, weight float64) error {
 		c.Fork = append(c.Fork, nt)
 	}
 
-	// TODO: finalize blocks
-
 	c.hashToBlock[h] = b
 	delete(c.bpNeedNotarize, b.BlockProposal)
 	delete(c.bpToNtShares, b.BlockProposal)
 
 	round := c.round()
+	// when round n is started, round n - 2 can be finalized. See
+	// corollary 9.19 in https://arxiv.org/abs/1805.04548
+	c.finalize(round - 2)
+
 	if round == prevRound+1 && round == c.RandomBeacon.Depth() {
 		// entered a new round, and in sync
+		// TODO: make it more robust
 		go c.n.StartRound(round)
 	}
 	return nil
+}
+
+// must be called with mutex held
+func (c *Chain) releaseBPs(s []*unNotarized) {
+	for _, e := range s {
+		delete(c.hashToBP, e.BP)
+	}
+}
+
+// must be called with mutex held
+func (c *Chain) finalize(round int) {
+	depth := round
+	depth -= len(c.History)
+	depth -= len(c.Finalized)
+	if depth < 0 {
+		return
+	}
+
+	c.releaseBPs(c.UnNotarizedNotOnFork)
+	c.UnNotarizedNotOnFork = nil
+
+	if depth == 0 {
+		if len(c.Fork) > 1 {
+			// more than one notarized in the finalized round,
+			// wait for next time to determin which fork is
+			// finalized.
+			return
+		}
+
+		f := c.Fork[0]
+		c.Finalized = append(c.Finalized, &finalized{Block: f.Block, BP: f.BP})
+		// TODO: compact not used state
+		c.LastFinalizedState = f.State
+		c.LastFinalizedSysState = f.SysState
+		c.Fork = f.NtChildren
+		c.UnNotarizedNotOnFork = f.NonNtChildren
+		return
+	}
+
+	// TODO: add to history if condition met
+
+	// TODO: delete removed states from map
+
+	// TODO: handle condition of not normal operation. E.g, remove
+	// the peer of the finalized parents
+
+	panic("not under normal operation, not implemented")
 }
 
 func (c *Chain) validateGroupSig(sig bls.Sign, groupID int, bp *BlockProposal) bool {
