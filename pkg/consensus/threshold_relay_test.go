@@ -95,11 +95,6 @@ func setupNodes() []*Node {
 	net := &LocalNet{}
 	nodes := make([]*Node, numNode)
 
-	peers := make(map[string]bool)
-	for i := range nodes {
-		peers[fmt.Sprintf("node-%d", i)] = true
-	}
-
 	cfg := Config{
 		BlockTime:      100 * time.Millisecond,
 		NtWaitTime:     150 * time.Millisecond,
@@ -112,13 +107,20 @@ func setupNodes() []*Node {
 		networking := NewNetworking(net, fmt.Sprintf("node-%d", (i+len(nodes)-1)%len(nodes)), chain)
 		nodes[i] = NewNode(chain, nodeSKs[i], networking, cfg)
 
+		peers := make(map[string]bool)
+		for i := range nodes {
+			peers[fmt.Sprintf("node-%d", i)] = true
+		}
+
 		nodes[i].net.mu.Lock()
 		nodes[i].net.peerAddrs = peers
 		nodes[i].net.mu.Unlock()
 	}
 
 	for i := range nodes {
-		go nodes[i].net.Start(nodes[(i-1+len(nodes))%len(nodes)].net.addr)
+		net := nodes[i].net
+		addr := nodes[(i-1+len(nodes))%len(nodes)].net.addr
+		go net.Start(addr)
 	}
 
 	time.Sleep(50 * time.Millisecond)
