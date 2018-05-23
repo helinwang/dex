@@ -58,9 +58,9 @@ func (r *RandomBeacon) GetShare(h Hash) *RandBeaconSigShare {
 	return r.curRoundShares[h]
 }
 
-// RecvRandBeaconSigShare receives one share of the random beacon
+// AddRandBeaconSigShare receives one share of the random beacon
 // signature.
-func (r *RandomBeacon) RecvRandBeaconSigShare(s *RandBeaconSigShare, groupID int) (*RandBeaconSig, error) {
+func (r *RandomBeacon) AddRandBeaconSigShare(s *RandBeaconSigShare, groupID int) (*RandBeaconSig, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -95,8 +95,8 @@ func (r *RandomBeacon) RecvRandBeaconSigShare(s *RandBeaconSigShare, groupID int
 	return nil, nil
 }
 
-// RecvRandBeaconSig adds the random beacon signature.
-func (r *RandomBeacon) RecvRandBeaconSig(s *RandBeaconSig) error {
+// AddRandBeaconSig adds the random beacon signature.
+func (r *RandomBeacon) AddRandBeaconSig(s *RandBeaconSig) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 

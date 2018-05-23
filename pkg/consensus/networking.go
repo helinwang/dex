@@ -125,7 +125,7 @@ func (n *Networking) Start(seedAddr string) error {
 	}
 
 	for _, r := range rb {
-		err = n.chain.RandomBeacon.RecvRandBeaconSig(r)
+		err = n.chain.RandomBeacon.AddRandBeaconSig(r)
 		if err != nil {
 			return err
 		}
@@ -180,9 +180,9 @@ func (n *Networking) recvRandBeaconSig(r *RandBeaconSig) {
 		return
 	}
 
-	err := n.chain.RandomBeacon.RecvRandBeaconSig(r)
+	err := n.chain.RandomBeacon.AddRandBeaconSig(r)
 	if err != nil {
-		log.Error("add random beacon sig failed", "err", err)
+		log.Warn("add random beacon sig failed", "err", err)
 		return
 	}
 
@@ -197,7 +197,7 @@ func (n *Networking) recvRandBeaconSigShare(r *RandBeaconSigShare) {
 		return
 	}
 
-	sig, err := n.chain.RandomBeacon.RecvRandBeaconSigShare(r, groupID)
+	sig, err := n.chain.RandomBeacon.AddRandBeaconSigShare(r, groupID)
 	if err != nil {
 		log.Error("add rand beacon sig share failed", "err", err)
 		return
