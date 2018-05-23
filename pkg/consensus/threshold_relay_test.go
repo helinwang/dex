@@ -113,6 +113,8 @@ func setupNodes() []*Node {
 		go nodes[i].net.Start(nodes[(i-1+len(nodes))%len(nodes)].net.addr)
 	}
 
+	time.Sleep(50 * time.Millisecond)
+
 	for i, p := range perms {
 		for j, nodeIdx := range p {
 			m := membership{groupID: i, skShare: sharesVec[i][j]}
@@ -131,8 +133,9 @@ func TestThresholdRelay(t *testing.T) {
 
 	time.Sleep(2200 * time.Millisecond)
 	for _, n := range nodes {
-		rb, bp, nt := n.chain.RandomBeacon.Committees()
-		fmt.Println(n.chain.Round(), n.chain.RandomBeacon.Round(), rb, bp, nt)
+		round := n.chain.Round()
+		rb, bp, nt := n.chain.RandomBeacon.Committees(round)
+		fmt.Println(round, n.chain.RandomBeacon.Round(), rb, bp, nt)
 	}
 }
 

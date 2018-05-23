@@ -37,7 +37,7 @@ type RandVal Hash
 // beacon committe.
 type RandBeaconSig struct {
 	Round       int
-	LastRandVal Hash
+	LastSigHash Hash
 	Sig         []byte
 }
 

@@ -299,7 +299,6 @@ func (c *Chain) addNtShare(n *NtShare, groupID int) (*Block, error) {
 			delete(c.hashToNtShare, share.Hash())
 		}
 		delete(c.bpToNtShares, n.BP)
-		fmt.Println("block")
 		return b, nil
 	}
 
@@ -361,8 +360,7 @@ func (c *Chain) addBlock(b *Block, weight float64) error {
 	delete(c.bpToNtShares, b.BlockProposal)
 
 	round := c.round()
-	fmt.Println(round, prevRound, c.RandomBeacon.Round(), len(c.Fork))
-	if round == prevRound+1 && round == c.RandomBeacon.Round() {
+	if round == prevRound+1 && prevRound == c.RandomBeacon.Round() {
 		go c.n.StartRound(round)
 	}
 	return nil

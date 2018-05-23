@@ -12,12 +12,12 @@ type Notary struct {
 	owner Addr
 	sk    bls.SecretKey
 	share bls.SecretKey
-	rb    *RandomBeacon
+	chain *Chain
 }
 
 // NewNotary creates a new notary.
-func NewNotary(owner Addr, sk, share bls.SecretKey, rb *RandomBeacon) *Notary {
-	return &Notary{owner: owner, share: share, rb: rb}
+func NewNotary(owner Addr, sk, share bls.SecretKey, chain *Chain) *Notary {
+	return &Notary{owner: owner, share: share, chain: chain}
 }
 
 // Notarize returns the notarized blocks of the current round,
@@ -51,9 +51,9 @@ func (n *Notary) Notarize(ctx, cancel context.Context, bCh chan *BlockProposal) 
 			// TODO: continue to notarize even ctx is Done.
 			return bps
 		case bp := <-bCh:
-			rank, err := n.rb.Rank(bp.Owner)
+			rank, err := n.chain.RandomBeacon.Rank(bp.Owner, n.chain.Round())
 			if err != nil {
-				log.Println(err)
+				log.Printf("get rank error: %v, bp round: %d, chain round: %d\n", err, bp.Round, n.chain.Round())
 				continue
 			}
 

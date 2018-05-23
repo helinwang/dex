@@ -103,7 +103,6 @@ func (n *Networking) Start(seedAddr string) error {
 		// TODO: check peers is online
 		n.peerAddrs[addr] = true
 	}
-	n.mu.Unlock()
 
 	// TODO: limit the number of peers connected to
 	for addr := range n.peerAddrs {
@@ -112,6 +111,8 @@ func (n *Networking) Start(seedAddr string) error {
 			log.Println(err)
 		}
 	}
+
+	n.mu.Unlock()
 
 	// TODO: sync random beacon from other peers rather than the
 	// seed
@@ -151,6 +152,7 @@ func (n *Networking) BroadcastItem(item ItemID) {
 
 	for _, p := range n.peers {
 		p := p
+
 		go func() {
 			p.Inventory(n.addr, []ItemID{item})
 		}()

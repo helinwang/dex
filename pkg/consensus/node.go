@@ -2,6 +2,7 @@ package consensus
 
 import (
 	"context"
+	"log"
 	"sync"
 	"time"
 
@@ -67,7 +68,7 @@ func (n *Node) StartRound(round int) {
 	}
 
 	var ntCancelCtx context.Context
-	rb, bp, nt := n.chain.RandomBeacon.Committees()
+	rb, bp, nt := n.chain.RandomBeacon.Committees(round)
 	for _, m := range n.memberships {
 		if m.groupID == rb {
 			// Current node is a member of the random
@@ -80,7 +81,15 @@ func (n *Node) StartRound(round int) {
 			// signature.
 			keyShare := m.skShare
 			go func() {
-				lastSigHash := hash(n.chain.RandomBeacon.History()[round-1].Sig)
+				history := n.chain.RandomBeacon.History()
+				idx := round - 1
+				if idx >= len(history) {
+					// TODO: handle this case better, need to be retry
+					log.Println("new round started, but have not received last round random beacon")
+					return
+				}
+
+				lastSigHash := hash(history[idx].Sig)
 				s := signRandBeaconShare(n.sk, keyShare, round, lastSigHash)
 				n.net.recvRandBeaconSigShare(s)
 			}()
@@ -103,7 +112,7 @@ func (n *Node) StartRound(round int) {
 				ntCancelCtx, n.cancelNotarize = context.WithCancel(context.Background())
 			}
 
-			notary := NewNotary(n.addr, n.sk, m.skShare, n.chain.RandomBeacon)
+			notary := NewNotary(n.addr, n.sk, m.skShare, n.chain)
 			inCh := make(chan *BlockProposal, 20)
 			n.notarizeChs = append(n.notarizeChs, inCh)
 			ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(n.cfg.NtWaitTime))

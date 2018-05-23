@@ -69,7 +69,7 @@ func TestBlockEncodeDecode(t *testing.T) {
 
 func TestRandSigEncodeDecode(t *testing.T) {
 	b := RandBeaconSig{
-		LastRandVal: Hash{1},
+		LastSigHash: Hash{1},
 		Sig:         []byte{4, 5, 6},
 	}
 

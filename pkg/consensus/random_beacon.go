@@ -3,6 +3,7 @@ package consensus
 import (
 	"errors"
 	"fmt"
+	"log"
 	"sync"
 )
 
@@ -74,17 +75,22 @@ func (r *RandomBeacon) RecvRandBeaconSigShare(s *RandBeaconSigShare, groupID int
 	}
 
 	r.curRoundShares[s.Hash()] = s
-	fmt.Println(len(r.curRoundShares), r.cfg.GroupThreshold)
 	if len(r.curRoundShares) >= r.cfg.GroupThreshold {
-		sig := recoverRandBeaconSig(r.curRoundShares)
-		var rbs RandBeaconSig
-		rbs.LastRandVal = s.LastSigHash
-		rbs.Round = s.Round
-		msg := rbs.Encode(false)
+		sig, err := recoverRandBeaconSig(r.curRoundShares)
+		if err != nil {
+			log.Println("fatal: recoverRandBeaconSig error:", err)
+			return nil, err
+		}
+
+		// TODO: get last sig hash locally
+		msg := randBeaconSigMsg(s.Round, s.LastSigHash)
 		if !sig.Verify(&r.groups[groupID].PK, string(msg)) {
 			panic("impossible: random beacon group signature verification failed")
 		}
 
+		var rbs RandBeaconSig
+		rbs.Round = s.Round
+		rbs.LastSigHash = s.LastSigHash
 		rbs.Sig = sig.Serialize()
 		return &rbs, nil
 	}
@@ -125,8 +131,10 @@ func (r *RandomBeacon) Round() int {
 
 // Rank returns the rank for the given member in the current block
 // proposal committee.
-func (r *RandomBeacon) Rank(addr Addr) (int, error) {
-	bp := r.nextBPCmteHistory[len(r.nextBPCmteHistory)-1]
+func (r *RandomBeacon) Rank(addr Addr, round int) (int, error) {
+	i := round - 1
+	// TODO: check i
+	bp := r.nextBPCmteHistory[i]
 	g := r.groups[bp]
 	idx := -1
 	for i := range g.Members {
@@ -155,13 +163,15 @@ func (r *RandomBeacon) deriveRand(h Hash) {
 
 // Committees returns the current random beacon, block proposal,
 // notarization committees.
-func (r *RandomBeacon) Committees() (rb, bp, nt int) {
+func (r *RandomBeacon) Committees(round int) (rb, bp, nt int) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	rb = r.nextRBCmteHistory[len(r.nextRBCmteHistory)-1]
-	bp = r.nextBPCmteHistory[len(r.nextBPCmteHistory)-1]
-	nt = r.nextNtCmteHistory[len(r.nextNtCmteHistory)-1]
+	idx := round - 1
+	// TODO: check idx
+	rb = r.nextRBCmteHistory[idx]
+	bp = r.nextBPCmteHistory[idx]
+	nt = r.nextNtCmteHistory[idx]
 	return
 }
 
