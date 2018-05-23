@@ -360,7 +360,8 @@ func (c *Chain) addBlock(b *Block, weight float64) error {
 	delete(c.bpToNtShares, b.BlockProposal)
 
 	round := c.round()
-	if round == prevRound+1 && prevRound == c.RandomBeacon.Round() {
+	fmt.Println("recv block", round, prevRound, c.RandomBeacon.Round())
+	if round == prevRound+1 && round == c.RandomBeacon.Round() {
 		go c.n.StartRound(round)
 	}
 	return nil

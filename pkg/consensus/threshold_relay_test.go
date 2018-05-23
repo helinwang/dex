@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/dfinity/go-dfinity-crypto/bls"
+	"github.com/stretchr/testify/assert"
 )
 
 func makeShares(t int, idVec []bls.ID, rand Rand) (bls.PublicKey, []bls.SecretKey, Rand) {
@@ -131,11 +132,11 @@ func TestThresholdRelay(t *testing.T) {
 		n.StartRound(1)
 	}
 
-	time.Sleep(2200 * time.Millisecond)
+	time.Sleep(500 * time.Millisecond)
 	for _, n := range nodes {
 		round := n.chain.Round()
-		rb, bp, nt := n.chain.RandomBeacon.Committees(round)
-		fmt.Println(round, n.chain.RandomBeacon.Round(), rb, bp, nt)
+		assert.Equal(t, 4, round)
+		assert.Equal(t, 5, n.chain.RandomBeacon.Round())
 	}
 }
 

@@ -66,7 +66,7 @@ func (r *RandomBeacon) RecvRandBeaconSigShare(s *RandBeaconSigShare, groupID int
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if r.round() != s.Round {
+	if round := r.round(); round != s.Round {
 		return nil, fmt.Errorf("unexpected RandBeaconSigShare.Round: %d, expected: %d", s.Round, r.round())
 	}
 
@@ -102,7 +102,7 @@ func (r *RandomBeacon) RecvRandBeaconSig(s *RandBeaconSig) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if r.round() != s.Round {
+	if round := r.round(); round != s.Round {
 		return fmt.Errorf("unexpected RandBeaconSig round: %d, expected: %d", s.Round, r.round())
 	}
 

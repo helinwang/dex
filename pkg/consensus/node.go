@@ -62,6 +62,8 @@ func (n *Node) StartRound(round int) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 
+	log.Println("start round", round)
+
 	n.notarizeChs = nil
 	if n.cancelNotarize != nil {
 		n.cancelNotarize()
