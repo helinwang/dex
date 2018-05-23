@@ -199,7 +199,7 @@ func (n *Networking) recvRandBeaconSigShare(r *RandBeaconSigShare) {
 
 	sig, err := n.chain.RandomBeacon.AddRandBeaconSigShare(r, groupID)
 	if err != nil {
-		log.Error("add rand beacon sig share failed", "err", err)
+		log.Warn("add rand beacon sig share failed", "err", err)
 		return
 	}
 
@@ -228,7 +228,7 @@ func (n *Networking) recvBlock(b *Block) {
 	}
 
 	if err != nil {
-		log.Error("add block failed", "err", err)
+		log.Warn("add block failed", "err", err)
 		return
 	}
 
@@ -244,7 +244,7 @@ func (n *Networking) recvBlockProposal(bp *BlockProposal) {
 
 	err := n.chain.addBP(bp, weight)
 	if err != nil {
-		log.Error("add block proposal failed", "err", err)
+		log.Warn("add block proposal failed", "err", err)
 		return
 	}
 
@@ -260,7 +260,7 @@ func (n *Networking) recvNtShare(s *NtShare) {
 
 	b, err := n.chain.addNtShare(s, groupID)
 	if err != nil {
-		log.Error("add notarization share failed", "err", err)
+		log.Warn("add notarization share failed", "err", err)
 		return
 	}
 

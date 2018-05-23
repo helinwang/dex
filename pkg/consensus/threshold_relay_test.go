@@ -99,8 +99,8 @@ func setupNodes() []*Node {
 	nodes := make([]*Node, numNode)
 
 	cfg := Config{
-		BlockTime:      100 * time.Millisecond,
-		NtWaitTime:     150 * time.Millisecond,
+		BlockTime:      50 * time.Millisecond,
+		NtWaitTime:     70 * time.Millisecond,
 		GroupSize:      groupSize,
 		GroupThreshold: threshold,
 	}
@@ -126,7 +126,7 @@ func setupNodes() []*Node {
 		go net.Start(addr)
 	}
 
-	time.Sleep(50 * time.Millisecond)
+	time.Sleep(30 * time.Millisecond)
 
 	for i, p := range perms {
 		for j, nodeIdx := range p {
@@ -147,9 +147,11 @@ func TestThresholdRelay(t *testing.T) {
 	time.Sleep(250 * time.Millisecond)
 	for _, n := range nodes {
 		round := n.chain.Round()
-		assert.Equal(t, 2, round)
-		assert.Equal(t, 3, n.chain.RandomBeacon.Depth())
+		assert.Equal(t, 4, round)
+		assert.Equal(t, 5, n.chain.RandomBeacon.Depth())
 	}
+
+	fmt.Println(nodes[0].chain.Graphviz())
 }
 
 // LocalNet is a local network implementation
