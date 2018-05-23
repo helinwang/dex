@@ -38,12 +38,12 @@ func (v *validator) ValidateNtShare(n *NtShare) (int, bool) {
 
 func (v *validator) ValidateRandBeaconSig(r *RandBeaconSig) bool {
 	// TODO: validate sig, owner, round, share
-	round := v.chain.Round()
+	round := v.chain.RandomBeacon.Round()
 	return r.Round == round
 }
 
 func (v *validator) ValidateRandBeaconSigShare(r *RandBeaconSigShare) (int, bool) {
-	round := v.chain.Round()
+	round := v.chain.RandomBeacon.Round()
 	if r.Round != round {
 		return 0, false
 	}

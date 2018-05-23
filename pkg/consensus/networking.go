@@ -176,7 +176,7 @@ func (n *Networking) recvSysTxn(t *SysTxn) {
 
 func (n *Networking) recvRandBeaconSig(r *RandBeaconSig) {
 	if !n.v.ValidateRandBeaconSig(r) {
-		log.Warn("ValidateRandBeaconSig failed", "round", r.Round)
+		log.Debug("ValidateRandBeaconSig failed", "round", r.Round)
 		return
 	}
 
@@ -193,7 +193,7 @@ func (n *Networking) recvRandBeaconSigShare(r *RandBeaconSigShare) {
 	groupID, valid := n.v.ValidateRandBeaconSigShare(r)
 
 	if !valid {
-		log.Warn("ValidateRandBeaconSigShare failed", "owner", r.Owner, "round", r.Round)
+		log.Debug("ValidateRandBeaconSigShare failed", "owner", r.Owner, "round", r.Round)
 		return
 	}
 
@@ -223,6 +223,10 @@ func (n *Networking) recvBlock(b *Block) {
 	// proposal before processing this block.
 
 	err := n.chain.addBlock(b, weight)
+	if err == errChainDataAlreadyExists {
+		return
+	}
+
 	if err != nil {
 		log.Error("add block failed", "err", err)
 		return

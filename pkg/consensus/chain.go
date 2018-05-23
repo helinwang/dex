@@ -314,7 +314,7 @@ func (c *Chain) addBlock(b *Block, weight float64) error {
 
 	h := b.Hash()
 	if _, ok := c.hashToBlock[h]; ok {
-		return errors.New("block already exists")
+		return errChainDataAlreadyExists
 	}
 
 	if _, ok := c.hashToBP[b.BlockProposal]; !ok {
@@ -360,7 +360,6 @@ func (c *Chain) addBlock(b *Block, weight float64) error {
 	delete(c.bpToNtShares, b.BlockProposal)
 
 	round := c.round()
-	fmt.Println("recv block", round, prevRound, c.RandomBeacon.Round())
 	if round == prevRound+1 && round == c.RandomBeacon.Round() {
 		go c.n.StartRound(round)
 	}

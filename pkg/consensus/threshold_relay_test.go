@@ -7,11 +7,14 @@ import (
 	"time"
 
 	"github.com/dfinity/go-dfinity-crypto/bls"
+	log "github.com/helinwang/log15"
+
 	"github.com/stretchr/testify/assert"
 )
 
 func init() {
 	bls.Init(int(bls.CurveFp254BNb))
+	log.Root().SetHandler(log.LvlFilterHandler(log.LvlInfo, log.StdoutHandler))
 }
 
 func makeShares(t int, idVec []bls.ID, rand Rand) (bls.PublicKey, []bls.SecretKey, Rand) {
