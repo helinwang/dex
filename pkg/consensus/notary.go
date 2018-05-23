@@ -2,7 +2,8 @@ package consensus
 
 import (
 	"context"
-	"log"
+
+	log "github.com/helinwang/log15"
 
 	"github.com/dfinity/go-dfinity-crypto/bls"
 )
@@ -53,7 +54,7 @@ func (n *Notary) Notarize(ctx, cancel context.Context, bCh chan *BlockProposal) 
 		case bp := <-bCh:
 			rank, err := n.chain.RandomBeacon.Rank(bp.Owner, n.chain.Round())
 			if err != nil {
-				log.Printf("get rank error: %v, bp round: %d, chain round: %d\n", err, bp.Round, n.chain.Round())
+				log.Error("get rank error", "err", err, "bp round", bp.Round, "chain round", n.chain.Round())
 				continue
 			}
 

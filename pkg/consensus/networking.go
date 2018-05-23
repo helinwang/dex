@@ -3,8 +3,9 @@ package consensus
 import (
 	"context"
 	"errors"
-	"log"
 	"sync"
+
+	log "github.com/helinwang/log15"
 )
 
 // Peer is a peer node in the DEX network.
@@ -108,7 +109,7 @@ func (n *Networking) Start(seedAddr string) error {
 	for addr := range n.peerAddrs {
 		_, err = n.findOrConnect(addr)
 		if err != nil {
-			log.Println(err)
+			log.Error("connect to peer", "err", err, "addr", addr)
 		}
 	}
 
@@ -169,13 +170,13 @@ func (n *Networking) recvSysTxn(t *SysTxn) {
 
 func (n *Networking) recvRandBeaconSig(r *RandBeaconSig) {
 	if !n.v.ValidateRandBeaconSig(r) {
-		log.Printf("ValidateRandBeaconSig failed, round: %d\n", r.Round)
+		log.Warn("ValidateRandBeaconSig failed", "round", r.Round)
 		return
 	}
 
 	err := n.chain.RandomBeacon.RecvRandBeaconSig(r)
 	if err != nil {
-		log.Println(err)
+		log.Error("add random beacon sig failed", "err", err)
 		return
 	}
 
@@ -186,13 +187,13 @@ func (n *Networking) recvRandBeaconSigShare(r *RandBeaconSigShare) {
 	groupID, valid := n.v.ValidateRandBeaconSigShare(r)
 
 	if !valid {
-		log.Printf("ValidateRandBeaconSigShare failed, owner: %x, round: %d\n", r.Owner, r.Round)
+		log.Warn("ValidateRandBeaconSigShare failed", "owner", r.Owner, "round", r.Round)
 		return
 	}
 
 	sig, err := n.chain.RandomBeacon.RecvRandBeaconSigShare(r, groupID)
 	if err != nil {
-		log.Println(err)
+		log.Error("add rand beacon sig share failed", "err", err)
 		return
 	}
 
@@ -208,7 +209,7 @@ func (n *Networking) recvBlock(b *Block) {
 	weight, valid := n.v.ValidateBlock(b)
 
 	if !valid {
-		log.Println("ValidateBlock failed")
+		log.Warn("ValidateBlock failed")
 		return
 	}
 
@@ -217,7 +218,7 @@ func (n *Networking) recvBlock(b *Block) {
 
 	err := n.chain.addBlock(b, weight)
 	if err != nil {
-		log.Println(err)
+		log.Error("add block failed", "err", err)
 		return
 	}
 
@@ -227,13 +228,13 @@ func (n *Networking) recvBlock(b *Block) {
 func (n *Networking) recvBlockProposal(bp *BlockProposal) {
 	weight, valid := n.v.ValidateBlockProposal(bp)
 	if !valid {
-		log.Println("ValidateBlockProposal failed")
+		log.Warn("ValidateBlockProposal failed")
 		return
 	}
 
 	err := n.chain.addBP(bp, weight)
 	if err != nil {
-		log.Println(err)
+		log.Error("add block proposal failed", "err", err)
 		return
 	}
 
@@ -243,13 +244,13 @@ func (n *Networking) recvBlockProposal(bp *BlockProposal) {
 func (n *Networking) recvNtShare(s *NtShare) {
 	groupID, valid := n.v.ValidateNtShare(s)
 	if !valid {
-		log.Println("ValidateNtShare failed")
+		log.Warn("ValidateNtShare failed")
 		return
 	}
 
 	b, err := n.chain.addNtShare(s, groupID)
 	if err != nil {
-		log.Println(err)
+		log.Error("add notarization share failed", "err", err)
 		return
 	}
 
@@ -283,7 +284,7 @@ func (n *Networking) recvInventory(sender string, ids []ItemID) {
 
 	p, err := n.findOrConnect(sender)
 	if err != nil {
-		log.Println(err)
+		log.Error("connect to inventory sender failed", "err", err)
 		return
 	}
 
@@ -301,7 +302,7 @@ func (n *Networking) recvInventory(sender string, ids []ItemID) {
 			}
 		case BlockProposalItem:
 			if id.ItemRound != round {
-				log.Printf("recv bp for round: %d, handling: %d\n", id.ItemRound, round)
+				log.Debug("received block proposal for a different round", "round", id.ItemRound, "expecting", round)
 				continue
 			}
 
@@ -312,7 +313,7 @@ func (n *Networking) recvInventory(sender string, ids []ItemID) {
 			p.GetData(n.addr, []ItemID{id})
 		case NtShareItem:
 			if id.ItemRound != round {
-				log.Printf("recv nt for round: %d, handling: %d\n", id.ItemRound, round)
+				log.Debug("received notarization share for a different round", "round", id.ItemRound, "expecting", round)
 				continue
 			}
 
@@ -327,7 +328,7 @@ func (n *Networking) recvInventory(sender string, ids []ItemID) {
 			p.GetData(n.addr, []ItemID{id})
 		case RandBeaconShareItem:
 			if id.ItemRound != round {
-				log.Printf("recv random beacon share for round: %d, handling: %d\n", id.ItemRound, round)
+				log.Debug("received random beacon share for a different round", "round", id.ItemRound, "expecting", round)
 				continue
 			}
 
@@ -338,7 +339,7 @@ func (n *Networking) recvInventory(sender string, ids []ItemID) {
 			p.GetData(n.addr, []ItemID{id})
 		case RandBeaconItem:
 			if id.ItemRound != round {
-				log.Printf("recv random beacon share for round: %d, handling: %d\n", id.ItemRound, round)
+				log.Debug("received random beacon share for a different round", "round", id.ItemRound, "expecting", round)
 				continue
 			}
 
@@ -368,7 +369,7 @@ func (n *Networking) getSyncData(start int) ([]*RandBeaconSig, []*Block) {
 func (n *Networking) serveData(requester string, ids []ItemID) {
 	p, err := n.findOrConnect(requester)
 	if err != nil {
-		log.Println(err)
+		log.Error("can not connect to the peer that asked for data", "err", err)
 		return
 	}
 
@@ -404,12 +405,12 @@ func (n *Networking) serveData(requester string, ids []ItemID) {
 
 			p.RandBeaconSigShare(share)
 		case RandBeaconItem:
-			history := n.chain.RandomBeacon.History()
-			if id.ItemRound >= len(history) {
-				log.Printf("%s requested random beacon of too high round: %d, need to be smaller than current round: %d\n", requester, id.ItemRound, len(history))
+			if rbr := n.chain.RandomBeacon.Round(); id.ItemRound >= rbr {
+				log.Warn("peer requested random beacon of too high round, need to be smaller than random beacon round\n", "peer", requester, "requested round", id.ItemRound, "random beacon round", rbr)
 				continue
 			}
 
+			history := n.chain.RandomBeacon.History()
 			p.RandBeaconSig(history[id.ItemRound])
 		}
 	}

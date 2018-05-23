@@ -3,8 +3,9 @@ package consensus
 import (
 	"errors"
 	"fmt"
-	"log"
 	"sync"
+
+	log "github.com/helinwang/log15"
 )
 
 var errCommitteeNotSelected = errors.New("committee not selected yet")
@@ -78,7 +79,7 @@ func (r *RandomBeacon) RecvRandBeaconSigShare(s *RandBeaconSigShare, groupID int
 	if len(r.curRoundShares) >= r.cfg.GroupThreshold {
 		sig, err := recoverRandBeaconSig(r.curRoundShares)
 		if err != nil {
-			log.Println("fatal: recoverRandBeaconSig error:", err)
+			log.Error("fatal: recoverRandBeaconSig error", "err", err)
 			return nil, err
 		}
 

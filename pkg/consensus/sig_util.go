@@ -1,7 +1,7 @@
 package consensus
 
 import (
-	"log"
+	log "github.com/helinwang/log15"
 
 	"github.com/dfinity/go-dfinity-crypto/bls"
 )
@@ -14,7 +14,7 @@ func verifySig(pk bls.PublicKey, sig []byte, msg []byte) bool {
 	var sign bls.Sign
 	err := sign.Deserialize(sig)
 	if err != nil {
-		log.Printf("verify sig error: %v\n", err)
+		log.Error("verify sig error", "err", err)
 		return false
 	}
 

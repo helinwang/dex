@@ -2,9 +2,10 @@ package consensus
 
 import (
 	"context"
-	"log"
 	"sync"
 	"time"
+
+	log "github.com/helinwang/log15"
 
 	"github.com/dfinity/go-dfinity-crypto/bls"
 )
@@ -62,7 +63,7 @@ func (n *Node) StartRound(round int) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 
-	log.Println("start round", round)
+	log.Debug("start round", "round", round, "addr", n.addr)
 
 	n.notarizeChs = nil
 	if n.cancelNotarize != nil {
@@ -87,7 +88,7 @@ func (n *Node) StartRound(round int) {
 				idx := round - 1
 				if idx >= len(history) {
 					// TODO: handle this case better, need to be retry
-					log.Println("new round started, but have not received last round random beacon")
+					log.Error("new round started, but have not received last round random beacon", "idx", idx, "len", len(history))
 					return
 				}
 

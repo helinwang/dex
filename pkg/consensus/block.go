@@ -3,6 +3,7 @@ package consensus
 import (
 	"bytes"
 	"encoding/gob"
+	"fmt"
 
 	"github.com/dfinity/go-dfinity-crypto/bls"
 )
@@ -13,6 +14,10 @@ const (
 
 // Addr is the address of an account.
 type Addr [addrBytes]byte
+
+func (a Addr) String() string {
+	return fmt.Sprintf("%x", a[:])
+}
 
 // ID returns the ID associated with this address.
 func (a Addr) ID() bls.ID {

@@ -2,7 +2,8 @@ package consensus
 
 import (
 	"context"
-	"log"
+
+	log "github.com/helinwang/log15"
 
 	"github.com/dfinity/go-dfinity-crypto/bls"
 )
@@ -46,7 +47,7 @@ func (b *BlockProposer) CollectTxn(ctx context.Context, txCh chan []byte, sysTxC
 		case tx := <-txCh:
 			valid, future := transition.Record(tx)
 			if !valid {
-				log.Printf("received invalid txn, len: %d\n", len(tx))
+				log.Warn("received invalid txn", "len", len(tx))
 				continue
 			}
 
@@ -55,7 +56,7 @@ func (b *BlockProposer) CollectTxn(ctx context.Context, txCh chan []byte, sysTxC
 			}
 		case sysTx := <-sysTxCh:
 			if !sysTransition.Record(sysTx) {
-				log.Println("received invalid sys txn")
+				log.Warn("received invalid sys txn")
 				continue
 			}
 		}

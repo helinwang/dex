@@ -107,7 +107,10 @@ func setupNodes() []*Node {
 		chain := NewChain(genesis, &emptyState{}, nodeSeed, cfg)
 		networking := NewNetworking(net, newValidator(chain), fmt.Sprintf("node-%d", (i+len(nodes)-1)%len(nodes)), chain)
 		nodes[i] = NewNode(chain, nodeSKs[i], networking, cfg)
+
+		nodes[i].net.mu.Lock()
 		nodes[i].net.peerAddrs = peers
+		nodes[i].net.mu.Unlock()
 	}
 
 	for i := range nodes {
