@@ -2,20 +2,18 @@ package consensus
 
 import (
 	"context"
-	"sync"
 
 	"github.com/dfinity/go-dfinity-crypto/bls"
 )
 
 // Notary notarizes blocks.
 type Notary struct {
-	sk   bls.SecretKey
-	fork []*notarized
+	sk bls.SecretKey
 }
 
 // NewNotary creates a new notary.
-func NewNotary(sk bls.SecretKey, fork []*notarized) *Notary {
-	return &Notary{sk: sk, fork: fork}
+func NewNotary(sk bls.SecretKey) *Notary {
+	return &Notary{sk: sk}
 }
 
 // Notarize returns the notarized blocks of the current round,
@@ -23,7 +21,7 @@ func NewNotary(sk bls.SecretKey, fork []*notarized) *Notary {
 //
 // ctx will be cancelled when reaching the next round: when a
 // notarized block of the current round is received.
-func (n *Notary) Notarize(ctx context.Context, bCh chan *BlockProposal, notarizedCh chan *Block) []*Block {
+func (n *Notary) Notarize(ctx, cancel context.Context, bCh chan *BlockProposal) []*Block {
 	// TODO: validate BlockProposal, perhaps should be done by the
 	// data layer.
 	var bestRankBPs []*BlockProposal
@@ -31,20 +29,20 @@ func (n *Notary) Notarize(ctx context.Context, bCh chan *BlockProposal, notarize
 	for {
 		select {
 		case <-ctx.Done():
-			var mu sync.Mutex
-			var blocks []*Block
-			var wg sync.WaitGroup
-			for _, bp := range bestRankBPs {
-				bp := bp
-				wg.Add(1)
-				go func() {
-					b := notarize(n.sk, bp)
-					mu.Lock()
-					blocks = append(blocks, b)
-					mu.Unlock()
-				}()
+			if len(bestRankBPs) == 0 {
+				select {
+				case b := <-bCh:
+					bestRankBPs = append(bestRankBPs, b)
+				case <-cancel.Done():
+					return nil
+				}
 			}
-			wg.Wait()
+
+			var blocks []*Block
+			for _, bp := range bestRankBPs {
+				b := notarize(n.sk, bp)
+				blocks = append(blocks, b)
+			}
 			return blocks
 		case bp := <-bCh:
 			var rank int
@@ -66,6 +64,14 @@ func (n *Notary) Notarize(ctx context.Context, bCh chan *BlockProposal, notarize
 }
 
 func notarize(sk bls.SecretKey, bp *BlockProposal) *Block {
-	// TODO
-	return nil
+	// TODO: calculate state root
+	b := &Block{
+		Round:         bp.Round,
+		PrevBlock:     bp.PrevBlock,
+		BlockProposal: bp.Hash(),
+		SysTxns:       bp.SysTxns,
+	}
+
+	b.NotarizationSig = sk.Sign(string(b.Encode(false))).Serialize()
+	return b
 }

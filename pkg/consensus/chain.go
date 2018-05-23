@@ -2,22 +2,22 @@ package consensus
 
 import (
 	"errors"
+	"fmt"
 	"sync"
 
 	"github.com/dfinity/go-dfinity-crypto/bls"
 )
 
 var errChainDataAlreadyExists = errors.New("chain data already exists")
-var errBPParentNotFound = errors.New("block proposal parent not found")
-
-type unNotarized struct {
-	Weight float64
-	BP     Hash
-}
 
 type finalized struct {
 	Block Hash
 	BP    Hash
+}
+
+type unNotarized struct {
+	BP     Hash
+	Weight float64
 }
 
 type notarized struct {
@@ -54,6 +54,7 @@ type Chain struct {
 	LastFinalizedState    State
 	LastFinalizedSysState *SysState
 	Fork                  []*notarized
+	UnNotarizedNotOnFork  []*unNotarized
 	HashToBlock           map[Hash]*Block
 	HashToBP              map[Hash]*BlockProposal
 	HashToNtShare         map[Hash]*NtShare
@@ -128,6 +129,36 @@ func maxHeight(ns []*notarized) int {
 	return max
 }
 
+func (c *Chain) heaviestFork() *notarized {
+	// TODO: implement correctly
+	n := c.Fork[0]
+	for len(n.NtChildren) > 0 {
+		n = n.NtChildren[0]
+	}
+
+	return n
+}
+
+// Leader returns the notarized block of the current round whose chain
+// is the heaviest.
+func (c *Chain) Leader() (*Block, State, *SysState) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if len(c.Finalized) == 0 {
+		if len(c.Fork) == 0 {
+			return c.HashToBlock[c.History[len(c.History)-1]], c.LastHistoryState, c.LastHistorySysState
+		}
+	} else {
+		if len(c.Fork) == 0 {
+			return c.HashToBlock[c.Finalized[len(c.Finalized)-1].Block], c.LastFinalizedState, c.LastFinalizedSysState
+		}
+	}
+
+	n := c.heaviestFork()
+	return c.HashToBlock[n.Block], n.State, n.SysState
+}
+
 func findPrevBlock(prevBlock Hash, ns []*notarized) *notarized {
 	for _, notarized := range ns {
 		if notarized.Block == prevBlock {
@@ -154,13 +185,28 @@ func (c *Chain) addBP(bp *BlockProposal, weight float64) error {
 
 	notarized := findPrevBlock(bp.PrevBlock, c.Fork)
 	if notarized == nil {
-		return errBPParentNotFound
+		if len(c.Finalized) > 0 {
+			if c.Finalized[len(c.Finalized)-1].Block != bp.PrevBlock {
+				return fmt.Errorf("block proposal's parent not found: %x, round: %d", bp.PrevBlock, bp.Round)
+			}
+		}
+
+		if c.History[len(c.History)-1] != bp.PrevBlock {
+			return fmt.Errorf("block proposal's parent not found: %x, round: %d", bp.PrevBlock, bp.Round)
+		}
 	}
 
 	c.HashToBP[h] = bp
 	u := &unNotarized{Weight: weight, BP: h}
-	notarized.NonNtChildren = append(notarized.NonNtChildren, u)
+
+	if notarized != nil {
+		notarized.NonNtChildren = append(notarized.NonNtChildren, u)
+	} else {
+		c.UnNotarizedNotOnFork = append(c.UnNotarizedNotOnFork, u)
+		// TODO: delete unnotarized when receive notarized
+	}
 	c.bpNeedNotarize[h] = true
+	go c.n.RecvBlockProposal(bp)
 	return nil
 }
 
@@ -215,6 +261,8 @@ func (c *Chain) addBlock(b *Block, weight float64) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
+	prevRound := c.round()
+
 	h := b.Hash()
 	if _, ok := c.HashToBlock[h]; ok {
 		return errors.New("block already exists")
@@ -263,7 +311,7 @@ func (c *Chain) addBlock(b *Block, weight float64) error {
 	delete(c.BPToNtShares, b.BlockProposal)
 
 	round := c.round()
-	if round == c.RandomBeacon.Round() {
+	if round == prevRound+1 && round == c.RandomBeacon.Round() {
 		go c.n.StartRound(round)
 	}
 	return nil

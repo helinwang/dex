@@ -11,13 +11,13 @@ func newValidator(chain *Chain) *validator {
 
 func (v *validator) ValidateBlock(b *Block) (float64, bool) {
 	// TODO: validate sig, validate txns, validate sig
-	return 0, false
+	return 0, true
 }
 
 func (v *validator) ValidateBlockProposal(bp *BlockProposal) (float64, bool) {
 	// TODO: validate sig, validate txns, validate owner, validate
 	// round is correct
-	return 0, false
+	return 0, true
 }
 
 func (v *validator) ValidateNtShare(n *NtShare) (int, bool) {

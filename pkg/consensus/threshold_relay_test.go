@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/dfinity/go-dfinity-crypto/bls"
 )
@@ -89,9 +90,9 @@ func setupNodes() []*Node {
 	net := &LocalNet{}
 	nodes := make([]*Node, numNode)
 	for i := range nodes {
-		chain := NewChain(genesis, nil, nodeSeed)
+		chain := NewChain(genesis, &emptyState{}, nodeSeed)
 		networking := NewNetworking(net, &validator{}, fmt.Sprintf("node-%d", i), chain)
-		nodes[i] = NewNode(chain, nodeSKs[i], networking)
+		nodes[i] = NewNode(chain, nodeSKs[i], networking, Config{BlockTime: 100 * time.Millisecond})
 	}
 
 	for i, p := range perms {
@@ -108,6 +109,12 @@ func TestThresholdRelay(t *testing.T) {
 	nodes := setupNodes()
 	for _, n := range nodes {
 		n.StartRound(1)
+	}
+
+	time.Sleep(220 * time.Millisecond)
+	for _, n := range nodes {
+		rb, bp, nt := n.chain.RandomBeacon.ActiveGroups()
+		fmt.Println(n.chain.Round(), n.chain.RandomBeacon.Round(), rb, bp, nt)
 	}
 }
 
@@ -145,4 +152,30 @@ func (n *LocalNet) Connect(addr string) (Peer, error) {
 	}
 
 	return p, nil
+}
+
+type emptyState struct {
+}
+
+func (e *emptyState) Hash() Hash {
+	return hash([]byte("abc"))
+}
+
+func (e *emptyState) Transition() Transition {
+	return &emptyTransition{}
+}
+
+type emptyTransition struct {
+}
+
+func (e *emptyTransition) Record(txn []byte) (valid, future bool) {
+	return true, false
+}
+
+func (e *emptyTransition) Clear() [][]byte {
+	return nil
+}
+
+func (e *emptyTransition) Encode() []byte {
+	return nil
 }

@@ -19,7 +19,6 @@ type RandomBeacon struct {
 	nextNtCmteHistory []int
 	nextBPCmteHistory []int
 	groups            []*Group
-	sigHash           Hash
 
 	rbRand Rand
 	ntRand Rand
@@ -39,7 +38,6 @@ func NewRandomBeacon(seed Rand, groups []*Group) *RandomBeacon {
 		rbRand:            rbRand,
 		bpRand:            bpRand,
 		ntRand:            ntRand,
-		sigHash:           Hash(seed),
 		nextRBCmteHistory: []int{rbRand.Mod(len(groups))},
 		nextNtCmteHistory: []int{ntRand.Mod(len(groups))},
 		nextBPCmteHistory: []int{bpRand.Mod(len(groups))},
@@ -59,8 +57,8 @@ func (r *RandomBeacon) RecvRandBeaconSigShare(s *RandBeaconSigShare, groupID int
 		return nil, fmt.Errorf("unexpected RandBeaconSigShare.Round: %d, expected: %d", s.Round, r.round())
 	}
 
-	if r.sigHash != s.LastSigHash {
-		return nil, fmt.Errorf("unexpected RandBeaconSigShare.LastSigHash: %x, expected: %x", s.LastSigHash, r.sigHash)
+	if h := hash(r.sigHistory[s.Round-1].Sig); h != s.LastSigHash {
+		return nil, fmt.Errorf("unexpected RandBeaconSigShare.LastSigHash: %x, expected: %x", s.LastSigHash, h)
 	}
 
 	r.curRoundShares = append(r.curRoundShares, s)
@@ -121,11 +119,14 @@ func (r *RandomBeacon) deriveRand(h Hash) {
 	r.nextBPCmteHistory = append(r.nextBPCmteHistory, r.bpRand.Mod(len(r.groups)))
 }
 
-func (r *RandomBeacon) RandBeaconGroupID() int {
+func (r *RandomBeacon) ActiveGroups() (rb, bp, nt int) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	return r.nextRBCmteHistory[len(r.nextRBCmteHistory)-1]
+	rb = r.nextRBCmteHistory[len(r.nextRBCmteHistory)-1]
+	bp = r.nextBPCmteHistory[len(r.nextBPCmteHistory)-1]
+	nt = r.nextNtCmteHistory[len(r.nextNtCmteHistory)-1]
+	return
 }
 
 // History returns the random beacon signature history.
