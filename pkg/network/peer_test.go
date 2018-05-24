@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/gob"
-	"net"
-	"sync"
 	"testing"
 	"time"
 
@@ -52,39 +50,28 @@ func TestSequentialEncDec(t *testing.T) {
 }
 
 func TestPeer(t *testing.T) {
-	connCh := make(chan net.Conn, 1)
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		l, err := net.Listen("tcp", ":8081")
-		if err != nil {
-			panic(err)
-		}
+	peerCh := make(chan consensus.Peer, 1)
+	onPeerConnect := func(p consensus.Peer) {
+		peerCh <- p
+	}
 
-		wg.Done()
-
-		conn, err := l.Accept()
-		if err != nil {
-			panic(err)
-		}
-
-		connCh <- conn
-	}()
-
-	wg.Wait()
-	conn, err := net.Dial("tcp", "127.0.0.1:8081")
+	myself := &mocks.Peer{}
+	var net Network
+	err := net.Start(":8081", onPeerConnect, myself)
 	if err != nil {
 		panic(err)
 	}
 
 	dst := &mocks.Peer{}
-	_ = NewPeer(<-connCh, dst)
+	_, err = net.Connect(":8081", dst)
+	if err != nil {
+		panic(err)
+	}
 
+	p := <-peerCh
 	r0 := []string{"peer0", "peer1"}
 	r1 := []*consensus.RandBeaconSig{&consensus.RandBeaconSig{Round: 1}}
 	r2 := []*consensus.Block{&consensus.Block{Round: 1}}
-	myself := &mocks.Peer{}
-	p := NewPeer(conn, myself)
 	dst.On("Txn", mock.Anything).Return(nil)
 	dst.On("SysTxn", mock.Anything).Return(nil)
 	dst.On("RandBeaconSigShare", mock.Anything).Return(nil)
