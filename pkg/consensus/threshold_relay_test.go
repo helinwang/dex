@@ -99,8 +99,8 @@ func setupNodes() []*Node {
 	nodes := make([]*Node, numNode)
 
 	cfg := Config{
-		BlockTime:      50 * time.Millisecond,
-		NtWaitTime:     70 * time.Millisecond,
+		BlockTime:      100 * time.Millisecond,
+		NtWaitTime:     120 * time.Millisecond,
 		GroupSize:      groupSize,
 		GroupThreshold: threshold,
 	}
@@ -110,9 +110,9 @@ func setupNodes() []*Node {
 		networking := NewNetworking(net, fmt.Sprintf("node-%d", (i+len(nodes)-1)%len(nodes)), chain)
 		nodes[i] = NewNode(chain, nodeSKs[i], networking, cfg)
 
-		peers := make(map[string]bool)
-		for i := range nodes {
-			peers[fmt.Sprintf("node-%d", i)] = true
+		peers := make([]string, len(nodes))
+		for i := range peers {
+			peers[i] = fmt.Sprintf("node-%d", i)
 		}
 
 		nodes[i].net.mu.Lock()
@@ -144,7 +144,7 @@ func TestThresholdRelay(t *testing.T) {
 		n.StartRound(1)
 	}
 
-	time.Sleep(250 * time.Millisecond)
+	time.Sleep(400 * time.Millisecond)
 	for _, n := range nodes {
 		round := n.chain.Round()
 		assert.Equal(t, 4, round)
@@ -156,41 +156,47 @@ func TestThresholdRelay(t *testing.T) {
 
 // LocalNet is a local network implementation
 type LocalNet struct {
-	mu    sync.Mutex
-	peers map[string]Peer
+	mu              sync.Mutex
+	addrToOnConnect map[string]func(p Peer)
+	addrToPeer      map[string]Peer
 }
 
 // Start starts the network for the given address.
-func (n *LocalNet) Start(addr string, p Peer) error {
+func (n *LocalNet) Start(addr string, onPeerConnect func(p Peer), p Peer) error {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 
-	if n.peers == nil {
-		n.peers = make(map[string]Peer)
+	if n.addrToOnConnect == nil {
+		n.addrToOnConnect = make(map[string]func(p Peer))
+		n.addrToPeer = make(map[string]Peer)
 	}
 
-	n.peers[addr] = p
+	n.addrToOnConnect[addr] = onPeerConnect
+	n.addrToPeer[addr] = p
 	return nil
 }
 
 // Connect connects to the peer.
-func (n *LocalNet) Connect(addr string) (Peer, error) {
+func (n *LocalNet) Connect(addr string, myself Peer) (Peer, error) {
 	n.mu.Lock()
 
-	if n.peers == nil {
+	if n.addrToOnConnect == nil {
 		time.Sleep(10 * time.Millisecond)
 		n.mu.Unlock()
-		return n.Connect(addr)
+		return n.Connect(addr, myself)
 	}
 
-	p, ok := n.peers[addr]
+	f, ok := n.addrToOnConnect[addr]
 	if !ok {
 		time.Sleep(10 * time.Millisecond)
 		n.mu.Unlock()
-		return n.Connect(addr)
+		return n.Connect(addr, myself)
 	}
 
+	p := n.addrToPeer[addr]
 	n.mu.Unlock()
+
+	go f(myself)
 	return p, nil
 }
 

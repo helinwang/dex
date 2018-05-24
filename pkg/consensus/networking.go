@@ -2,7 +2,7 @@ package consensus
 
 import (
 	"context"
-	"errors"
+	"fmt"
 	"sync"
 
 	log "github.com/helinwang/log15"
@@ -17,8 +17,8 @@ type Peer interface {
 	Block(b *Block) error
 	BlockProposal(b *BlockProposal) error
 	NotarizationShare(n *NtShare) error
-	Inventory(sender string, items []ItemID) error
-	GetData(requester string, items []ItemID) error
+	Inventory(sender Peer, items []ItemID) error
+	GetData(requester Peer, items []ItemID) error
 	Peers() ([]string, error)
 	UpdatePeers([]string) error
 	Ping(ctx context.Context) error
@@ -52,32 +52,58 @@ type ItemID struct {
 
 // Network is used to connect to the peers.
 type Network interface {
-	Start(addr string, myself Peer) error
-	Connect(addr string) (Peer, error)
+	Start(addr string, onPeerConnect func(p Peer), myself Peer) error
+	Connect(addr string, myself Peer) (Peer, error)
 }
 
 // Networking is the component that enables the node to talk to its
 // peers over the network.
 type Networking struct {
-	net   Network
-	addr  string
-	v     *validator
-	chain *Chain
+	net    Network
+	myself Peer
+	addr   string
+	v      *validator
+	chain  *Chain
 
 	mu        sync.Mutex
-	peers     map[string]Peer
-	peerAddrs map[string]bool
+	peers     []Peer
+	peerAddrs []string
 }
 
 // NewNetworking creates a new networking component.
 func NewNetworking(net Network, addr string, chain *Chain) *Networking {
-	return &Networking{
-		addr:      addr,
-		net:       net,
-		v:         newValidator(chain),
-		peers:     make(map[string]Peer),
-		peerAddrs: make(map[string]bool),
-		chain:     chain,
+	r := &receiver{addr: addr}
+	n := &Networking{
+		myself: r,
+		addr:   addr,
+		net:    net,
+		v:      newValidator(chain),
+		chain:  chain,
+	}
+	r.n = n
+	return n
+}
+
+func (n *Networking) onPeerConnect(p Peer) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+
+	n.peers = append(n.peers, p)
+}
+
+// must be called with mutex held
+func (n *Networking) addAddrs(addrs []string) {
+	m := make(map[string]bool)
+	for _, a := range n.peerAddrs {
+		m[a] = true
+	}
+	for _, addr := range addrs {
+		if m[addr] {
+			continue
+		}
+
+		// TODO: check peers is online
+		n.peerAddrs = append(n.peerAddrs, addr)
 	}
 }
 
@@ -85,12 +111,12 @@ func NewNetworking(net Network, addr string, chain *Chain) *Networking {
 // TODO: fix lint
 // nolint: gocyclo
 func (n *Networking) Start(seedAddr string) error {
-	err := n.net.Start(n.addr, &receiver{addr: n.addr, n: n})
+	err := n.net.Start(n.addr, n.onPeerConnect, n.myself)
 	if err != nil {
 		return err
 	}
 
-	p, err := n.net.Connect(seedAddr)
+	p, err := n.net.Connect(seedAddr, n.myself)
 	if err != nil {
 		return err
 	}
@@ -101,18 +127,16 @@ func (n *Networking) Start(seedAddr string) error {
 	}
 
 	n.mu.Lock()
-	n.peers[seedAddr] = p
-	for _, addr := range peerAddrs {
-		// TODO: check peers is online
-		n.peerAddrs[addr] = true
-	}
+	n.addAddrs(peerAddrs)
+	n.peers = append(n.peers, p)
 
 	// TODO: limit the number of peers connected to
-	for addr := range n.peerAddrs {
-		_, err = n.findOrConnect(addr)
+	for _, addr := range n.peerAddrs {
+		p, err := n.net.Connect(addr, n.myself)
 		if err != nil {
 			log.Error("connect to peer", "err", err, "addr", addr)
 		}
+		n.peers = append(n.peers, p)
 	}
 	n.mu.Unlock()
 
@@ -132,9 +156,9 @@ func (n *Networking) Start(seedAddr string) error {
 	}
 
 	for _, b := range bs {
-		weight, valid := n.v.ValidateBlock(b)
-		if !valid {
-			return errors.New("invalid block when syncing")
+		weight, err := n.v.ValidateBlock(b)
+		if err != nil {
+			return fmt.Errorf("invalid block when syncing: %v", err)
 		}
 		err = n.chain.addBlock(b, weight)
 		if err != nil {
@@ -156,7 +180,7 @@ func (n *Networking) BroadcastItem(item ItemID) {
 		p := p
 
 		go func() {
-			err := p.Inventory(n.addr, []ItemID{item})
+			err := p.Inventory(n.myself, []ItemID{item})
 			if err != nil {
 				log.Error("send inventory error", "err", err)
 				n.removePeer(p)
@@ -175,12 +199,13 @@ func (n *Networking) recvSysTxn(t *SysTxn) {
 }
 
 func (n *Networking) recvRandBeaconSig(r *RandBeaconSig) {
-	if !n.v.ValidateRandBeaconSig(r) {
-		log.Debug("ValidateRandBeaconSig failed", "round", r.Round)
+	err := n.v.ValidateRandBeaconSig(r)
+	if err != nil {
+		log.Warn("ValidateRandBeaconSig failed", "err", err)
 		return
 	}
 
-	err := n.chain.RandomBeacon.AddRandBeaconSig(r)
+	err = n.chain.RandomBeacon.AddRandBeaconSig(r)
 	if err != nil {
 		log.Warn("add random beacon sig failed", "err", err)
 		return
@@ -190,10 +215,10 @@ func (n *Networking) recvRandBeaconSig(r *RandBeaconSig) {
 }
 
 func (n *Networking) recvRandBeaconSigShare(r *RandBeaconSigShare) {
-	groupID, valid := n.v.ValidateRandBeaconSigShare(r)
+	groupID, err := n.v.ValidateRandBeaconSigShare(r)
 
-	if !valid {
-		log.Debug("ValidateRandBeaconSigShare failed", "owner", r.Owner, "round", r.Round)
+	if err != nil {
+		log.Warn("ValidateRandBeaconSigShare failed", "err", err)
 		return
 	}
 
@@ -212,17 +237,17 @@ func (n *Networking) recvRandBeaconSigShare(r *RandBeaconSigShare) {
 }
 
 func (n *Networking) recvBlock(b *Block) {
-	weight, valid := n.v.ValidateBlock(b)
+	weight, err := n.v.ValidateBlock(b)
 
-	if !valid {
-		log.Warn("ValidateBlock failed")
+	if err != nil {
+		log.Warn("ValidateBlock failed", "err", err)
 		return
 	}
 
 	// TODO: make sure received all block's parents and block
 	// proposal before processing this block.
 
-	err := n.chain.addBlock(b, weight)
+	err = n.chain.addBlock(b, weight)
 	if err == errChainDataAlreadyExists {
 		return
 	}
@@ -236,13 +261,13 @@ func (n *Networking) recvBlock(b *Block) {
 }
 
 func (n *Networking) recvBlockProposal(bp *BlockProposal) {
-	weight, valid := n.v.ValidateBlockProposal(bp)
-	if !valid {
-		log.Warn("ValidateBlockProposal failed")
+	weight, err := n.v.ValidateBlockProposal(bp)
+	if err != nil {
+		log.Warn("ValidateBlockProposal failed", "err", err)
 		return
 	}
 
-	err := n.chain.addBP(bp, weight)
+	err = n.chain.addBP(bp, weight)
 	if err != nil {
 		log.Warn("add block proposal failed", "err", err)
 		return
@@ -252,9 +277,9 @@ func (n *Networking) recvBlockProposal(bp *BlockProposal) {
 }
 
 func (n *Networking) recvNtShare(s *NtShare) {
-	groupID, valid := n.v.ValidateNtShare(s)
-	if !valid {
-		log.Warn("ValidateNtShare failed")
+	groupID, err := n.v.ValidateNtShare(s)
+	if err != nil {
+		log.Warn("ValidateNtShare failed", "err", err)
 		return
 	}
 
@@ -282,40 +307,19 @@ func (n *Networking) RemovePeer(p Peer) {
 }
 
 func (n *Networking) removePeer(p Peer) {
-	for k, v := range n.peers {
+	for i, v := range n.peers {
 		if v == p {
-			delete(n.peers, k)
+			n.peers = append(n.peers[:i], n.peers[i+1:]...)
 			return
 		}
 	}
 }
 
-// must be called with mutex held.
-func (n *Networking) findOrConnect(addr string) (Peer, error) {
-	if p, ok := n.peers[addr]; ok {
-		return p, nil
-	}
-
-	p, err := n.net.Connect(addr)
-	if err != nil {
-		return nil, err
-	}
-
-	n.peers[addr] = p
-	return p, nil
-}
-
 // TODO: fix lint
 // nolint: gocyclo
-func (n *Networking) recvInventory(sender string, ids []ItemID) {
+func (n *Networking) recvInventory(p Peer, ids []ItemID) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
-
-	p, err := n.findOrConnect(sender)
-	if err != nil {
-		log.Error("connect to inventory sender failed", "err", err)
-		return
-	}
 
 	round := n.chain.Round()
 	for _, id := range ids {
@@ -327,7 +331,7 @@ func (n *Networking) recvInventory(sender string, ids []ItemID) {
 		case BlockItem:
 			// TODO: improve logic of what to get, e.g., using id.Ref
 			if _, ok := n.chain.Block(id.Hash); !ok {
-				err := p.GetData(n.addr, []ItemID{id})
+				err := p.GetData(n.myself, []ItemID{id})
 				if err != nil {
 					log.Error("get data from peer error", "err", err)
 					n.removePeer(p)
@@ -343,7 +347,7 @@ func (n *Networking) recvInventory(sender string, ids []ItemID) {
 				continue
 			}
 
-			err := p.GetData(n.addr, []ItemID{id})
+			err := p.GetData(n.myself, []ItemID{id})
 			if err != nil {
 				log.Error("get data from peer error", "err", err)
 				n.removePeer(p)
@@ -362,7 +366,7 @@ func (n *Networking) recvInventory(sender string, ids []ItemID) {
 				continue
 			}
 
-			err := p.GetData(n.addr, []ItemID{id})
+			err := p.GetData(n.myself, []ItemID{id})
 			if err != nil {
 				log.Error("get data from peer error", "err", err)
 				n.removePeer(p)
@@ -377,7 +381,7 @@ func (n *Networking) recvInventory(sender string, ids []ItemID) {
 			if share != nil {
 				continue
 			}
-			err := p.GetData(n.addr, []ItemID{id})
+			err := p.GetData(n.myself, []ItemID{id})
 			if err != nil {
 				log.Error("get data from peer error", "err", err)
 				n.removePeer(p)
@@ -388,7 +392,7 @@ func (n *Networking) recvInventory(sender string, ids []ItemID) {
 				continue
 			}
 
-			err := p.GetData(n.addr, []ItemID{id})
+			err := p.GetData(n.myself, []ItemID{id})
 			if err != nil {
 				log.Error("get data from peer error", "err", err)
 				n.removePeer(p)
@@ -417,13 +421,7 @@ func (n *Networking) getSyncData(start int) ([]*RandBeaconSig, []*Block) {
 
 // TODO: fix lint
 // nolint: gocyclo
-func (n *Networking) serveData(requester string, ids []ItemID) {
-	p, err := n.findOrConnect(requester)
-	if err != nil {
-		log.Error("can not connect to the peer that asked for data", "err", err)
-		return
-	}
-
+func (n *Networking) serveData(p Peer, ids []ItemID) {
 	for _, id := range ids {
 		switch id.T {
 		case TxnItem:
@@ -473,7 +471,7 @@ func (n *Networking) serveData(requester string, ids []ItemID) {
 			}
 		case RandBeaconItem:
 			if rbr := n.chain.RandomBeacon.Depth(); id.ItemRound >= rbr {
-				log.Warn("peer requested random beacon of too high round, need to be smaller than random beacon round\n", "peer", requester, "requested round", id.ItemRound, "random beacon round", rbr)
+				log.Warn("peer requested random beacon of too high round, need to be smaller than random beacon round\n", "requested round", id.ItemRound, "random beacon round", rbr)
 				continue
 			}
 
@@ -491,14 +489,9 @@ func (n *Networking) peerList() []string {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 
-	list := make([]string, 0, len(n.peerAddrs))
-	for addr := range n.peerAddrs {
-		list = append(list, addr)
-	}
-
 	// TODO: periodically verify the addrs in peerAddrs are valid
 	// by using Ping.
-	return list
+	return n.peerAddrs
 }
 
 func (n *Networking) updatePeers([]string) {
@@ -554,12 +547,12 @@ func (r *receiver) NotarizationShare(n *NtShare) error {
 	return nil
 }
 
-func (r *receiver) Inventory(sender string, ids []ItemID) error {
+func (r *receiver) Inventory(sender Peer, ids []ItemID) error {
 	r.n.recvInventory(sender, ids)
 	return nil
 }
 
-func (r *receiver) GetData(requester string, ids []ItemID) error {
+func (r *receiver) GetData(requester Peer, ids []ItemID) error {
 	r.n.serveData(requester, ids)
 	return nil
 }
