@@ -1,4 +1,4 @@
-package net
+package network
 
 import (
 	"bytes"
@@ -52,7 +52,8 @@ type packet struct {
 type Peer struct {
 	myself     consensus.Peer
 	conn       net.Conn
-	syncRetCh  chan []byte
+	enc        *gob.Encoder
+	syncRetCh  chan syncRetData
 	pingRetCh  chan struct{}
 	peersRetCh chan []string
 
@@ -62,11 +63,12 @@ type Peer struct {
 
 // NewPeer creates a peer.
 func NewPeer(conn net.Conn, myself consensus.Peer) *Peer {
-	syncRetCh := make(chan []byte, 10)
+	syncRetCh := make(chan syncRetData, 10)
 	pingRetCh := make(chan struct{}, 10)
 	peersRetCh := make(chan []string, 10)
 
 	p := &Peer{
+		enc:        gob.NewEncoder(conn),
 		conn:       conn,
 		myself:     myself,
 		syncRetCh:  syncRetCh,
@@ -76,6 +78,11 @@ func NewPeer(conn net.Conn, myself consensus.Peer) *Peer {
 
 	go p.read()
 	return p
+}
+
+type syncRetData struct {
+	A []*consensus.RandBeaconSig
+	B []*consensus.Block
 }
 
 func (p *Peer) onErr(err error) {
@@ -104,7 +111,14 @@ func (p *Peer) read() {
 		dataDec := gob.NewDecoder(bytes.NewReader(pac.Data))
 		switch pac.T {
 		case txnArg:
-			err := p.myself.Txn(pac.Data)
+			var d []byte
+			err := dataDec.Decode(&d)
+			if err != nil {
+				p.onErr(err)
+				return
+			}
+
+			err = p.myself.Txn(d)
 			if err != nil {
 				log.Error("Peer methods are not supposed to return error")
 				continue
@@ -244,7 +258,6 @@ func (p *Peer) read() {
 				p.onErr(err)
 				return
 			}
-
 		case updatePeersArg:
 			var peers []string
 			err := dataDec.Decode(&peers)
@@ -259,6 +272,11 @@ func (p *Peer) read() {
 				continue
 			}
 		case pingArg:
+			err = p.myself.Ping(context.Background())
+			if err != nil {
+				log.Error("Peer methods are not supposed to return error")
+				continue
+			}
 			err = p.write(packet{T: pingRet})
 			if err != nil {
 				log.Error("write ping resp error", "err", err)
@@ -278,19 +296,13 @@ func (p *Peer) read() {
 				continue
 			}
 
-			da, err := gobEncode(a)
+			d, err := gobEncode(a, b)
 			if err != nil {
 				p.onErr(err)
 				return
 			}
 
-			db, err := gobEncode(b)
-			if err != nil {
-				p.onErr(err)
-				return
-			}
-
-			err = p.write(packet{T: peersRet, Data: append(da, db...)})
+			err = p.write(packet{T: syncRet, Data: d})
 			if err != nil {
 				p.onErr(err)
 				return
@@ -300,15 +312,27 @@ func (p *Peer) read() {
 			p.pingRetCh <- struct{}{}
 		case peersRet:
 			var r []string
-			dec := gob.NewDecoder(bytes.NewReader(pac.Data))
-			err := dec.Decode(&r)
+			err := dataDec.Decode(&r)
 			if err != nil {
 				p.onErr(err)
 				return
 			}
 			p.peersRetCh <- r
 		case syncRet:
-			p.syncRetCh <- pac.Data
+			var a []*consensus.RandBeaconSig
+			var b []*consensus.Block
+			err = dataDec.Decode(&a)
+			if err != nil {
+				p.onErr(err)
+				return
+			}
+
+			err = dataDec.Decode(&b)
+			if err != nil {
+				p.onErr(err)
+				return
+			}
+			p.syncRetCh <- syncRetData{A: a, B: b}
 		default:
 			p.onErr(fmt.Errorf("unrecognized package type: %d", pac.T))
 			return
@@ -316,27 +340,28 @@ func (p *Peer) read() {
 	}
 }
 
-func gobEncode(v interface{}) ([]byte, error) {
+func gobEncode(vs ...interface{}) ([]byte, error) {
 	var buf bytes.Buffer
 	enc := gob.NewEncoder(&buf)
-	err := enc.Encode(v)
-	if err != nil {
-		return nil, err
+
+	for _, v := range vs {
+		err := enc.Encode(v)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return buf.Bytes(), nil
 }
 
 func (p *Peer) write(v interface{}) error {
-	b, err := gobEncode(v)
-	if err != nil {
-		return err
-	}
-
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	_, err = p.conn.Write(b)
+	// must use the same encoder instance, rather than create a
+	// new encoder each time. Otherwise decode would get eror
+	// "extra data in buffer".
+	err := p.enc.Encode(v)
 	if err != nil {
 		return err
 	}
@@ -412,22 +437,7 @@ func (p *Peer) Sync(start int) ([]*consensus.RandBeaconSig, []*consensus.Block, 
 	}
 
 	r := <-p.syncRetCh
-	var a []*consensus.RandBeaconSig
-	var b []*consensus.Block
-	dec := gob.NewDecoder(bytes.NewReader(r))
-	err = dec.Decode(&a)
-	if err != nil {
-		p.onErr(err)
-		return nil, nil, err
-	}
-
-	err = dec.Decode(&b)
-	if err != nil {
-		p.onErr(err)
-		return nil, nil, err
-	}
-
-	return a, b, nil
+	return r.A, r.B, nil
 }
 
 func (p *Peer) UpdatePeers(peers []string) error {
@@ -467,7 +477,10 @@ func (p *Peer) Txn(txn []byte) error {
 	var err error
 	var pac packet
 	pac.T = txnArg
-	pac.Data = txn
+	pac.Data, err = gobEncode(txn)
+	if err != nil {
+		return err
+	}
 
 	err = p.write(pac)
 	if err != nil {
