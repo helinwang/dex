@@ -28,6 +28,13 @@ type Node struct {
 	cancelNotarize func()
 }
 
+// NodeCredentials stores the credentials of the node.
+type NodeCredentials struct {
+	SK          []byte
+	Groups      []int
+	GroupShares [][]byte
+}
+
 type membership struct {
 	skShare bls.SecretKey
 	groupID int

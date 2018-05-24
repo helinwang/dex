@@ -109,7 +109,6 @@ func (s *SysState) applyRegGroup(t RegGroupTxn) error {
 
 		addr := SHA3(pk.Serialize()).Addr()
 		g.Members = append(g.Members, addr)
-		g.MemberPKs = append(g.MemberPKs, pk)
 	}
 
 	// TODO: parse vvec

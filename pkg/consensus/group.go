@@ -10,10 +10,9 @@ import (
 // - random beacon committe
 // - notarization committe
 type Group struct {
-	Members     []Addr
-	MemberPKs   []bls.PublicKey
-	MemberVVecs []bls.SecretKey
-	PK          bls.PublicKey
+	Members    []Addr
+	MemberVVec []bls.PublicKey
+	PK         bls.PublicKey
 }
 
 // NewGroup creates a new group.

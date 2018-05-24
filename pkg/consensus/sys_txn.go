@@ -38,10 +38,10 @@ type ReadyJoinGroupTxn struct {
 // public key and the secret key share of each member. If the DKG
 // succeeds, a RegGroupTxn transaction will be submitted.
 type RegGroupTxn struct {
-	ID          int
-	PK          []byte
-	MemberIDs   []int
-	MemberVVecs [][]byte
+	ID         int
+	PK         []byte
+	MemberIDs  []int
+	MemberVVec [][]byte
 }
 
 // ListGroupsTxn lists the groups in the current epoch.
