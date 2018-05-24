@@ -73,7 +73,7 @@ func (b *RandBeaconSig) Decode(d []byte) error {
 
 // Hash returns the hash of the random beacon signature.
 func (b *RandBeaconSig) Hash() Hash {
-	return hash(b.Encode(true))
+	return SHA3(b.Encode(true))
 }
 
 // RandBeaconSigShare is one share of the random beacon signature.
@@ -112,7 +112,7 @@ func (b *RandBeaconSigShare) Decode(d []byte) error {
 
 // Hash returns the hash of the random beacon signature share.
 func (b *RandBeaconSigShare) Hash() Hash {
-	return hash(b.Encode(true))
+	return SHA3(b.Encode(true))
 }
 
 // NtShare is one share of the notarization.
@@ -158,7 +158,7 @@ func (n *NtShare) Decode(d []byte) error {
 
 // Hash returns the hash of the notarization share.
 func (n *NtShare) Hash() Hash {
-	return hash(n.Encode(true))
+	return SHA3(n.Encode(true))
 }
 
 // BlockProposal is a block proposal.
@@ -200,7 +200,7 @@ func (b *BlockProposal) Decode(d []byte) error {
 
 // Hash returns the hash of the block proposal.
 func (b *BlockProposal) Hash() Hash {
-	return hash(b.Encode(true))
+	return SHA3(b.Encode(true))
 }
 
 // Block is generated from a block proposal collaboratively by the
@@ -243,5 +243,5 @@ func (b *Block) Decode(d []byte) error {
 
 // Hash returns the hash of the block.
 func (b *Block) Hash() Hash {
-	return hash(b.Encode(true))
+	return SHA3(b.Encode(true))
 }

@@ -87,7 +87,7 @@ func (s *SysState) applyReadyJoinGroup(t ReadyJoinGroupTxn) error {
 		return err
 	}
 
-	addr := hash(pk.Serialize()).Addr()
+	addr := SHA3(pk.Serialize()).Addr()
 	s.nodeIDToPK[t.ID] = pk
 	s.addrToPK[addr] = pk
 	return nil
@@ -107,7 +107,7 @@ func (s *SysState) applyRegGroup(t RegGroupTxn) error {
 			return errors.New("node not found")
 		}
 
-		addr := hash(pk.Serialize()).Addr()
+		addr := SHA3(pk.Serialize()).Addr()
 		g.Members = append(g.Members, addr)
 		g.MemberPKs = append(g.MemberPKs, pk)
 	}

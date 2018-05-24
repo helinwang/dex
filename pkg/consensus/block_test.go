@@ -7,9 +7,9 @@ import (
 )
 
 func TestAddrID(t *testing.T) {
-	addr := hash([]byte{1}).Addr()
+	addr := SHA3([]byte{1}).Addr()
 	assert.Equal(t, addr.ID(), addr.ID())
-	addr1 := hash([]byte{2}).Addr()
+	addr1 := SHA3([]byte{2}).Addr()
 	assert.NotEqual(t, addr.ID(), addr1.ID())
 }
 

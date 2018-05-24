@@ -31,9 +31,9 @@ func NewBlockProposer(sk bls.SecretKey, b *Block, s State, sys *SysState) *Block
 // the context is done.
 func (b *BlockProposer) CollectTxn(ctx context.Context, txCh chan []byte, sysTxCh chan SysTxn, pendingTx chan []byte) *BlockProposal {
 	var bp BlockProposal
-	bp.PrevBlock = hash(b.Block.Encode(true))
+	bp.PrevBlock = SHA3(b.Block.Encode(true))
 	bp.Round = b.Block.Round + 1
-	bp.Owner = hash(b.sk.GetPublicKey().Serialize()).Addr()
+	bp.Owner = SHA3(b.sk.GetPublicKey().Serialize()).Addr()
 	transition := b.State.Transition()
 	sysTransition := b.SysState.Transition()
 	for {

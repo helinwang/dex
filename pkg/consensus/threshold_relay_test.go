@@ -39,7 +39,7 @@ func setupNodes() []*Node {
 		threshold = 3
 	)
 
-	rand := Rand(hash([]byte("seed")))
+	rand := Rand(SHA3([]byte("seed")))
 	nodeSeed := rand.Derive([]byte("node"))
 
 	genesis := &Block{}
@@ -68,7 +68,7 @@ func setupNodes() []*Node {
 		idVec := make([]bls.ID, groupSize)
 		for i := range idVec {
 			pk := nodeSKs[perm[i]].GetPublicKey()
-			idVec[i] = hash(pk.Serialize()).Addr().ID()
+			idVec[i] = SHA3(pk.Serialize()).Addr().ID()
 		}
 
 		var groupPK bls.PublicKey
@@ -204,7 +204,7 @@ type emptyState struct {
 }
 
 func (e *emptyState) Hash() Hash {
-	return hash([]byte("abc"))
+	return SHA3([]byte("abc"))
 }
 
 func (e *emptyState) Transition() Transition {

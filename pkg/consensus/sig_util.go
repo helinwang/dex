@@ -63,7 +63,7 @@ func signRandBeaconShare(sk, keyShare bls.SecretKey, round int, lastSigHash Hash
 	msg := randBeaconSigMsg(round, lastSigHash)
 	share := keyShare.Sign(string(msg)).Serialize()
 	s := &RandBeaconSigShare{
-		Owner:       hash(sk.GetPublicKey().Serialize()).Addr(),
+		Owner:       SHA3(sk.GetPublicKey().Serialize()).Addr(),
 		Round:       round,
 		LastSigHash: lastSigHash,
 		Share:       share,

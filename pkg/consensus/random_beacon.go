@@ -78,7 +78,7 @@ func (r *RandomBeacon) AddRandBeaconSigShare(s *RandBeaconSigShare, groupID int)
 		return nil, fmt.Errorf("unexpected RandBeaconSigShare.Round: %d, expected: %d", s.Round, r.depth())
 	}
 
-	if h := hash(r.sigHistory[s.Round-1].Sig); h != s.LastSigHash {
+	if h := SHA3(r.sigHistory[s.Round-1].Sig); h != s.LastSigHash {
 		return nil, fmt.Errorf("unexpected RandBeaconSigShare.LastSigHash: %x, expected: %x", s.LastSigHash, h)
 	}
 
@@ -114,7 +114,7 @@ func (r *RandomBeacon) AddRandBeaconSig(s *RandBeaconSig) error {
 		return fmt.Errorf("unexpected RandBeaconSig round: %d, expected: %d", s.Round, r.depth())
 	}
 
-	r.deriveRand(hash(s.Sig))
+	r.deriveRand(SHA3(s.Sig))
 	r.curRoundShares = make(map[Hash]*RandBeaconSigShare)
 	r.sigHistory = append(r.sigHistory, s)
 	return nil

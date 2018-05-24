@@ -44,7 +44,7 @@ type Config struct {
 // NewNode creates a new node.
 func NewNode(chain *Chain, sk bls.SecretKey, net *Networking, cfg Config) *Node {
 	pk := sk.GetPublicKey()
-	pkHash := hash(pk.Serialize())
+	pkHash := SHA3(pk.Serialize())
 	addr := pkHash.Addr()
 	n := &Node{
 		addr:  addr,
@@ -91,7 +91,7 @@ func (n *Node) StartRound(round int) {
 					return
 				}
 
-				lastSigHash := hash(history[idx].Sig)
+				lastSigHash := SHA3(history[idx].Sig)
 				s := signRandBeaconShare(n.sk, keyShare, round, lastSigHash)
 				n.net.recvRandBeaconSigShare(s)
 			}()

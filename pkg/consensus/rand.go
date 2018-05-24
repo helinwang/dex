@@ -14,7 +14,7 @@ type Rand Hash
 func (r Rand) Derive(x ...[]byte) Rand {
 	rand := r
 	for _, e := range x {
-		rand = Rand(hash(rand[:], e))
+		rand = Rand(SHA3(rand[:], e))
 	}
 	return rand
 }

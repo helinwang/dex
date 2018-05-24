@@ -11,7 +11,8 @@ const (
 // Hash is the hash of a piece of data.
 type Hash [hashBytes]byte
 
-func hash(b ...[]byte) Hash {
+// SHA3 hashs the given slices with SHA3.
+func SHA3(b ...[]byte) Hash {
 	d := sha3.New256()
 	for _, e := range b {
 		_, err := d.Write(e)
