@@ -1,7 +1,10 @@
 package consensus
 
 import (
+	"bytes"
+	"encoding/gob"
 	"fmt"
+	"io/ioutil"
 	"sync"
 	"testing"
 	"time"
@@ -31,72 +34,41 @@ func makeShares(t int, idVec []bls.ID, rand Rand) (bls.PublicKey, []bls.SecretKe
 	return *sk.GetPublicKey(), skShares, rand
 }
 
+func decodeFromFile(path string, v interface{}) {
+	b, err := ioutil.ReadFile(path)
+	if err != nil {
+		panic(err)
+	}
+
+	dec := gob.NewDecoder(bytes.NewReader(b))
+	err = dec.Decode(v)
+	if err != nil {
+		panic(err)
+	}
+}
+
 func setupNodes() []*Node {
 	const (
-		numNode   = 10
-		numGroup  = 20
 		groupSize = 5
 		threshold = 3
 	)
 
-	rand := Rand(SHA3([]byte("seed")))
-	nodeSeed := rand.Derive([]byte("node"))
-
-	genesis := &Block{}
-	nodeSKs := make([]bls.SecretKey, numNode)
-	for i := range nodeSKs {
-		nodeSKs[i] = rand.SK()
-		rand = rand.Derive(rand[:])
-		txn := ReadyJoinGroupTxn{
-			ID: i,
-			PK: nodeSKs[i].GetPublicKey().Serialize(),
-		}
-		genesis.SysTxns = append(genesis.SysTxns, SysTxn{
-			Type: ReadyJoinGroup,
-			Data: gobEncode(txn),
-		})
+	var genesis Block
+	decodeFromFile("test_data/credentials/genesis.gob", &genesis)
+	files, err := ioutil.ReadDir("test_data/credentials/nodes")
+	if err != nil {
+		panic(err)
 	}
 
-	gs := make([]*Group, numGroup)
-	groupIDs := make([]int, numGroup)
-	sharesVec := make([][]bls.SecretKey, numGroup)
-	perms := make([][]int, numGroup)
-	for i := range groupIDs {
-		perm := rand.Perm(groupSize, numNode)
-		perms[i] = perm
-		rand = rand.Derive(rand[:])
-		idVec := make([]bls.ID, groupSize)
-		for i := range idVec {
-			pk := nodeSKs[perm[i]].GetPublicKey()
-			idVec[i] = SHA3(pk.Serialize()).Addr().ID()
-		}
-
-		var groupPK bls.PublicKey
-		groupPK, sharesVec[i], rand = makeShares(threshold, idVec, rand)
-		gs[i] = NewGroup(groupPK)
-		txn := RegGroupTxn{
-			ID:        i,
-			PK:        groupPK.Serialize(),
-			MemberIDs: perm,
-		}
-		genesis.SysTxns = append(genesis.SysTxns, SysTxn{
-			Type: RegGroup,
-			Data: gobEncode(txn),
-		})
-		groupIDs[i] = i
+	var nodeCredentials []NodeCredentials
+	for _, f := range files {
+		var n NodeCredentials
+		decodeFromFile("test_data/credentials/nodes/"+f.Name(), &n)
+		nodeCredentials = append(nodeCredentials, n)
 	}
-
-	l := ListGroupsTxn{
-		GroupIDs: groupIDs,
-	}
-
-	genesis.SysTxns = append(genesis.SysTxns, SysTxn{
-		Type: ListGroups,
-		Data: gobEncode(l),
-	})
 
 	net := &LocalNet{}
-	nodes := make([]*Node, numNode)
+	nodes := make([]*Node, len(nodeCredentials))
 
 	cfg := Config{
 		BlockTime:      100 * time.Millisecond,
@@ -105,10 +77,27 @@ func setupNodes() []*Node {
 		GroupThreshold: threshold,
 	}
 
+	seed := Rand(SHA3([]byte("dex")))
 	for i := range nodes {
-		chain := NewChain(genesis, &emptyState{}, nodeSeed, cfg)
+		chain := NewChain(&genesis, &emptyState{}, seed, cfg)
 		networking := NewNetworking(net, fmt.Sprintf("node-%d", (i+len(nodes)-1)%len(nodes)), chain)
-		nodes[i] = NewNode(chain, nodeSKs[i], networking, cfg)
+		var sk bls.SecretKey
+		err = sk.SetLittleEndian(nodeCredentials[i].SK)
+		if err != nil {
+			panic(err)
+		}
+
+		nodes[i] = NewNode(chain, sk, networking, cfg)
+		for j := range nodeCredentials[i].Groups {
+			var share bls.SecretKey
+			err = share.SetLittleEndian(nodeCredentials[i].GroupShares[j])
+			if err != nil {
+				panic(err)
+			}
+
+			m := membership{groupID: nodeCredentials[i].Groups[j], skShare: share}
+			nodes[i].memberships = append(nodes[i].memberships, m)
+		}
 
 		peers := make([]string, len(nodes))
 		for i := range peers {
@@ -127,19 +116,14 @@ func setupNodes() []*Node {
 	}
 
 	time.Sleep(30 * time.Millisecond)
-
-	for i, p := range perms {
-		for j, nodeIdx := range p {
-			m := membership{groupID: i, skShare: sharesVec[i][j]}
-			nodes[nodeIdx].memberships = append(nodes[nodeIdx].memberships, m)
-		}
-	}
-
 	return nodes
 }
 
 func TestThresholdRelay(t *testing.T) {
 	nodes := setupNodes()
+	assert.Equal(t, 30, len(nodes))
+	assert.Equal(t, 20, len(nodes[0].chain.RandomBeacon.groups))
+
 	for _, n := range nodes {
 		n.StartRound(1)
 	}

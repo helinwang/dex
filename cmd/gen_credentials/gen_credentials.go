@@ -53,7 +53,7 @@ func main() {
 	var seed string
 
 	flag.IntVar(&numNode, "N", 30, "number of nodes registered in the genesis block")
-	flag.IntVar(&numGroup, "g", 10, "number of groups registered in the genesis block")
+	flag.IntVar(&numGroup, "g", 20, "number of groups registered in the genesis block")
 	flag.IntVar(&groupSize, "n", 5, "group size")
 	flag.IntVar(&threshold, "t", 3, "group threshold size")
 	flag.StringVar(&outDir, "d", "./credentials", "output directoy name")
@@ -132,14 +132,17 @@ func main() {
 		Data: gobEncode(l),
 	})
 
-	f, err := os.Create(path.Join(outDir, "sys_txns.gob"))
+	genesis := &consensus.Block{
+		SysTxns: sysTxns,
+	}
+	f, err := os.Create(path.Join(outDir, "genesis.gob"))
 	if err != nil {
 		panic(err)
 	}
 	defer f.Close()
 
 	enc := gob.NewEncoder(f)
-	err = enc.Encode(sysTxns)
+	err = enc.Encode(genesis)
 	if err != nil {
 		panic(err)
 	}
@@ -151,8 +154,15 @@ func main() {
 		}
 
 		enc := gob.NewEncoder(f)
-		enc.Encode(n)
-		f.Close()
+		err = enc.Encode(n)
+		if err != nil {
+			panic(err)
+		}
+
+		err = f.Close()
+		if err != nil {
+			panic(err)
+		}
 	}
 }
 
