@@ -207,6 +207,7 @@ func (b *BlockProposal) Hash() Hash {
 // notarization committee, it is notarized by the notarization
 // signature.
 type Block struct {
+	Owner         Addr
 	Round         int
 	StateRoot     Hash
 	BlockProposal Hash

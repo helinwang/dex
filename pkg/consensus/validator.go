@@ -30,12 +30,11 @@ func (v *validator) ValidateBlock(b *Block) (float64, bool) {
 	}
 
 	// TODO: why need to return weight?
-
 	msg := string(b.Encode(false))
 	_, _, nt := v.chain.RandomBeacon.Committees(b.Round)
 	success := sign.Verify(&v.chain.RandomBeacon.groups[nt].PK, msg)
 	if !success {
-		log.Warn("valid block group sig failed", "group", nt)
+		log.Warn("validate block group sig failed", "group", nt, "block", b.Hash())
 	}
 	return 0, success
 }

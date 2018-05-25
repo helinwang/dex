@@ -286,14 +286,9 @@ func (c *Chain) addNtShare(n *NtShare, groupID int) (*Block, bool) {
 			panic("impossible: group sig not valid")
 		}
 
-		b := &Block{
-			Round:           bp.Round,
-			StateRoot:       n.StateRoot,
-			BlockProposal:   n.BP,
-			PrevBlock:       bp.PrevBlock,
-			SysTxns:         bp.SysTxns,
-			NotarizationSig: sig.Serialize(),
-		}
+		b := bpToBlock(bp)
+		b.StateRoot = n.StateRoot
+		b.NotarizationSig = sig.Serialize()
 
 		delete(c.bpNeedNotarize, n.BP)
 		for _, share := range c.bpToNtShares[n.BP] {

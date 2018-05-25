@@ -78,6 +78,7 @@ func (n *Notary) Notarize(ctx, cancel context.Context, bCh chan *BlockProposal) 
 
 func bpToBlock(bp *BlockProposal) *Block {
 	return &Block{
+		Owner:         bp.Owner,
 		Round:         bp.Round,
 		BlockProposal: bp.Hash(),
 		PrevBlock:     bp.PrevBlock,
