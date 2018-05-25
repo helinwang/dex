@@ -136,6 +136,8 @@ func TestThresholdRelay(t *testing.T) {
 	}
 
 	fmt.Println(nodes[0].chain.Graphviz())
+	fmt.Println(nodes[1].chain.Graphviz())
+	fmt.Println(nodes[2].chain.Graphviz())
 }
 
 // LocalNet is a local network implementation

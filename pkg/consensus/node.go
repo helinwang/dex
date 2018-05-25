@@ -112,6 +112,7 @@ func (n *Node) StartRound(round int) {
 				// TODO: handle txn
 				proposal := b.CollectTxn(ctx, nil, nil, make(chan []byte, 100))
 				cancel()
+				log.Debug("proposing block", "addr", n.addr, "round", proposal.Round)
 				n.net.recvBlockProposal(proposal)
 			}()
 		}

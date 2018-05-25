@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/dfinity/go-dfinity-crypto/bls"
+	log "github.com/helinwang/log15"
 )
 
 var errChainDataAlreadyExists = errors.New("chain data already exists")
@@ -251,22 +252,24 @@ func (c *Chain) addBP(bp *BlockProposal, weight float64) error {
 	return nil
 }
 
-func (c *Chain) addNtShare(n *NtShare, groupID int) (*Block, error) {
+func (c *Chain) addNtShare(n *NtShare, groupID int) (*Block, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	bp, ok := c.hashToBP[n.BP]
 	if !ok {
-		return nil, errors.New("block proposal not found")
+		log.Warn("add nt share but block proposal not found")
+		return nil, false
 	}
 
 	if !c.bpNeedNotarize[n.BP] {
-		return nil, errors.New("block proposal do not need notarization")
+		return nil, true
 	}
 
 	for _, s := range c.bpToNtShares[n.BP] {
 		if s.Owner == n.Owner {
-			return nil, errors.New("notarization share from the owner already received")
+			log.Warn("notarization share from the owner already received")
+			return nil, true
 		}
 	}
 
@@ -297,11 +300,11 @@ func (c *Chain) addNtShare(n *NtShare, groupID int) (*Block, error) {
 			delete(c.hashToNtShare, share.Hash())
 		}
 		delete(c.bpToNtShares, n.BP)
-		return b, nil
+		return b, true
 	}
 
 	c.hashToNtShare[n.Hash()] = n
-	return nil, nil
+	return nil, true
 }
 
 func (c *Chain) addBlock(b *Block, weight float64) error {
@@ -358,10 +361,10 @@ func (c *Chain) addBlock(b *Block, weight float64) error {
 		}
 
 		if removeIdx <= 0 {
-			return errors.New("block's proposal not found on chain")
+			log.Info("block's proposal not found on chain", "block", h)
+		} else {
+			c.UnNotarizedNotOnFork = append(c.UnNotarizedNotOnFork[:removeIdx], c.UnNotarizedNotOnFork[removeIdx+1:]...)
 		}
-
-		c.UnNotarizedNotOnFork = append(c.UnNotarizedNotOnFork[:removeIdx], c.UnNotarizedNotOnFork[removeIdx+1:]...)
 	}
 
 	c.hashToBlock[h] = b
@@ -373,8 +376,7 @@ func (c *Chain) addBlock(b *Block, weight float64) error {
 	// corollary 9.19 in https://arxiv.org/abs/1805.04548
 	c.finalize(round - 3)
 
-	if round == prevRound+1 && round == c.RandomBeacon.Depth() {
-		// entered a new round, and in sync
+	if round == prevRound+1 {
 		// TODO: make it more robust
 		go c.n.StartRound(round)
 	}

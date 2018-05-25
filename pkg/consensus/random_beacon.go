@@ -2,7 +2,6 @@ package consensus
 
 import (
 	"errors"
-	"fmt"
 	"sync"
 
 	log "github.com/helinwang/log15"
@@ -70,16 +69,22 @@ func (r *RandomBeacon) GetShare(h Hash) *RandBeaconSigShare {
 
 // AddRandBeaconSigShare receives one share of the random beacon
 // signature.
-func (r *RandomBeacon) AddRandBeaconSigShare(s *RandBeaconSigShare, groupID int) (*RandBeaconSig, error) {
+func (r *RandomBeacon) AddRandBeaconSigShare(s *RandBeaconSigShare, groupID int) (*RandBeaconSig, bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if round := r.depth(); round != s.Round {
-		return nil, fmt.Errorf("unexpected RandBeaconSigShare.Round: %d, expected: %d", s.Round, r.depth())
+	if depth := r.depth(); depth != s.Round {
+		if s.Round > depth {
+			log.Warn("failed to add RandBeaconSigShare that has bigger round than depth", "round", s.Round, depth)
+			return nil, false
+		}
+
+		return nil, true
 	}
 
 	if h := SHA3(r.sigHistory[s.Round-1].Sig); h != s.LastSigHash {
-		return nil, fmt.Errorf("unexpected RandBeaconSigShare.LastSigHash: %x, expected: %x", s.LastSigHash, h)
+		log.Warn("unexpected RandBeaconSigShare.LastSigHash", "hash", s.LastSigHash, "expected", h)
+		return nil, false
 	}
 
 	r.curRoundShares[s.Hash()] = s
@@ -87,7 +92,7 @@ func (r *RandomBeacon) AddRandBeaconSigShare(s *RandBeaconSigShare, groupID int)
 		sig, err := recoverRandBeaconSig(r.curRoundShares)
 		if err != nil {
 			log.Error("fatal: recoverRandBeaconSig error", "err", err)
-			return nil, err
+			return nil, false
 		}
 
 		// TODO: get last sig hash locally
@@ -100,24 +105,30 @@ func (r *RandomBeacon) AddRandBeaconSigShare(s *RandBeaconSigShare, groupID int)
 		rbs.Round = s.Round
 		rbs.LastSigHash = s.LastSigHash
 		rbs.Sig = sig.Serialize()
-		return &rbs, nil
+		return &rbs, true
 	}
-	return nil, nil
+	return nil, true
 }
 
 // AddRandBeaconSig adds the random beacon signature.
-func (r *RandomBeacon) AddRandBeaconSig(s *RandBeaconSig) error {
+func (r *RandomBeacon) AddRandBeaconSig(s *RandBeaconSig) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if round := r.depth(); round != s.Round {
-		return fmt.Errorf("unexpected RandBeaconSig round: %d, expected: %d", s.Round, r.depth())
+	if depth := r.depth(); depth != s.Round {
+		if s.Round > depth {
+			log.Warn("adding RandBeaconSig of higher round", "round", s.Round, "beacon depth", depth)
+			return false
+		}
+
+		// still treat as success
+		return true
 	}
 
 	r.deriveRand(SHA3(s.Sig))
 	r.curRoundShares = make(map[Hash]*RandBeaconSigShare)
 	r.sigHistory = append(r.sigHistory, s)
-	return nil
+	return true
 }
 
 func (r *RandomBeacon) depth() int {

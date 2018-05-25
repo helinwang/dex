@@ -1,6 +1,8 @@
 package consensus
 
 import (
+	"fmt"
+
 	"golang.org/x/crypto/sha3"
 )
 
@@ -10,6 +12,11 @@ const (
 
 // Hash is the hash of a piece of data.
 type Hash [hashBytes]byte
+
+// String is the string representation of hash.
+func (h Hash) String() string {
+	return fmt.Sprintf("%x", h[:])
+}
 
 // SHA3 hashs the given slices with SHA3.
 func SHA3(b ...[]byte) Hash {
