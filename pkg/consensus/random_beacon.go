@@ -75,10 +75,11 @@ func (r *RandomBeacon) AddRandBeaconSigShare(s *RandBeaconSigShare, groupID int)
 
 	if depth := r.depth(); depth != s.Round {
 		if s.Round > depth {
-			log.Warn("failed to add RandBeaconSigShare that has bigger round than depth", "round", s.Round, depth)
+			log.Warn("failed to add RandBeaconSigShare that has bigger round than depth", "round", s.Round, "depth", depth)
 			return nil, false
 		}
 
+		log.Debug("skipped the RandBeaconSigShare that has smaller round than depth", "round", s.Round, "depth", depth)
 		return nil, true
 	}
 
@@ -121,6 +122,7 @@ func (r *RandomBeacon) AddRandBeaconSig(s *RandBeaconSig) bool {
 			return false
 		}
 
+		log.Debug("skipped RandBeaconSig of lower round", "round", s.Round, "beacon depth", depth)
 		// still treat as success
 		return true
 	}
@@ -137,7 +139,7 @@ func (r *RandomBeacon) depth() int {
 
 // Depth returns the depth of the random beacon.
 //
-// This round will be always greater or equal to Chain.Depth():
+// This round will be always greater or equal to Chain.Round():
 // - greater: when the node is synchronizing. It will synchronize the
 // random beacon first, and then synchronize the chain's blocks.
 // - equal: when the node is synchronized.
