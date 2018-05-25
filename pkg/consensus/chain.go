@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/dfinity/go-dfinity-crypto/bls"
 	log "github.com/helinwang/log15"
@@ -375,7 +376,15 @@ func (c *Chain) addBlock(b *Block, weight float64) error {
 
 	if round == prevRound+1 {
 		// TODO: make it more robust
-		go c.n.StartRound(round)
+		go func() {
+			for {
+				if c.RandomBeacon.Depth() >= round {
+					c.n.StartRound(round)
+					return
+				}
+				time.Sleep(50 * time.Millisecond)
+			}
+		}()
 	}
 	return nil
 }

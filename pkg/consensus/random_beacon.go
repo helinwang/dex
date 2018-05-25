@@ -3,6 +3,7 @@ package consensus
 import (
 	"errors"
 	"sync"
+	"time"
 
 	log "github.com/helinwang/log15"
 )
@@ -153,8 +154,13 @@ func (r *RandomBeacon) Depth() int {
 // Rank returns the rank for the given member in the current block
 // proposal committee.
 func (r *RandomBeacon) Rank(addr Addr, round int) (int, error) {
+	r.mu.Lock()
 	i := round - 1
-	// TODO: check i
+	for i >= len(r.nextBPCmteHistory) {
+		r.mu.Unlock()
+		time.Sleep(100 * time.Millisecond)
+		r.mu.Lock()
+	}
 	bp := r.nextBPCmteHistory[i]
 	g := r.groups[bp]
 	idx := -1
@@ -166,10 +172,12 @@ func (r *RandomBeacon) Rank(addr Addr, round int) (int, error) {
 	}
 
 	if idx < 0 {
+		r.mu.Unlock()
 		return 0, errors.New("addr not in the current block proposal committee")
 	}
 
 	perm := r.bpRand.Perm(idx+1, len(g.Members))
+	r.mu.Unlock()
 	return perm[idx], nil
 }
 

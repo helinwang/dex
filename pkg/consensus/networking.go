@@ -4,9 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/rand"
 	"sync"
 
 	log "github.com/helinwang/log15"
+)
+
+const (
+	connectPeerCount = 8
 )
 
 // Peer is a peer node in the DEX network.
@@ -131,9 +136,18 @@ func (n *Networking) Start(seedAddr string) error {
 	n.addAddrs(peerAddrs)
 	n.peers = append(n.peers, p)
 
-	// TODO: limit the number of peers connected to
-	for _, addr := range n.peerAddrs {
-		p, err := n.net.Connect(addr, n.myself)
+	dest := make([]string, len(n.peerAddrs))
+	perm := rand.Perm(len(n.peerAddrs))
+	for i, v := range perm {
+		dest[v] = n.peerAddrs[i]
+	}
+
+	for i, addr := range dest {
+		if i >= connectPeerCount {
+			break
+		}
+
+		p, err = n.net.Connect(addr, n.myself)
 		if err != nil {
 			log.Error("connect to peer", "err", err, "addr", addr)
 		}

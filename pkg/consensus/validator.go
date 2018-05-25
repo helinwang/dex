@@ -36,6 +36,17 @@ func (v *validator) ValidateBlock(b *Block) (float64, bool) {
 		return 0, false
 	}
 
+	prev, ok := v.chain.Block(b.PrevBlock)
+	if !ok {
+		log.Warn("ValidateBlock: prev block not found")
+		return 0, false
+	}
+
+	if prev.Round != b.Round-1 {
+		log.Warn("ValidateBlock: prev block round is not block round - 1", "prev round", prev.Round, "round", b.Round)
+		return 0, false
+	}
+
 	var sign bls.Sign
 	err := sign.Deserialize(b.NotarizationSig)
 	if err != nil {
@@ -61,8 +72,7 @@ func (v *validator) ValidateBlock(b *Block) (float64, bool) {
 }
 
 func (v *validator) ValidateBlockProposal(bp *BlockProposal) (float64, bool) {
-	// TODO: validate sig, validate txns, validate owner, validate
-	// round is correct
+	// TODO: validate txns
 	round := v.chain.Round()
 	if bp.Round != round {
 		if bp.Round > round {
@@ -76,6 +86,17 @@ func (v *validator) ValidateBlockProposal(bp *BlockProposal) (float64, bool) {
 
 	if _, ok := v.chain.BlockProposal(bp.Hash()); ok {
 		log.Warn("block proposal already received")
+		return 0, false
+	}
+
+	prev, ok := v.chain.Block(bp.PrevBlock)
+	if !ok {
+		log.Warn("ValidateBlockProposal: prev block not found")
+		return 0, false
+	}
+
+	if prev.Round != bp.Round-1 {
+		log.Warn("ValidateBlockProposal: prev block round is not block proposal round - 1", "prev round", prev.Round, "round", bp.Round)
 		return 0, false
 	}
 
@@ -114,6 +135,22 @@ func (v *validator) ValidateNtShare(n *NtShare) (int, bool) {
 		} else {
 			log.Debug("received nt share of lower round", "round", n.Round, "my round", round)
 		}
+		return 0, false
+	}
+
+	if _, ok := v.chain.NtShare(n.Hash()); ok {
+		log.Warn("notarization share already received")
+		return 0, false
+	}
+
+	bp, ok := v.chain.BlockProposal(n.BP)
+	if !ok {
+		log.Warn("ValidateNtShare: prev block not found")
+		return 0, false
+	}
+
+	if bp.Round != n.Round {
+		log.Warn("ValidateNtShare: notarization is in different round with block proposal", "bp round", bp.Round, "round", n.Round)
 		return 0, false
 	}
 
