@@ -128,7 +128,7 @@ func TestThresholdRelay(t *testing.T) {
 		n.StartRound(1)
 	}
 
-	time.Sleep(800 * time.Millisecond)
+	time.Sleep(700 * time.Millisecond)
 	for _, n := range nodes {
 		round := n.chain.Round()
 		assert.Equal(t, 4, round)

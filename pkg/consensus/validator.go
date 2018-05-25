@@ -1,6 +1,8 @@
 package consensus
 
 import (
+	"math"
+
 	"github.com/dfinity/go-dfinity-crypto/bls"
 	log "github.com/helinwang/log15"
 )
@@ -12,6 +14,13 @@ type validator struct {
 
 func newValidator(chain *Chain) *validator {
 	return &validator{chain: chain}
+}
+
+func rankToWeight(rank int) float64 {
+	if rank < 0 {
+		panic(rank)
+	}
+	return math.Pow(0.5, float64(rank))
 }
 
 func (v *validator) ValidateBlock(b *Block) (float64, bool) {
@@ -29,14 +38,21 @@ func (v *validator) ValidateBlock(b *Block) (float64, bool) {
 		return 0, false
 	}
 
-	// TODO: why need to return weight?
 	msg := string(b.Encode(false))
 	_, _, nt := v.chain.RandomBeacon.Committees(b.Round)
 	success := sign.Verify(&v.chain.RandomBeacon.groups[nt].PK, msg)
 	if !success {
 		log.Warn("validate block group sig failed", "group", nt, "block", b.Hash())
+		return 0, false
 	}
-	return 0, success
+
+	rank, err := v.chain.RandomBeacon.Rank(b.Owner, b.Round)
+	if err != nil {
+		log.Error("error get rank, but group sig is valid", "err", err)
+		return 0, false
+	}
+
+	return rankToWeight(rank), true
 }
 
 func (v *validator) ValidateBlockProposal(bp *BlockProposal) (float64, bool) {
