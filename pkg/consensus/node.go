@@ -42,10 +42,10 @@ type membership struct {
 
 // Config is the consensus layer configuration.
 type Config struct {
-	BlockTime      time.Duration
-	NtWaitTime     time.Duration
-	GroupSize      int
-	GroupThreshold int
+	ProposalWaitDur time.Duration
+	BlockTime       time.Duration
+	GroupSize       int
+	GroupThreshold  int
 }
 
 // NewNode creates a new node.
@@ -105,7 +105,7 @@ func (n *Node) StartRound(round int) {
 		}
 
 		if m.groupID == bp {
-			ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(n.cfg.BlockTime))
+			ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(n.cfg.ProposalWaitDur))
 			go func() {
 				block, state, sysState := n.chain.Leader()
 				b := NewBlockProposer(n.sk, block, state, sysState)
@@ -125,7 +125,7 @@ func (n *Node) StartRound(round int) {
 			notary := NewNotary(n.addr, n.sk, m.skShare, n.chain)
 			inCh := make(chan *BlockProposal, 20)
 			n.notarizeChs = append(n.notarizeChs, inCh)
-			ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(n.cfg.NtWaitTime))
+			ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(n.cfg.BlockTime))
 			go func() {
 				shares := notary.Notarize(ctx, ntCancelCtx, inCh)
 				cancel()

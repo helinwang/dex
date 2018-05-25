@@ -127,6 +127,8 @@ func (n *Networking) Start(seedAddr string) error {
 		return err
 	}
 
+	// TODO: disconnect from seed after connected to other peers.
+
 	peerAddrs, err := p.Peers()
 	if err != nil {
 		return err

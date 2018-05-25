@@ -71,10 +71,10 @@ func setupNodes() []*Node {
 	nodes := make([]*Node, len(nodeCredentials))
 
 	cfg := Config{
-		BlockTime:      200 * time.Millisecond,
-		NtWaitTime:     220 * time.Millisecond,
-		GroupSize:      groupSize,
-		GroupThreshold: threshold,
+		ProposalWaitDur: 150 * time.Millisecond,
+		BlockTime:       200 * time.Millisecond,
+		GroupSize:       groupSize,
+		GroupThreshold:  threshold,
 	}
 
 	seed := Rand(SHA3([]byte("dex")))
