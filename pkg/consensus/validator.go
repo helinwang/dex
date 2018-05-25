@@ -31,6 +31,11 @@ func (v *validator) ValidateBlock(b *Block) (float64, bool) {
 		return 0, false
 	}
 
+	if _, ok := v.chain.Block(b.Hash()); ok {
+		log.Warn("block already received")
+		return 0, false
+	}
+
 	var sign bls.Sign
 	err := sign.Deserialize(b.NotarizationSig)
 	if err != nil {
@@ -68,7 +73,37 @@ func (v *validator) ValidateBlockProposal(bp *BlockProposal) (float64, bool) {
 
 		return 0, false
 	}
-	return 0, true
+
+	if _, ok := v.chain.BlockProposal(bp.Hash()); ok {
+		log.Warn("block proposal already received")
+		return 0, false
+	}
+
+	rank, err := v.chain.RandomBeacon.Rank(bp.Owner, bp.Round)
+	if err != nil {
+		log.Warn("error get rank", "err", err)
+		return 0, false
+	}
+
+	var sign bls.Sign
+	err = sign.Deserialize(bp.OwnerSig)
+	if err != nil {
+		log.Error("error recover block proposal signature", "err", err)
+		return 0, false
+	}
+
+	pk, ok := v.chain.LastFinalizedSysState.addrToPK[bp.Owner]
+	if !ok {
+		log.Warn("block proposal owner not found", "owner", bp.Owner)
+		return 0, false
+	}
+
+	if !sign.Verify(&pk, string(bp.Encode(false))) {
+		log.Warn("invalid block proposal signature", "block", bp.Hash())
+		return 0, false
+	}
+
+	return rankToWeight(rank), true
 }
 
 func (v *validator) ValidateNtShare(n *NtShare) (int, bool) {

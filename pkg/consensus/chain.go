@@ -80,16 +80,18 @@ func NewChain(genesis *Block, genesisState State, seed Rand, cfg Config) *Chain 
 	sysState.Finalized()
 	gh := genesis.Hash()
 	return &Chain{
-		cfg:                 cfg,
-		RandomBeacon:        NewRandomBeacon(seed, sysState.groups, cfg),
-		History:             []Hash{gh},
-		LastHistoryState:    genesisState,
-		LastHistorySysState: sysState,
-		hashToBlock:         map[Hash]*Block{gh: genesis},
-		hashToBP:            make(map[Hash]*BlockProposal),
-		hashToNtShare:       make(map[Hash]*NtShare),
-		bpToNtShares:        make(map[Hash][]*NtShare),
-		bpNeedNotarize:      make(map[Hash]bool),
+		cfg:                   cfg,
+		RandomBeacon:          NewRandomBeacon(seed, sysState.groups, cfg),
+		History:               []Hash{gh},
+		LastHistoryState:      genesisState,
+		LastHistorySysState:   sysState,
+		LastFinalizedState:    genesisState,
+		LastFinalizedSysState: sysState,
+		hashToBlock:           map[Hash]*Block{gh: genesis},
+		hashToBP:              make(map[Hash]*BlockProposal),
+		hashToNtShare:         make(map[Hash]*NtShare),
+		bpToNtShares:          make(map[Hash][]*NtShare),
+		bpNeedNotarize:        make(map[Hash]bool),
 	}
 }
 
