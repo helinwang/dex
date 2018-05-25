@@ -71,8 +71,8 @@ func setupNodes() []*Node {
 	nodes := make([]*Node, len(nodeCredentials))
 
 	cfg := Config{
-		BlockTime:      100 * time.Millisecond,
-		NtWaitTime:     120 * time.Millisecond,
+		BlockTime:      200 * time.Millisecond,
+		NtWaitTime:     220 * time.Millisecond,
 		GroupSize:      groupSize,
 		GroupThreshold: threshold,
 	}
@@ -128,7 +128,7 @@ func TestThresholdRelay(t *testing.T) {
 		n.StartRound(1)
 	}
 
-	time.Sleep(400 * time.Millisecond)
+	time.Sleep(800 * time.Millisecond)
 	for _, n := range nodes {
 		round := n.chain.Round()
 		assert.Equal(t, 4, round)

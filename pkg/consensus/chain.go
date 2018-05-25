@@ -431,7 +431,8 @@ func (c *Chain) finalize(round int) {
 }
 
 func (c *Chain) validateGroupSig(sig bls.Sign, groupID int, bp *BlockProposal) bool {
-	msg := bp.Encode(true)
+	b := bpToBlock(bp)
+	msg := b.Encode(false)
 	return sig.Verify(&c.RandomBeacon.groups[groupID].PK, string(msg))
 }
 

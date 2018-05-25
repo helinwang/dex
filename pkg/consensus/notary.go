@@ -18,7 +18,7 @@ type Notary struct {
 
 // NewNotary creates a new notary.
 func NewNotary(owner Addr, sk, share bls.SecretKey, chain *Chain) *Notary {
-	return &Notary{owner: owner, share: share, chain: chain}
+	return &Notary{owner: owner, sk: sk, share: share, chain: chain}
 }
 
 // Notarize returns the notarized blocks of the current round,
@@ -76,14 +76,25 @@ func (n *Notary) Notarize(ctx, cancel context.Context, bCh chan *BlockProposal) 
 	}
 }
 
+func bpToBlock(bp *BlockProposal) *Block {
+	return &Block{
+		Round:         bp.Round,
+		BlockProposal: bp.Hash(),
+		PrevBlock:     bp.PrevBlock,
+		SysTxns:       bp.SysTxns,
+	}
+}
+
 func (n *Notary) notarize(bp *BlockProposal) *NtShare {
 	// TODO: calculate state root
 	b := &NtShare{
 		Round: bp.Round,
 		BP:    bp.Hash(),
-		Owner: n.owner,
 	}
-	b.SigShare = n.share.Sign(string(bp.Encode(true))).Serialize()
+
+	blk := bpToBlock(bp)
+	b.SigShare = n.share.Sign(string(blk.Encode(false))).Serialize()
+	b.Owner = n.owner
 	b.OwnerSig = n.sk.Sign(string(b.Encode(false))).Serialize()
 	return b
 }

@@ -1,6 +1,7 @@
 package consensus
 
 import (
+	"github.com/dfinity/go-dfinity-crypto/bls"
 	log "github.com/helinwang/log15"
 )
 
@@ -14,8 +15,29 @@ func newValidator(chain *Chain) *validator {
 }
 
 func (v *validator) ValidateBlock(b *Block) (float64, bool) {
-	// TODO: validate sig, validate txns, validate sig
-	return 0, true
+	// TODO: validate txns
+	if depth := v.chain.RandomBeacon.Depth(); b.Round > depth {
+		// TODO: sync with the sender
+		log.Warn("received block of too high round, can't validate", "round", b.Round, "depth", depth)
+		return 0, false
+	}
+
+	var sign bls.Sign
+	err := sign.Deserialize(b.NotarizationSig)
+	if err != nil {
+		log.Warn("valid block sig error", "err", err)
+		return 0, false
+	}
+
+	// TODO: why need to return weight?
+
+	msg := string(b.Encode(false))
+	_, _, nt := v.chain.RandomBeacon.Committees(b.Round)
+	success := sign.Verify(&v.chain.RandomBeacon.groups[nt].PK, msg)
+	if !success {
+		log.Warn("valid block group sig failed", "group", nt)
+	}
+	return 0, success
 }
 
 func (v *validator) ValidateBlockProposal(bp *BlockProposal) (float64, bool) {
