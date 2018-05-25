@@ -194,13 +194,19 @@ func (r *RandomBeacon) deriveRand(h Hash) {
 // notarization committees.
 func (r *RandomBeacon) Committees(round int) (rb, bp, nt int) {
 	r.mu.Lock()
-	defer r.mu.Unlock()
 
 	idx := round - 1
+	for idx >= len(r.nextRBCmteHistory) {
+		r.mu.Unlock()
+		time.Sleep(100 * time.Millisecond)
+		r.mu.Lock()
+	}
+
 	// TODO: check idx
 	rb = r.nextRBCmteHistory[idx]
 	bp = r.nextBPCmteHistory[idx]
 	nt = r.nextNtCmteHistory[idx]
+	r.mu.Unlock()
 	return
 }
 

@@ -50,7 +50,7 @@ func (v *validator) ValidateBlock(b *Block) (float64, bool) {
 	var sign bls.Sign
 	err := sign.Deserialize(b.NotarizationSig)
 	if err != nil {
-		log.Warn("valid block sig error", "err", err)
+		log.Warn("validate block sig error", "err", err)
 		return 0, false
 	}
 
@@ -155,8 +155,31 @@ func (v *validator) ValidateNtShare(n *NtShare) (int, bool) {
 	}
 
 	_, _, nt := v.chain.RandomBeacon.Committees(round)
-	// TODO: validate sig, validate owner, validate round is
-	// correct, validate share is signed correctly.
+	group := v.chain.RandomBeacon.groups[nt]
+	if !group.MemberExists[n.Owner] {
+		log.Warn("ValidateNtShare: nt owner not a member of the nt cmte")
+		return 0, false
+	}
+
+	var sign bls.Sign
+	err := sign.Deserialize(n.OwnerSig)
+	if err != nil {
+		log.Warn("valid nt sig error", "err", err)
+		return 0, false
+	}
+
+	pk, ok := v.chain.LastFinalizedSysState.addrToPK[n.Owner]
+	if !ok {
+		log.Warn("nt owner not found", "owner", n.Owner)
+		return 0, false
+	}
+
+	if !sign.Verify(&pk, string(n.Encode(false))) {
+		log.Warn("invalid nt signature", "nt", n.Hash())
+		return 0, false
+	}
+
+	// TODO: validate share is signed correctly.
 	return nt, true
 }
 

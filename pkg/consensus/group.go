@@ -10,14 +10,16 @@ import (
 // - random beacon committe
 // - notarization committe
 type Group struct {
-	Members    []Addr
-	MemberVVec []bls.PublicKey
-	PK         bls.PublicKey
+	Members      []Addr
+	MemberExists map[Addr]bool
+	MemberVVec   []bls.PublicKey
+	PK           bls.PublicKey
 }
 
 // NewGroup creates a new group.
 func NewGroup(pk bls.PublicKey) *Group {
 	return &Group{
-		PK: pk,
+		PK:           pk,
+		MemberExists: make(map[Addr]bool),
 	}
 }

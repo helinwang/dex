@@ -111,6 +111,10 @@ func (s *SysState) applyRegGroup(t RegGroupTxn) error {
 		g.Members = append(g.Members, addr)
 	}
 
+	for _, addr := range g.Members {
+		g.MemberExists[addr] = true
+	}
+
 	// TODO: parse vvec
 
 	s.idToGroup[t.ID] = g
