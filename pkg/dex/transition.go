@@ -117,8 +117,5 @@ func (t *Transition) Clear() [][]byte {
 
 // Commit commits the transition to the state root.
 func (t *Transition) Commit() {
-	t.state.accounts = t.accounts
-	t.state.tokens = t.tokens
-	t.state.pendingOrders = t.pendingOrders
-	t.state.reports = t.reports
+	t.state.Commit(t)
 }

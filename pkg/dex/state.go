@@ -54,6 +54,13 @@ func NewState(db *trie.Database) *State {
 	}
 }
 
+func (s *State) Commit(t *Transition) {
+	s.accounts = t.accounts
+	s.tokens = t.tokens
+	s.pendingOrders = t.pendingOrders
+	s.reports = t.reports
+}
+
 func (s *State) Accounts() consensus.Hash {
 	return consensus.Hash(s.accounts.Hash())
 }

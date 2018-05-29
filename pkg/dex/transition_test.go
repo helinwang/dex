@@ -14,7 +14,7 @@ func init() {
 	bls.Init(int(bls.CurveFp254BNb))
 }
 
-func TestTransition(t *testing.T) {
+func TestSendToken(t *testing.T) {
 	s := NewState(trie.NewDatabase(ethdb.NewMemDatabase()))
 	var acc Account
 	var sk bls.SecretKey
