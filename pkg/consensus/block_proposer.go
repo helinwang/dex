@@ -40,18 +40,20 @@ func (b *BlockProposer) CollectTxn(ctx context.Context, txCh chan []byte, sysTxC
 		select {
 		case <-ctx.Done():
 			bp.SysTxns = sysTransition.Txns()
-			bp.Data = transition.Encode()
+			data := transition.Clear()
+			bp.Data = gobEncode(data)
 			bp.OwnerSig = b.sk.Sign(string(bp.Encode(false))).Serialize()
 			close(pendingTx)
 			return &bp
 		case tx := <-txCh:
-			valid, future := transition.Record(tx)
+			valid, success := transition.Record(tx)
 			if !valid {
 				log.Warn("received invalid txn", "len", len(tx))
 				continue
 			}
 
-			if future {
+			if !success {
+				// try in the future
 				pendingTx <- tx
 			}
 		case sysTx := <-sysTxCh:

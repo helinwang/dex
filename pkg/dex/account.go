@@ -7,14 +7,13 @@ const (
 )
 
 type Balance struct {
-	ID        TokenID
 	Available int
 	Pending   int
 }
 
 type Account struct {
-	Addr consensus.Addr
+	PK consensus.PK
 	// a vector of nonce that enables concurrent transactions.
-	NonceVec []int
-	Balances map[TokenID]Balance
+	NonceVec []uint64
+	Balances map[TokenID]*Balance
 }
