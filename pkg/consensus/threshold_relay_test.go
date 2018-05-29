@@ -216,7 +216,7 @@ func (e *emptyTransition) Record(txn []byte) (valid, future bool) {
 	return true, false
 }
 
-func (e *emptyTransition) Clear() [][]byte {
+func (e *emptyTransition) Txns() [][]byte {
 	return nil
 }
 

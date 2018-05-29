@@ -23,25 +23,21 @@ type State struct {
 func NewState(db *trie.Database) *State {
 	tokens, err := trie.New(common.Hash{}, db)
 	if err != nil {
-		// should not happen
 		panic(err)
 	}
 
 	accounts, err := trie.New(common.Hash{}, db)
 	if err != nil {
-		// should not happen
 		panic(err)
 	}
 
 	pendingOrders, err := trie.New(common.Hash{}, db)
 	if err != nil {
-		// should not happen
 		panic(err)
 	}
 
 	reports, err := trie.New(common.Hash{}, db)
 	if err != nil {
-		// should not happen
 		panic(err)
 	}
 

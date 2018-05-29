@@ -149,7 +149,7 @@ type CreateTokenTxn struct {
 type SendTokenTxn struct {
 	TokenID TokenID
 	To      consensus.PK
-	Quant   int
+	Quant   uint64
 }
 
 // TODO: maybe move this func to common package

@@ -10,14 +10,12 @@ import (
 )
 
 type Transition struct {
-	// TODO: clean up db
-	touchedAccounts []consensus.Addr
-	createdAccounts []consensus.Addr
-	tokens          *trie.Trie
-	accounts        *trie.Trie
-	pendingOrders   *trie.Trie
-	reports         *trie.Trie
-	state           *State
+	tokens        *trie.Trie
+	accounts      *trie.Trie
+	pendingOrders *trie.Trie
+	reports       *trie.Trie
+	state         *State
+	txns          [][]byte
 }
 
 func newTransition(s *State, tokens, accounts, pendingOrders, reports *trie.Trie) *Transition {
@@ -63,10 +61,15 @@ func (t *Transition) Record(b []byte) (valid, success bool) {
 		panic("unknown txn type")
 	}
 
-	return false, false
+	t.txns = append(t.txns, b)
+	return true, true
 }
 
 func (t *Transition) sendToken(owner *Account, txn SendTokenTxn) bool {
+	if txn.Quant == 0 {
+		return false
+	}
+
 	b, ok := owner.Balances[txn.TokenID]
 	if !ok {
 		log.Warn("trying to send token that the owner does not have", "tokenID", txn.TokenID)
@@ -83,7 +86,6 @@ func (t *Transition) sendToken(owner *Account, txn SendTokenTxn) bool {
 	var toAcc *Account
 	if err != nil || to == nil {
 		toAcc = &Account{PK: txn.To, Balances: make(map[TokenID]*Balance)}
-		t.createdAccounts = append(t.createdAccounts, toAddr)
 	} else {
 		dec := gob.NewDecoder(bytes.NewBuffer(to))
 		err := dec.Decode(toAcc)
@@ -91,7 +93,6 @@ func (t *Transition) sendToken(owner *Account, txn SendTokenTxn) bool {
 			log.Error("error decode recv account", "account", toAddr)
 			return false
 		}
-		t.touchedAccounts = append(t.touchedAccounts, toAddr)
 	}
 
 	addr := consensus.SHA3(owner.PK).Addr()
@@ -100,7 +101,6 @@ func (t *Transition) sendToken(owner *Account, txn SendTokenTxn) bool {
 		toAcc.Balances[txn.TokenID] = &Balance{}
 	}
 	toAcc.Balances[txn.TokenID].Available += txn.Quant
-	t.touchedAccounts = append(t.touchedAccounts, addr)
 	t.updateAccount(toAddr, toAcc)
 	t.updateAccount(addr, owner)
 	return true
@@ -110,9 +110,8 @@ func (t *Transition) updateAccount(addr consensus.Addr, acc *Account) {
 	t.accounts.Update(addr[:], gobEncode(acc))
 }
 
-// Clear clears the accumulated transactions.
-func (t *Transition) Clear() [][]byte {
-	panic("not implemented")
+func (t *Transition) Txns() [][]byte {
+	return t.txns
 }
 
 // Commit commits the transition to the state root.

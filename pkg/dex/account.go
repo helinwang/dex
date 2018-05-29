@@ -7,8 +7,8 @@ const (
 )
 
 type Balance struct {
-	Available int
-	Pending   int
+	Available uint64
+	Pending   uint64
 }
 
 type Account struct {

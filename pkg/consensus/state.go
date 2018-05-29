@@ -5,8 +5,8 @@ type Transition interface {
 	// Record records a transition to the state transition.
 	Record(txn []byte) (valid, success bool)
 
-	// Clear clears the accumulated transactions.
-	Clear() [][]byte
+	// Txns returns the recorded transactions.
+	Txns() [][]byte
 
 	// Commit commits the transition to the state root.
 	Commit()
