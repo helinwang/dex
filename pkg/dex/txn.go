@@ -6,6 +6,7 @@ import (
 
 	"github.com/dfinity/go-dfinity-crypto/bls"
 	"github.com/helinwang/dex/pkg/consensus"
+	"github.com/helinwang/dex/pkg/matching"
 	"github.com/prometheus/common/log"
 )
 
@@ -117,12 +118,8 @@ func (b *Txn) Hash() consensus.Hash {
 }
 
 type PlaceOrderTxn struct {
-	Sell TokenID
-	// the user must own SellQuant of the Sell token for the order
-	// to be valid
-	SellQuant uint64
-	Buy       TokenID
-	BuyQuant  uint64
+	matching.Order
+	Market MarketSymbol
 	// the order is expired when ExpireHeight >= block height
 	ExpireHeight uint64
 }

@@ -4,25 +4,20 @@ import (
 	"bytes"
 	"encoding/gob"
 
-	"github.com/ethereum/go-ethereum/trie"
+	"github.com/helinwang/dex/pkg/matching"
 	log "github.com/helinwang/log15"
 )
 
 type Transition struct {
 	state
-	parent *State
-	txns   [][]byte
+	owner *State
+	txns  [][]byte
 }
 
-func newTransition(s *State, tokens, accounts, pendingOrders, reports *trie.Trie) *Transition {
+func newTransition(s *State, state state) *Transition {
 	return &Transition{
-		state: state{
-			tokens:        tokens,
-			accounts:      accounts,
-			pendingOrders: pendingOrders,
-			reports:       reports,
-		},
-		parent: s,
+		state: state,
+		owner: s,
 	}
 }
 
@@ -74,20 +69,49 @@ func (t *Transition) Record(b []byte) (valid, success bool) {
 }
 
 func (t *Transition) placeOrder(owner *Account, txn PlaceOrderTxn) bool {
-	sb, ok := owner.Balances[txn.Sell]
+	// TODO: check if fee is sufficient
+
+	baseInfo := t.tokenCache.Info(txn.Market.Base)
+	if baseInfo == nil {
+		log.Error("trying to place order on nonexistent token", "token", txn.Market.Base)
+		return false
+	}
+
+	quoteInfo := t.tokenCache.Info(txn.Market.Quote)
+	if quoteInfo == nil {
+		log.Error("trying to place order on nonexistent token", "token", txn.Market.Quote)
+		return false
+	}
+
+	var sellQuant uint64
+	var sell TokenID
+	if txn.SellSide {
+		sellQuant = txn.Quant
+		sell = txn.Market.Base
+	} else {
+		sellQuant = uint64(float64(txn.Quant) * txn.Price)
+		sell = txn.Market.Quote
+	}
+
+	sb, ok := owner.Balances[sell]
 	if !ok {
-		log.Warn("does not have balance for the given token", "token", txn.Sell)
+		log.Warn("does not have balance for the given token", "token", sell)
 		return false
 	}
 
-	if sb.Available <= txn.SellQuant {
-		log.Warn("insufficient quant to sell", "token", txn.Sell, "quant", txn.SellQuant)
+	if sb.Available <= sellQuant {
+		log.Warn("insufficient quant to sell", "token", sell, "quant", sellQuant)
 		return false
 	}
 
-	owner.Balances[txn.Sell].Available -= txn.SellQuant
-	owner.Balances[txn.Sell].Pending += txn.SellQuant
+	owner.Balances[sell].Available -= sellQuant
+	owner.Balances[sell].Pending += sellQuant
 	t.UpdateAccount(owner)
+	add := PendingOrder{
+		Owner: owner.PK.Addr(),
+		Order: matching.Order{},
+	}
+	t.UpdatePendingOrder(txn.Market, &add, nil)
 	return true
 }
 
@@ -137,5 +161,5 @@ func (t *Transition) Txns() [][]byte {
 
 // Commit commits the transition to the state root.
 func (t *Transition) Commit() {
-	t.parent.Commit(t)
+	t.owner.Commit(t)
 }

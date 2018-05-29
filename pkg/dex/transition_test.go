@@ -7,6 +7,7 @@ import (
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/trie"
 	"github.com/helinwang/dex/pkg/consensus"
+	"github.com/helinwang/dex/pkg/matching"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -121,14 +122,30 @@ func placeOrderTxn(sk bls.SecretKey, addr consensus.Addr, t PlaceOrderTxn) []byt
 	return txn.Encode(true)
 }
 
+var bnbInfo = TokenInfo{
+	Symbol:      "BNB",
+	Decimals:    8,
+	TotalSupply: 194972068,
+}
+
+var btcInfo = TokenInfo{
+	Symbol:      "BTC",
+	Decimals:    8,
+	TotalSupply: 21000000,
+}
+
 func TestPlaceOrder(t *testing.T) {
 	s := NewState(trie.NewDatabase(ethdb.NewMemDatabase()))
+	s.tokenCache.Update(0, &bnbInfo)
+	s.tokenCache.Update(1, &btcInfo)
 	sk, addr := createAccount(s, 100)
 	order := PlaceOrderTxn{
-		Sell:         0,
-		SellQuant:    40,
-		Buy:          1,
-		BuyQuant:     20,
+		Order: matching.Order{
+			SellSide: false,
+			Quant:    40,
+			Price:    1,
+		},
+		Market:       MarketSymbol{Quote: 0, Base: 1},
 		ExpireHeight: 0,
 	}
 	trans := s.Transition()
@@ -137,7 +154,6 @@ func TestPlaceOrder(t *testing.T) {
 
 	acc := s.Account(addr)
 	assert.Equal(t, 40, int(acc.Balances[0].Pending))
-
 }
 
 func TestPlaceOrderAlreadyExpire(t *testing.T) {

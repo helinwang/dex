@@ -15,18 +15,19 @@ import (
 
 // MarketSymbol is the symbol of a trading pair.
 //
-// A must be <= B for the symbol to be valid. This is to ensure there
-// is only one market symbol per tranding pair. E.g.,
-// MarketSymbol{A:1, B: 2} is valid, MarketSymbol{A: 2, B: 1} is
-// invalid.
 type MarketSymbol struct {
-	A TokenID
-	B TokenID
+	Quote TokenID // the unit of the order's price
+	Base  TokenID // the unit of the order's quantity
 }
 
 // Valid returns true if the market symbol is valid.
+//
+// Quote must be < Base for the symbol to be valid. This is to ensure
+// there is only one market symbol per tranding pair. E.g.,
+// MarketSymbol{Quote:1, Base: 2} is valid, MarketSymbol{Quote: 2,
+// Base: 1} is invalid.
 func (m *MarketSymbol) Valid() bool {
-	return m.A <= m.B
+	return m.Quote < m.Base
 }
 
 // Bytes returns the bytes representation of the market symbol.
@@ -38,12 +39,13 @@ func (m *MarketSymbol) Valid() bool {
 func (m *MarketSymbol) Bytes() []byte {
 	bufA := make([]byte, 32)
 	bufB := make([]byte, 32)
-	binary.LittleEndian.PutUint32(bufA, uint32(m.A))
-	binary.LittleEndian.PutUint32(bufB, uint32(m.B))
+	binary.LittleEndian.PutUint32(bufA, uint32(m.Quote))
+	binary.LittleEndian.PutUint32(bufB, uint32(m.Base))
 	return append(bufA, bufB...)
 }
 
 type state struct {
+	tokenCache    *TokenCache
 	tokens        *trie.Trie
 	accounts      *trie.Trie
 	pendingOrders *trie.Trie
@@ -262,6 +264,7 @@ func NewState(db *trie.Database) *State {
 	return &State{
 		db: db,
 		state: state{
+			tokenCache:    newTokenCache(),
 			tokens:        tokens,
 			accounts:      accounts,
 			pendingOrders: pendingOrders,
@@ -334,5 +337,12 @@ func (s *State) Transition() consensus.Transition {
 		panic(err)
 	}
 
-	return newTransition(s, tokens, accounts, pendingOrders, reports)
+	state := state{
+		tokenCache:    s.tokenCache,
+		tokens:        tokens,
+		accounts:      accounts,
+		pendingOrders: pendingOrders,
+		reports:       reports,
+	}
+	return newTransition(s, state)
 }
