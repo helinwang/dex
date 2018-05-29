@@ -11,6 +11,7 @@ type Balance struct {
 	Pending   uint64
 }
 
+// TODO: record account has pending orders on which markets.
 type Account struct {
 	PK consensus.PK
 	// a vector of nonce that enables concurrent transactions.

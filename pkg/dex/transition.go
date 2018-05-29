@@ -5,7 +5,6 @@ import (
 	"encoding/gob"
 
 	"github.com/ethereum/go-ethereum/trie"
-	"github.com/helinwang/dex/pkg/consensus"
 	log "github.com/helinwang/log15"
 )
 
@@ -40,8 +39,17 @@ func (t *Transition) Record(b []byte) (valid, success bool) {
 
 	dec := gob.NewDecoder(bytes.NewBuffer(txn.Data))
 	switch txn.T {
-	case Order:
-		panic("not implemented")
+	case PlaceOrder:
+		var txn PlaceOrderTxn
+		err := dec.Decode(&txn)
+		if err != nil {
+			log.Warn("PlaceOrderTxn decode failed", "err", err)
+			return
+		}
+		if !t.placeOrder(acc, txn) {
+			log.Warn("PlaceOrderTxn failed")
+			return
+		}
 	case CancelOrder:
 		panic("not implemented")
 	case CreateToken:
@@ -54,6 +62,7 @@ func (t *Transition) Record(b []byte) (valid, success bool) {
 			return
 		}
 		if !t.sendToken(acc, txn) {
+			log.Warn("SendTokenTxn failed")
 			return
 		}
 	default:
@@ -62,6 +71,24 @@ func (t *Transition) Record(b []byte) (valid, success bool) {
 
 	t.txns = append(t.txns, b)
 	return true, true
+}
+
+func (t *Transition) placeOrder(owner *Account, txn PlaceOrderTxn) bool {
+	sb, ok := owner.Balances[txn.Sell]
+	if !ok {
+		log.Warn("does not have balance for the given token", "token", txn.Sell)
+		return false
+	}
+
+	if sb.Available <= txn.SellQuant {
+		log.Warn("insufficient quant to sell", "token", txn.Sell, "quant", txn.SellQuant)
+		return false
+	}
+
+	owner.Balances[txn.Sell].Available -= txn.SellQuant
+	owner.Balances[txn.Sell].Pending += txn.SellQuant
+	t.UpdateAccount(owner)
+	return true
 }
 
 func (t *Transition) sendToken(owner *Account, txn SendTokenTxn) bool {
@@ -94,19 +121,14 @@ func (t *Transition) sendToken(owner *Account, txn SendTokenTxn) bool {
 		}
 	}
 
-	addr := consensus.SHA3(owner.PK).Addr()
 	owner.Balances[txn.TokenID].Available -= txn.Quant
 	if toAcc.Balances[txn.TokenID] == nil {
 		toAcc.Balances[txn.TokenID] = &Balance{}
 	}
 	toAcc.Balances[txn.TokenID].Available += txn.Quant
-	t.updateAccount(toAddr, toAcc)
-	t.updateAccount(addr, owner)
+	t.UpdateAccount(toAcc)
+	t.UpdateAccount(owner)
 	return true
-}
-
-func (t *Transition) updateAccount(addr consensus.Addr, acc *Account) {
-	t.accounts.Update(addr[:], gobEncode(acc))
 }
 
 func (t *Transition) Txns() [][]byte {

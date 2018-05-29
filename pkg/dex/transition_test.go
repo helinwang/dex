@@ -90,7 +90,7 @@ func TestTransitionNotCommitToDB(t *testing.T) {
 	assert.Equal(t, 100, int(newAcc.Balances[0].Available))
 	trans := s.Transition()
 
-	for i := 0; i < 100; i++ {
+	for i := 0; i < 99; i++ {
 		var skRecv bls.SecretKey
 		skRecv.SetByCSPRNG()
 
@@ -108,5 +108,43 @@ func TestTransitionNotCommitToDB(t *testing.T) {
 
 	trans.Commit()
 	newAcc = s.Account(addr)
-	assert.Equal(t, 0, int(newAcc.Balances[0].Available))
+	assert.Equal(t, 1, int(newAcc.Balances[0].Available))
+}
+
+func placeOrderTxn(sk bls.SecretKey, addr consensus.Addr, t PlaceOrderTxn) []byte {
+	txn := Txn{
+		T:     PlaceOrder,
+		Owner: addr,
+		Data:  gobEncode(t),
+	}
+	txn.Sig = sk.Sign(string(txn.Encode(false))).Serialize()
+	return txn.Encode(true)
+}
+
+func TestPlaceOrder(t *testing.T) {
+	s := NewState(trie.NewDatabase(ethdb.NewMemDatabase()))
+	sk, addr := createAccount(s, 100)
+	order := PlaceOrderTxn{
+		Sell:         0,
+		SellQuant:    40,
+		Buy:          1,
+		BuyQuant:     20,
+		ExpireHeight: 0,
+	}
+	trans := s.Transition()
+	trans.Record(placeOrderTxn(sk, addr, order))
+	trans.Commit()
+
+	acc := s.Account(addr)
+	assert.Equal(t, 40, int(acc.Balances[0].Pending))
+
+}
+
+func TestPlaceOrderAlreadyExpire(t *testing.T) {
+	// TODO
+}
+
+func TestPlaceOrderExpireLater(t *testing.T) {
+	// TODO
+	// TODO: also handle height reduced due to reorg.
 }

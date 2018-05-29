@@ -12,7 +12,7 @@ import (
 type TxnType int
 
 const (
-	Order TxnType = iota
+	PlaceOrder TxnType = iota
 	CancelOrder
 	CreateToken
 	SendToken
@@ -116,26 +116,15 @@ func (b *Txn) Hash() consensus.Hash {
 	return consensus.SHA3(b.Encode(true))
 }
 
-// MarketSymbol is the symbol of a trading pair.
-//
-// A must be <= B for the symbol to be valid. This is to ensure there
-// is only one market symbol per tranding pair. E.g., MarketSymbol{A:
-// "BTC", B: "ETH"} is valid, MarketSymbol{A: "ETH", B: "BTC"} is
-// invalid.
-type MarketSymbol struct {
-	A string
-	B string
-}
-
-type OrderTxn struct {
-	Sell TokenSymbol
+type PlaceOrderTxn struct {
+	Sell TokenID
 	// the user must own SellQuant of the Sell token for the order
 	// to be valid
-	SellQuant int
-	Buy       TokenSymbol
-	BuyQuant  int
+	SellQuant uint64
+	Buy       TokenID
+	BuyQuant  uint64
 	// the order is expired when ExpireHeight >= block height
-	ExpireHeight int
+	ExpireHeight uint64
 }
 
 type CancelOrderTxn struct {

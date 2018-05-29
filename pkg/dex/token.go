@@ -8,7 +8,7 @@ type TokenInfo struct {
 	Decimals    int
 }
 
-type TokenID int
+type TokenID uint32
 
 type Token struct {
 	ID TokenID
