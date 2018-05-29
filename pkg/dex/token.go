@@ -8,7 +8,7 @@ type TokenInfo struct {
 	TotalSupply uint64
 }
 
-type TokenID uint32
+type TokenID uint64
 
 type Token struct {
 	ID TokenID

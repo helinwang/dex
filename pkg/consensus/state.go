@@ -18,5 +18,6 @@ type State interface {
 	Tokens() Hash
 	PendingOrders() Hash
 	Reports() Hash
+	MatchOrders()
 	Transition() Transition
 }

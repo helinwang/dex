@@ -22,19 +22,16 @@ func TestMarketSymbolValid(t *testing.T) {
 	assert.False(t, m.Valid())
 }
 
-func TestMarketSymbolPathPrefix(t *testing.T) {
-	m0 := MarketSymbol{Quote: (1 << 31) - 1, Base: 1 << 31}
-	m1 := MarketSymbol{Quote: (1 << 1) - 2, Base: (1 << 31) - 1}
+func TestMarketSymbolBytes(t *testing.T) {
+	m0 := MarketSymbol{Quote: (1 << 63) - 1, Base: 1 << 63}
+	m1 := MarketSymbol{Quote: (1 << 63) - 2, Base: (1 << 63) - 1}
 
-	assert.Equal(t, 32, int(unsafe.Sizeof(m0.Quote))*8, "PathPrefix assumes PathPrefix.Quote being 32 bits.")
-	assert.Equal(t, 32, int(unsafe.Sizeof(m0.Base))*8, "PathPrefix assumes PathPrefix.Base being 32 bits.")
+	assert.Equal(t, 64, int(unsafe.Sizeof(m0.Quote))*8, "PathPrefix assumes PathPrefix.Quote being 64 bits.")
+	assert.Equal(t, 64, int(unsafe.Sizeof(m0.Base))*8, "PathPrefix assumes PathPrefix.Base being 64 bits.")
 
 	p0 := m0.Bytes()
 	p1 := m1.Bytes()
 	assert.NotEqual(t, p0, p1)
-
-	assert.True(t, len(p0) <= 12*8)
-	assert.True(t, len(p1) <= 12*8)
 }
 
 func TestPendingOrders(t *testing.T) {

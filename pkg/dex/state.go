@@ -37,10 +37,10 @@ func (m *MarketSymbol) Valid() bool {
 // path. The path lead to the pending orders of an account in the
 // market.
 func (m *MarketSymbol) Bytes() []byte {
-	bufA := make([]byte, 32)
-	bufB := make([]byte, 32)
-	binary.LittleEndian.PutUint32(bufA, uint32(m.Quote))
-	binary.LittleEndian.PutUint32(bufB, uint32(m.Base))
+	bufA := make([]byte, 64)
+	bufB := make([]byte, 64)
+	binary.LittleEndian.PutUint64(bufA, uint64(m.Quote))
+	binary.LittleEndian.PutUint64(bufB, uint64(m.Base))
 	return append(bufA, bufB...)
 }
 
@@ -294,6 +294,9 @@ func (s *State) PendingOrders() consensus.Hash {
 
 func (s *State) Reports() consensus.Hash {
 	return consensus.Hash(s.reports.Hash())
+}
+
+func (s *State) MatchOrders() {
 }
 
 func (s *State) Transition() consensus.Transition {
