@@ -11,13 +11,38 @@ import (
 	log "github.com/helinwang/log15"
 )
 
-// State is the state of the DEX.
-type State struct {
-	db            *trie.Database
+type state struct {
 	tokens        *trie.Trie
 	accounts      *trie.Trie
 	pendingOrders *trie.Trie
 	reports       *trie.Trie
+}
+
+func (s *state) Account(addr consensus.Addr) *Account {
+	acc, err := s.accounts.TryGet(addr[:])
+	if err != nil || acc == nil {
+		if acc == nil {
+			err = fmt.Errorf("account %x does not exist", addr)
+		}
+		log.Warn("get account error", "err", err)
+		return nil
+	}
+
+	var account Account
+	dec := gob.NewDecoder(bytes.NewBuffer(acc))
+	err = dec.Decode(&account)
+	if err != nil {
+		log.Error("decode account error", "err", err)
+		return nil
+	}
+
+	return &account
+}
+
+// State is the state of the DEX.
+type State struct {
+	state
+	db *trie.Database
 }
 
 func NewState(db *trie.Database) *State {
@@ -42,19 +67,21 @@ func NewState(db *trie.Database) *State {
 	}
 
 	return &State{
-		db:            db,
-		tokens:        tokens,
-		accounts:      accounts,
-		pendingOrders: pendingOrders,
-		reports:       reports,
+		db: db,
+		state: state{
+			tokens:        tokens,
+			accounts:      accounts,
+			pendingOrders: pendingOrders,
+			reports:       reports,
+		},
 	}
 }
 
 func (s *State) Commit(t *Transition) {
-	s.accounts = t.accounts
-	s.tokens = t.tokens
-	s.pendingOrders = t.pendingOrders
-	s.reports = t.reports
+	s.accounts = t.state.accounts
+	s.tokens = t.state.tokens
+	s.pendingOrders = t.state.pendingOrders
+	s.reports = t.state.reports
 }
 
 func (s *State) Accounts() consensus.Hash {
@@ -115,25 +142,4 @@ func (s *State) Transition() consensus.Transition {
 	}
 
 	return newTransition(s, tokens, accounts, pendingOrders, reports)
-}
-
-func (s *State) Account(addr consensus.Addr) *Account {
-	acc, err := s.accounts.TryGet(addr[:])
-	if err != nil || acc == nil {
-		if acc == nil {
-			err = fmt.Errorf("account %x does not exist", addr)
-		}
-		log.Warn("get account error", "err", err)
-		return nil
-	}
-
-	var account Account
-	dec := gob.NewDecoder(bytes.NewBuffer(acc))
-	err = dec.Decode(&account)
-	if err != nil {
-		log.Error("decode account error", "err", err)
-		return nil
-	}
-
-	return &account
 }

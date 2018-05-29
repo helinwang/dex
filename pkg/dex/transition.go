@@ -10,27 +10,26 @@ import (
 )
 
 type Transition struct {
-	tokens        *trie.Trie
-	accounts      *trie.Trie
-	pendingOrders *trie.Trie
-	reports       *trie.Trie
-	state         *State
-	txns          [][]byte
+	state
+	parent *State
+	txns   [][]byte
 }
 
 func newTransition(s *State, tokens, accounts, pendingOrders, reports *trie.Trie) *Transition {
 	return &Transition{
-		tokens:        tokens,
-		accounts:      accounts,
-		pendingOrders: pendingOrders,
-		reports:       reports,
-		state:         s,
+		state: state{
+			tokens:        tokens,
+			accounts:      accounts,
+			pendingOrders: pendingOrders,
+			reports:       reports,
+		},
+		parent: s,
 	}
 }
 
 // Record records a transition to the state transition.
 func (t *Transition) Record(b []byte) (valid, success bool) {
-	txn, acc, ready, valid := validateSigAndNonce(t.state, b)
+	txn, acc, ready, valid := validateSigAndNonce(&t.state, b)
 	if !valid {
 		return
 	}
@@ -116,5 +115,5 @@ func (t *Transition) Txns() [][]byte {
 
 // Commit commits the transition to the state root.
 func (t *Transition) Commit() {
-	t.state.Commit(t)
+	t.parent.Commit(t)
 }
