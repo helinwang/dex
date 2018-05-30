@@ -81,8 +81,7 @@ func setupNodes() []*Node {
 	for i := range nodes {
 		chain := NewChain(&genesis, &emptyState{}, seed, cfg)
 		networking := NewNetworking(net, fmt.Sprintf("node-%d", (i+len(nodes)-1)%len(nodes)), chain)
-		var sk bls.SecretKey
-		err = sk.SetLittleEndian(nodeCredentials[i].SK)
+		sk, err := nodeCredentials[i].SK.Get()
 		if err != nil {
 			panic(err)
 		}
@@ -191,6 +190,9 @@ type emptyState struct {
 
 func (e *emptyState) Accounts() Hash {
 	return SHA3([]byte("abc"))
+}
+
+func (e *emptyState) MatchOrders() {
 }
 
 func (e *emptyState) Tokens() Hash {

@@ -30,7 +30,7 @@ type Node struct {
 
 // NodeCredentials stores the credentials of the node.
 type NodeCredentials struct {
-	SK          []byte
+	SK          SK
 	Groups      []int
 	GroupShares [][]byte
 }

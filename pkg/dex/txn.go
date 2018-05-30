@@ -7,7 +7,7 @@ import (
 	"github.com/dfinity/go-dfinity-crypto/bls"
 	"github.com/helinwang/dex/pkg/consensus"
 	"github.com/helinwang/dex/pkg/matching"
-	"github.com/prometheus/common/log"
+	log "github.com/helinwang/log15"
 )
 
 type TxnType int
