@@ -32,7 +32,7 @@ type Node struct {
 type NodeCredentials struct {
 	SK          SK
 	Groups      []int
-	GroupShares [][]byte
+	GroupShares []SK
 }
 
 type membership struct {
@@ -62,6 +62,10 @@ func NewNode(chain *Chain, sk bls.SecretKey, net *Networking, cfg Config) *Node 
 	}
 	chain.n = n
 	return n
+}
+
+func (n *Node) Start(myAddr, seedAddr string) {
+	n.net.Start(myAddr, seedAddr)
 }
 
 // StartRound tells the node that a new round has just started.
@@ -147,4 +151,28 @@ func (n *Node) RecvBlockProposal(bp *BlockProposal) {
 	for _, ch := range n.notarizeChs {
 		ch <- bp
 	}
+}
+
+func MakeNode(credentials NodeCredentials, net Network, cfg Config, genesis *Block, state State) *Node {
+	randSeed := Rand(SHA3([]byte("dex")))
+
+	sk, err := credentials.SK.Get()
+	if err != nil {
+		panic(err)
+	}
+
+	chain := NewChain(genesis, state, randSeed, cfg)
+	networking := NewNetworking(net, chain)
+	node := NewNode(chain, sk, networking, cfg)
+	for j := range credentials.Groups {
+		share, err := credentials.GroupShares[j].Get()
+		if err != nil {
+			panic(err)
+		}
+
+		m := membership{groupID: credentials.Groups[j], skShare: share}
+		node.memberships = append(node.memberships, m)
+	}
+
+	return node
 }

@@ -56,6 +56,27 @@ type ItemID struct {
 	Hash      Hash
 }
 
+func (i ItemType) String() string {
+	switch i {
+	case TxnItem:
+		return "TxnItem"
+	case SysTxnItem:
+		return "SysTxnItem"
+	case BlockItem:
+		return "BlockItem"
+	case BlockProposalItem:
+		return "BlockProposalItem"
+	case NtShareItem:
+		return "NtShareItem"
+	case RandBeaconShareItem:
+		return "RandBeaconShareItem"
+	case RandBeaconItem:
+		return "RandBeaconItem"
+	default:
+		panic("unknown item")
+	}
+}
+
 // Network is used to connect to the peers.
 type Network interface {
 	Start(addr string, onPeerConnect func(p Peer), myself Peer) error
@@ -67,7 +88,6 @@ type Network interface {
 type Networking struct {
 	net    Network
 	myself Peer
-	addr   string
 	v      *validator
 	chain  *Chain
 
@@ -77,11 +97,10 @@ type Networking struct {
 }
 
 // NewNetworking creates a new networking component.
-func NewNetworking(net Network, addr string, chain *Chain) *Networking {
-	r := &receiver{addr: addr}
+func NewNetworking(net Network, chain *Chain) *Networking {
+	r := &receiver{}
 	n := &Networking{
 		myself: r,
-		addr:   addr,
 		net:    net,
 		v:      newValidator(chain),
 		chain:  chain,
@@ -93,6 +112,13 @@ func NewNetworking(net Network, addr string, chain *Chain) *Networking {
 func (n *Networking) onPeerConnect(p Peer) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
+
+	inv := n.chain.Inventory()
+	inv = append(inv, n.chain.RandomBeacon.Inventory()...)
+	// TODO: do not need to broadcast finalized block items, only
+	// round is sufficient.
+	fmt.Println("on peer connect")
+	go p.Inventory(n.myself, inv)
 
 	n.peers = append(n.peers, p)
 }
@@ -116,27 +142,34 @@ func (n *Networking) addAddrs(addrs []string) {
 // Start starts the networking component.
 // TODO: fix lint
 // nolint: gocyclo
-func (n *Networking) Start(seedAddr string) error {
-	err := n.net.Start(n.addr, n.onPeerConnect, n.myself)
+func (n *Networking) Start(addr, seedAddr string) error {
+	err := n.net.Start(addr, n.onPeerConnect, n.myself)
 	if err != nil {
 		return err
 	}
 
-	p, err := n.net.Connect(seedAddr, n.myself)
-	if err != nil {
-		return err
-	}
+	var p Peer
+	var peerAddrs []string
+	if seedAddr != "" {
+		p, err = n.net.Connect(seedAddr, n.myself)
+		if err != nil {
+			return err
+		}
 
-	// TODO: disconnect from seed after connected to other peers.
+		// TODO: disconnect from seed after connected to other peers.
 
-	peerAddrs, err := p.Peers()
-	if err != nil {
-		return err
+		peerAddrs, err = p.Peers()
+		if err != nil {
+			return err
+		}
 	}
 
 	n.mu.Lock()
 	n.addAddrs(peerAddrs)
-	n.peers = append(n.peers, p)
+
+	if p != nil {
+		n.peers = append(n.peers, p)
+	}
 
 	dest := make([]string, len(n.peerAddrs))
 	perm := rand.Perm(len(n.peerAddrs))
@@ -157,29 +190,32 @@ func (n *Networking) Start(seedAddr string) error {
 	}
 	n.mu.Unlock()
 
-	// TODO: sync random beacon from other peers rather than the
-	// seed
+	if p != nil {
+		// TODO: improve, should be more organized.
+		// TODO: sync random beacon from other peers rather than the
+		// seed
 
-	rb, bs, err := p.Sync(len(n.chain.RandomBeacon.History()))
-	if err != nil {
-		return err
-	}
-
-	for _, r := range rb {
-		success := n.chain.RandomBeacon.AddRandBeaconSig(r)
-		if !success {
-			return fmt.Errorf("add RandBeaconSig failed, round: %d, beacon depth: %d", r.Round, n.chain.RandomBeacon.Depth())
-		}
-	}
-
-	for _, b := range bs {
-		weight, valid := n.v.ValidateBlock(b)
-		if !valid {
-			return errors.New("invalid block when syncing")
-		}
-		err = n.chain.addBlock(b, weight)
+		rb, bs, err := p.Sync(len(n.chain.RandomBeacon.History()))
 		if err != nil {
 			return err
+		}
+
+		for _, r := range rb {
+			success := n.chain.RandomBeacon.AddRandBeaconSig(r)
+			if !success {
+				return fmt.Errorf("add RandBeaconSig failed, round: %d, beacon depth: %d", r.Round, n.chain.RandomBeacon.Depth())
+			}
+		}
+
+		for _, b := range bs {
+			weight, valid := n.v.ValidateBlock(b)
+			if !valid {
+				return errors.New("invalid block when syncing")
+			}
+			err = n.chain.addBlock(b, weight)
+			if err != nil {
+				return err
+			}
 		}
 	}
 
@@ -329,6 +365,8 @@ func (n *Networking) removePeer(p Peer) {
 func (n *Networking) recvInventory(p Peer, ids []ItemID) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
+
+	log.Info("recv inventory", "inventory", ids)
 
 	round := n.chain.Round()
 	for _, id := range ids {
@@ -522,12 +560,7 @@ func (n *Networking) updatePeers([]string) {
 // receiver implements the Peer interface. It forwards the peers'
 // queries to the networking component.
 type receiver struct {
-	addr string
-	n    *Networking
-}
-
-func (r *receiver) Addr() string {
-	return r.addr
+	n *Networking
 }
 
 func (r *receiver) Txn(t []byte) error {

@@ -62,6 +62,7 @@ type Chain struct {
 	hashToBlock           map[Hash]*Block
 	hashToBP              map[Hash]*BlockProposal
 	hashToNtShare         map[Hash]*NtShare
+	hashToInventory       map[Hash]ItemID
 	bpToNtShares          map[Hash][]*NtShare
 	bpNeedNotarize        map[Hash]bool
 }
@@ -88,6 +89,7 @@ func NewChain(genesis *Block, genesisState State, seed Rand, cfg Config) *Chain 
 		LastHistorySysState:   sysState,
 		LastFinalizedState:    genesisState,
 		LastFinalizedSysState: sysState,
+		hashToInventory:       make(map[Hash]ItemID),
 		hashToBlock:           map[Hash]*Block{gh: genesis},
 		hashToBP:              make(map[Hash]*BlockProposal),
 		hashToNtShare:         make(map[Hash]*NtShare),
@@ -242,7 +244,7 @@ func (c *Chain) addBP(bp *BlockProposal, weight float64) error {
 		}
 	}
 
-	c.hashToBP[h] = bp
+	c.registerBP(bp)
 	u := &unNotarized{Weight: weight, BP: h}
 
 	if notarized != nil {
@@ -253,6 +255,69 @@ func (c *Chain) addBP(bp *BlockProposal, weight float64) error {
 	c.bpNeedNotarize[h] = true
 	go c.n.RecvBlockProposal(bp)
 	return nil
+}
+
+func (c *Chain) Inventory() []ItemID {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	ret := make([]ItemID, len(c.hashToInventory))
+	i := 0
+	for _, v := range c.hashToInventory {
+		ret[i] = v
+		i++
+	}
+
+	return ret
+}
+
+// must be called with mutex held.
+func (c *Chain) registerBP(bp *BlockProposal) {
+	h := bp.Hash()
+	c.hashToBP[h] = bp
+	c.hashToInventory[h] = ItemID{
+		T:         BlockProposalItem,
+		Hash:      h,
+		ItemRound: bp.Round,
+		Ref:       bp.PrevBlock,
+	}
+}
+
+// must be called with mutex held.
+func (c *Chain) unregisterBP(h Hash) {
+	delete(c.hashToBP, h)
+	delete(c.hashToInventory, h)
+}
+
+// must be called with mutex held.
+func (c *Chain) registerBlock(b *Block) {
+	h := b.Hash()
+	c.hashToBlock[h] = b
+	c.hashToInventory[h] = ItemID{
+		T:         BlockItem,
+		Hash:      h,
+		ItemRound: b.Round,
+		Ref:       b.PrevBlock,
+	}
+}
+
+// must be called with mutex held.
+func (c *Chain) unregisterBlock(h Hash) {
+	delete(c.hashToBlock, h)
+	delete(c.hashToInventory, h)
+}
+
+// must be called with mutex held.
+func (c *Chain) registerNtShare(s *NtShare) {
+	h := s.Hash()
+	c.hashToNtShare[h] = s
+	c.hashToInventory[h] = ItemID{T: NtShareItem, Hash: h, ItemRound: s.Round, Ref: s.BP}
+}
+
+// must be called with mutex held.
+func (c *Chain) unregisterNtShare(h Hash) {
+	delete(c.hashToNtShare, h)
+	delete(c.hashToInventory, h)
 }
 
 func (c *Chain) addNtShare(n *NtShare, groupID int) (*Block, bool) {
@@ -295,13 +360,13 @@ func (c *Chain) addNtShare(n *NtShare, groupID int) (*Block, bool) {
 
 		delete(c.bpNeedNotarize, n.BP)
 		for _, share := range c.bpToNtShares[n.BP] {
-			delete(c.hashToNtShare, share.Hash())
+			c.unregisterNtShare(share.Hash())
 		}
 		delete(c.bpToNtShares, n.BP)
 		return b, true
 	}
 
-	c.hashToNtShare[n.Hash()] = n
+	c.registerNtShare(n)
 	return nil, true
 }
 
@@ -365,7 +430,7 @@ func (c *Chain) addBlock(b *Block, weight float64) error {
 		}
 	}
 
-	c.hashToBlock[h] = b
+	c.registerBlock(b)
 	delete(c.bpNeedNotarize, b.BlockProposal)
 	delete(c.bpToNtShares, b.BlockProposal)
 
@@ -392,7 +457,7 @@ func (c *Chain) addBlock(b *Block, weight float64) error {
 // must be called with mutex held
 func (c *Chain) releaseBPs(s []*unNotarized) {
 	for _, e := range s {
-		delete(c.hashToBP, e.BP)
+		c.unregisterBP(e.BP)
 	}
 }
 

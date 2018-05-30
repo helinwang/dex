@@ -28,31 +28,16 @@ func decodeFromFile(path string, v interface{}) {
 	}
 }
 
-func createNode(c consensus.NodeCredentials, addr, seed string, genesis *consensus.Block) *consensus.Node {
-	// TODO: simplify
-	randSeed := consensus.Rand(consensus.SHA3([]byte("dex")))
+func createNode(c consensus.NodeCredentials, genesis *consensus.Block) *consensus.Node {
 	cfg := consensus.Config{
 		ProposalWaitDur: 150 * time.Millisecond,
 		BlockTime:       200 * time.Millisecond,
-		GroupSize:       5,
-		GroupThreshold:  3,
-	}
-
-	sk, err := c.SK.Get()
-	if err != nil {
-		panic(err)
+		GroupSize:       3,
+		GroupThreshold:  2,
 	}
 
 	db := trie.NewDatabase(ethdb.NewMemDatabase())
-	chain := consensus.NewChain(genesis, dex.NewState(db), randSeed, cfg)
-	networking := consensus.NewNetworking(&network.Network{}, addr, chain)
-	err = networking.Start(seed)
-	if err != nil {
-		panic(err)
-	}
-
-	node := consensus.NewNode(chain, sk, networking, cfg)
-	return node
+	return consensus.MakeNode(c, &network.Network{}, cfg, genesis, dex.NewState(db))
 }
 
 func main() {
@@ -82,7 +67,8 @@ func main() {
 		panic(err)
 	}
 
-	n := createNode(credentials, *addr, *seedNode, &genesis)
+	n := createNode(credentials, &genesis)
+	n.Start(*addr, *seedNode)
 	n.StartRound(1)
 
 	select {}

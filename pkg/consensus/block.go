@@ -16,7 +16,7 @@ const (
 type Addr [addrBytes]byte
 
 func (a Addr) String() string {
-	return fmt.Sprintf("%x", a[:])
+	return fmt.Sprintf("%x", a[:2])
 }
 
 // ID returns the ID associated with this address.

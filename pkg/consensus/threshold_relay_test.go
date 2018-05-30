@@ -77,32 +77,13 @@ func setupNodes() []*Node {
 		GroupThreshold:  threshold,
 	}
 
-	seed := Rand(SHA3([]byte("dex")))
 	for i := range nodes {
-		chain := NewChain(&genesis, &emptyState{}, seed, cfg)
-		networking := NewNetworking(net, fmt.Sprintf("node-%d", (i+len(nodes)-1)%len(nodes)), chain)
-		sk, err := nodeCredentials[i].SK.Get()
-		if err != nil {
-			panic(err)
-		}
-
-		nodes[i] = NewNode(chain, sk, networking, cfg)
-		for j := range nodeCredentials[i].Groups {
-			var share bls.SecretKey
-			err = share.SetLittleEndian(nodeCredentials[i].GroupShares[j])
-			if err != nil {
-				panic(err)
-			}
-
-			m := membership{groupID: nodeCredentials[i].Groups[j], skShare: share}
-			nodes[i].memberships = append(nodes[i].memberships, m)
-		}
+		nodes[i] = MakeNode(nodeCredentials[i], net, cfg, &genesis, &emptyState{})
 
 		peers := make([]string, len(nodes))
 		for i := range peers {
 			peers[i] = fmt.Sprintf("node-%d", i)
 		}
-
 		nodes[i].net.mu.Lock()
 		nodes[i].net.peerAddrs = peers
 		nodes[i].net.mu.Unlock()
@@ -110,8 +91,7 @@ func setupNodes() []*Node {
 
 	for i := range nodes {
 		net := nodes[i].net
-		addr := nodes[(i-1+len(nodes))%len(nodes)].net.addr
-		go net.Start(addr)
+		go net.Start(fmt.Sprintf("node-%d", i%len(nodes)), fmt.Sprintf("node-%d", (i+len(nodes)-1)%len(nodes)))
 	}
 
 	time.Sleep(30 * time.Millisecond)

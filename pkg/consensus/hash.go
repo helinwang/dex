@@ -17,7 +17,7 @@ type Hash [hashBytes]byte
 
 // String is the string representation of hash.
 func (h Hash) String() string {
-	return fmt.Sprintf("%x", h[:])
+	return fmt.Sprintf("%x", h[:2])
 }
 
 // SHA3 hashs the given slices with SHA3.
