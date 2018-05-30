@@ -202,41 +202,27 @@ func (p *Peer) read() {
 				continue
 			}
 		case inventoryArg:
-			var sender string
 			var items []consensus.ItemID
-			err := dataDec.Decode(&sender)
-			if err != nil {
-				p.onErr(err)
-				return
-			}
-
 			err = dataDec.Decode(&items)
 			if err != nil {
 				p.onErr(err)
 				return
 			}
 
-			err = p.myself.Inventory(sender, items)
+			err = p.myself.Inventory(p, items)
 			if err != nil {
 				log.Error("Peer methods are not supposed to return error")
 				continue
 			}
 		case getDataArg:
-			var requester string
 			var items []consensus.ItemID
-			err := dataDec.Decode(&requester)
-			if err != nil {
-				p.onErr(err)
-				return
-			}
-
 			err = dataDec.Decode(&items)
 			if err != nil {
 				p.onErr(err)
 				return
 			}
 
-			err = p.myself.GetData(requester, items)
+			err = p.myself.GetData(p, items)
 			if err != nil {
 				log.Error("Peer methods are not supposed to return error")
 				continue
@@ -647,7 +633,7 @@ func (p *Peer) NotarizationShare(n *consensus.NtShare) error {
 	return nil
 }
 
-func (p *Peer) Inventory(sender string, items []consensus.ItemID) error {
+func (p *Peer) Inventory(sender consensus.Peer, items []consensus.ItemID) error {
 	p.mu.Lock()
 	if err := p.err; err != nil {
 		p.mu.Unlock()
@@ -658,11 +644,6 @@ func (p *Peer) Inventory(sender string, items []consensus.ItemID) error {
 	var err error
 	var pac packet
 	pac.T = inventoryArg
-	pac.Data, err = gobEncode(sender)
-	if err != nil {
-		p.onErr(err)
-		return err
-	}
 	var d []byte
 	d, err = gobEncode(items)
 	if err != nil {
@@ -670,7 +651,7 @@ func (p *Peer) Inventory(sender string, items []consensus.ItemID) error {
 		return err
 	}
 
-	pac.Data = append(pac.Data, d...)
+	pac.Data = d
 
 	err = p.write(pac)
 	if err != nil {
@@ -681,7 +662,7 @@ func (p *Peer) Inventory(sender string, items []consensus.ItemID) error {
 	return nil
 }
 
-func (p *Peer) GetData(requester string, items []consensus.ItemID) error {
+func (p *Peer) GetData(requester consensus.Peer, items []consensus.ItemID) error {
 	p.mu.Lock()
 	if err := p.err; err != nil {
 		p.mu.Unlock()
@@ -692,11 +673,6 @@ func (p *Peer) GetData(requester string, items []consensus.ItemID) error {
 	var err error
 	var pac packet
 	pac.T = getDataArg
-	pac.Data, err = gobEncode(requester)
-	if err != nil {
-		p.onErr(err)
-		return err
-	}
 	var d []byte
 	d, err = gobEncode(items)
 	if err != nil {
@@ -704,7 +680,7 @@ func (p *Peer) GetData(requester string, items []consensus.ItemID) error {
 		return err
 	}
 
-	pac.Data = append(pac.Data, d...)
+	pac.Data = d
 
 	err = p.write(pac)
 	if err != nil {

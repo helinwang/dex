@@ -101,12 +101,10 @@ func TestPeer(t *testing.T) {
 		p.BlockProposal(a5)
 		a6 := &consensus.NtShare{Round: 1}
 		p.NotarizationShare(a6)
-		a70 := "r"
 		a71 := []consensus.ItemID{consensus.ItemID{ItemRound: 1}}
-		p.Inventory(a70, a71)
-		a80 := "r1"
+		p.Inventory(nil, a71)
 		a81 := []consensus.ItemID{consensus.ItemID{ItemRound: 2}}
-		p.GetData(a80, a81)
+		p.GetData(nil, a81)
 		ret0, _ := p.Peers()
 		a9 := []string{"p0"}
 		p.UpdatePeers(a9)
@@ -122,8 +120,8 @@ func TestPeer(t *testing.T) {
 		dst.AssertCalled(t, "Block", a4)
 		dst.AssertCalled(t, "BlockProposal", a5)
 		dst.AssertCalled(t, "NotarizationShare", a6)
-		dst.AssertCalled(t, "Inventory", a70, a71)
-		dst.AssertCalled(t, "GetData", a80, a81)
+		dst.AssertCalled(t, "Inventory", mock.Anything, a71)
+		dst.AssertCalled(t, "GetData", mock.Anything, a81)
 		dst.AssertCalled(t, "Peers")
 		dst.AssertCalled(t, "UpdatePeers", a9)
 		dst.AssertCalled(t, "Ping", mock.Anything)
