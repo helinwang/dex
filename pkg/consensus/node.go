@@ -69,7 +69,7 @@ func (n *Node) Start(myAddr, seedAddr string) {
 }
 
 // StartRound tells the node that a new round has just started.
-func (n *Node) StartRound(round int) {
+func (n *Node) StartRound(round uint64) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 
@@ -95,8 +95,13 @@ func (n *Node) StartRound(round int) {
 			keyShare := m.skShare
 			go func() {
 				history := n.chain.RandomBeacon.History()
+				if round < 1 {
+					log.Error("round should not < 1")
+					return
+				}
+
 				idx := round - 1
-				if idx >= len(history) {
+				if idx >= uint64(len(history)) {
 					// TODO: handle this case better, need to be retry
 					log.Error("new round started, but have not received last round random beacon", "idx", idx, "len", len(history))
 					return

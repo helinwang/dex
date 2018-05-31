@@ -1,11 +1,10 @@
 package consensus
 
 import (
-	"bytes"
-	"encoding/gob"
 	"fmt"
 
 	"github.com/dfinity/go-dfinity-crypto/bls"
+	"github.com/ethereum/go-ethereum/rlp"
 )
 
 const (
@@ -41,78 +40,58 @@ type RandVal Hash
 // RandBeaconSig is the random beacon signature produced by the random
 // beacon committe.
 type RandBeaconSig struct {
-	Round       int
+	Round       uint64
 	LastSigHash Hash
 	Sig         []byte
 }
 
 // Encode encodes the random beacon signature.
-func (b *RandBeaconSig) Encode(withSig bool) []byte {
-	use := b
+func (r *RandBeaconSig) Encode(withSig bool) []byte {
+	en := *r
 	if !withSig {
-		newB := *b
-		newB.Sig = nil
-		use = &newB
+		en.Sig = nil
 	}
 
-	return gobEncode(use)
-}
-
-// Decode decodes the data into the random beacon signature.
-func (b *RandBeaconSig) Decode(d []byte) error {
-	var use RandBeaconSig
-	dec := gob.NewDecoder(bytes.NewBuffer(d))
-	err := dec.Decode(&use)
+	b, err := rlp.EncodeToBytes(en)
 	if err != nil {
-		return err
+		panic(err)
 	}
 
-	*b = use
-	return nil
+	return b
 }
 
 // Hash returns the hash of the random beacon signature.
-func (b *RandBeaconSig) Hash() Hash {
-	return SHA3(b.Encode(true))
+func (r *RandBeaconSig) Hash() Hash {
+	return SHA3(r.Encode(true))
 }
 
 // RandBeaconSigShare is one share of the random beacon signature.
 type RandBeaconSigShare struct {
 	Owner       Addr
-	Round       int
+	Round       uint64
 	LastSigHash Hash
 	Share       []byte
 	OwnerSig    []byte
 }
 
 // Encode encodes the random beacon signature share.
-func (b *RandBeaconSigShare) Encode(withSig bool) []byte {
-	use := b
+func (r *RandBeaconSigShare) Encode(withSig bool) []byte {
+	en := *r
 	if !withSig {
-		newB := *b
-		newB.OwnerSig = nil
-		use = &newB
+		en.OwnerSig = nil
 	}
 
-	return gobEncode(use)
-}
-
-// Decode decodes the data into the random beacon signature share.
-func (b *RandBeaconSigShare) Decode(d []byte) error {
-	var use RandBeaconSigShare
-	dec := gob.NewDecoder(bytes.NewBuffer(d))
-	err := dec.Decode(&use)
+	b, err := rlp.EncodeToBytes(en)
 	if err != nil {
-		return err
+		panic(err)
 	}
 
-	*b = use
-	return nil
+	return b
 }
 
 // Hash returns the hash of the random beacon signature share.
-func (b *RandBeaconSigShare) Hash() Hash {
-	return SHA3(b.Encode(true))
+func (r *RandBeaconSigShare) Hash() Hash {
+	return SHA3(r.Encode(true))
 }
 
 // NtShare is one share of the notarization.
@@ -123,7 +102,7 @@ func (b *RandBeaconSigShare) Hash() Hash {
 // recovered, and a block can be made from the signature and the block
 // proposal.
 type NtShare struct {
-	Round     int
+	Round     uint64
 	BP        Hash
 	StateRoot Hash
 	SigShare  []byte
@@ -133,27 +112,17 @@ type NtShare struct {
 
 // Encode encodes the notarization share.
 func (n *NtShare) Encode(withSig bool) []byte {
-	use := n
+	en := *n
 	if !withSig {
-		newN := *n
-		newN.OwnerSig = nil
-		use = &newN
+		en.OwnerSig = nil
 	}
 
-	return gobEncode(use)
-}
-
-// Decode decodes the data into the notarization share.
-func (n *NtShare) Decode(d []byte) error {
-	var use NtShare
-	dec := gob.NewDecoder(bytes.NewBuffer(d))
-	err := dec.Decode(&use)
+	b, err := rlp.EncodeToBytes(en)
 	if err != nil {
-		return err
+		panic(err)
 	}
 
-	*n = use
-	return nil
+	return b
 }
 
 // Hash returns the hash of the notarization share.
@@ -163,7 +132,7 @@ func (n *NtShare) Hash() Hash {
 
 // BlockProposal is a block proposal.
 type BlockProposal struct {
-	Round     int
+	Round     uint64
 	PrevBlock Hash
 	Data      []byte
 	SysTxns   []SysTxn
@@ -174,33 +143,23 @@ type BlockProposal struct {
 }
 
 // Encode encodes the block proposal.
-func (b *BlockProposal) Encode(withSig bool) []byte {
-	use := b
+func (bp *BlockProposal) Encode(withSig bool) []byte {
+	en := *bp
 	if !withSig {
-		newB := *b
-		newB.OwnerSig = nil
-		use = &newB
+		en.OwnerSig = nil
 	}
 
-	return gobEncode(use)
-}
-
-// Decode decodes the data into the block proposal
-func (b *BlockProposal) Decode(d []byte) error {
-	var use BlockProposal
-	dec := gob.NewDecoder(bytes.NewBuffer(d))
-	err := dec.Decode(&use)
+	b, err := rlp.EncodeToBytes(en)
 	if err != nil {
-		return err
+		panic(err)
 	}
 
-	*b = use
-	return nil
+	return b
 }
 
 // Hash returns the hash of the block proposal.
-func (b *BlockProposal) Hash() Hash {
-	return SHA3(b.Encode(true))
+func (bp *BlockProposal) Hash() Hash {
+	return SHA3(bp.Encode(true))
 }
 
 // Block is generated from a block proposal collaboratively by the
@@ -208,7 +167,7 @@ func (b *BlockProposal) Hash() Hash {
 // signature.
 type Block struct {
 	Owner         Addr
-	Round         int
+	Round         uint64
 	StateRoot     Hash
 	BlockProposal Hash
 	PrevBlock     Hash
@@ -220,26 +179,17 @@ type Block struct {
 
 // Encode encodes the block.
 func (b *Block) Encode(withSig bool) []byte {
-	use := b
+	en := *b
 	if !withSig {
-		newB := *b
-		newB.NotarizationSig = nil
-		use = &newB
+		en.NotarizationSig = nil
 	}
-	return gobEncode(use)
-}
 
-// Decode decodes the data into the block.
-func (b *Block) Decode(d []byte) error {
-	var use Block
-	dec := gob.NewDecoder(bytes.NewBuffer(d))
-	err := dec.Decode(&use)
+	d, err := rlp.EncodeToBytes(en)
 	if err != nil {
-		return err
+		panic(err)
 	}
 
-	*b = use
-	return nil
+	return d
 }
 
 // Hash returns the hash of the block.

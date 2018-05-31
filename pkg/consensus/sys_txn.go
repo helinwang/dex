@@ -1,7 +1,7 @@
 package consensus
 
 // SysTxnType is the type of a SysTxn.
-type SysTxnType int
+type SysTxnType uint8
 
 // System transactions
 const (

@@ -3,6 +3,7 @@ package consensus
 import (
 	"testing"
 
+	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -17,6 +18,7 @@ func TestBlockProposalEncodeDecode(t *testing.T) {
 	b := BlockProposal{
 		Data:     []byte{1, 2, 3},
 		OwnerSig: []byte{4, 5, 6},
+		SysTxns:  []SysTxn{},
 	}
 
 	withSig := b.Encode(true)
@@ -24,26 +26,32 @@ func TestBlockProposalEncodeDecode(t *testing.T) {
 	assert.NotEqual(t, withSig, withoutSig)
 
 	var b0 BlockProposal
-	err := b0.Decode(withSig)
+	err := rlp.DecodeBytes(withSig, &b0)
 	if err != nil {
 		panic(err)
 	}
 	assert.Equal(t, b, b0)
 
 	var b1 BlockProposal
-	err = b1.Decode(withoutSig)
+	err = rlp.DecodeBytes(withoutSig, &b1)
 	if err != nil {
 		panic(err)
 	}
 
-	b0.OwnerSig = nil
+	b0.OwnerSig = []byte{}
 	assert.Equal(t, b0, b1)
+
+	b2 := b
+	b2.SysTxns = nil
+	assert.Equal(t, b2.Encode(true), b.Encode(true))
+	assert.Equal(t, b2.Encode(false), b.Encode(false))
 }
 
 func TestBlockEncodeDecode(t *testing.T) {
 	b := Block{
 		StateRoot:       Hash{1},
 		NotarizationSig: []byte{4, 5, 6},
+		SysTxns:         []SysTxn{},
 	}
 
 	withSig := b.Encode(true)
@@ -51,19 +59,19 @@ func TestBlockEncodeDecode(t *testing.T) {
 	assert.NotEqual(t, withSig, withoutSig)
 
 	var b0 Block
-	err := b0.Decode(withSig)
+	err := rlp.DecodeBytes(withSig, &b0)
 	if err != nil {
 		panic(err)
 	}
 	assert.Equal(t, b, b0)
 
 	var b1 Block
-	err = b1.Decode(withoutSig)
+	err = rlp.DecodeBytes(withoutSig, &b1)
 	if err != nil {
 		panic(err)
 	}
 
-	b0.NotarizationSig = nil
+	b0.NotarizationSig = []byte{}
 	assert.Equal(t, b0, b1)
 }
 
@@ -78,20 +86,49 @@ func TestRandSigEncodeDecode(t *testing.T) {
 	assert.NotEqual(t, withSig, withoutSig)
 
 	var b0 RandBeaconSig
-	err := b0.Decode(withSig)
+	err := rlp.DecodeBytes(withSig, &b0)
 	if err != nil {
 		panic(err)
 	}
 	assert.Equal(t, b, b0)
 
 	var b1 RandBeaconSig
-	err = b1.Decode(withoutSig)
+	err = rlp.DecodeBytes(withoutSig, &b1)
 	if err != nil {
 		panic(err)
 	}
 
-	b0.Sig = nil
+	b0.Sig = []byte{}
 	assert.Equal(t, b0, b1)
+}
+
+func TestNtShareEncodeDecode(t *testing.T) {
+	nt := NtShare{
+		Round:     1,
+		BP:        Hash{2},
+		StateRoot: Hash{3},
+		SigShare:  []byte{4},
+		Owner:     Addr{5},
+		OwnerSig:  []byte{6},
+	}
+
+	var nt0 NtShare
+	err := rlp.DecodeBytes(nt.Encode(true), &nt0)
+	if err != nil {
+		panic(err)
+	}
+
+	assert.Equal(t, nt, nt0)
+
+	var nt1 NtShare
+	err = rlp.DecodeBytes(nt.Encode(false), &nt1)
+	if err != nil {
+		panic(err)
+	}
+
+	nt.OwnerSig = []byte{}
+	assert.Equal(t, nt, nt1)
+
 }
 
 func TestEncodeSlice(t *testing.T) {

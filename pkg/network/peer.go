@@ -124,79 +124,78 @@ func (p *Peer) read() {
 				continue
 			}
 		case sysTxnArg:
-			var s *consensus.SysTxn
+			var s consensus.SysTxn
 			err := dataDec.Decode(&s)
 			if err != nil {
 				p.onErr(err)
 				return
 			}
 
-			err = p.myself.SysTxn(s)
+			err = p.myself.SysTxn(&s)
 			if err != nil {
 				log.Error("Peer methods are not supposed to return error")
 				continue
 			}
 		case randBeaconSigShareArg:
-			var r *consensus.RandBeaconSigShare
+			var r consensus.RandBeaconSigShare
 			err := dataDec.Decode(&r)
 			if err != nil {
 				p.onErr(err)
 				return
 			}
 
-			err = p.myself.RandBeaconSigShare(r)
+			err = p.myself.RandBeaconSigShare(&r)
 			if err != nil {
 				log.Error("Peer methods are not supposed to return error")
 				continue
 			}
 		case randBeaconSigArg:
-			var r *consensus.RandBeaconSig
+			var r consensus.RandBeaconSig
 			err := dataDec.Decode(&r)
 			if err != nil {
 				p.onErr(err)
 				return
 			}
 
-			err = p.myself.RandBeaconSig(r)
+			err = p.myself.RandBeaconSig(&r)
 			if err != nil {
 				log.Error("Peer methods are not supposed to return error")
 				continue
 			}
 		case blockArg:
-			var b *consensus.Block
+			var b consensus.Block
 			err := dataDec.Decode(&b)
 			if err != nil {
 				p.onErr(err)
 				return
 			}
 
-			err = p.myself.Block(b)
+			err = p.myself.Block(&b)
 			if err != nil {
 				log.Error("Peer methods are not supposed to return error")
 				continue
 			}
 		case blockProposalArg:
-			var b *consensus.BlockProposal
+			var b consensus.BlockProposal
 			err := dataDec.Decode(&b)
 			if err != nil {
 				p.onErr(err)
 				return
 			}
 
-			err = p.myself.BlockProposal(b)
+			err = p.myself.BlockProposal(&b)
 			if err != nil {
 				log.Error("Peer methods are not supposed to return error")
 				continue
 			}
 		case ntShareArg:
-			var n *consensus.NtShare
+			var n consensus.NtShare
 			err := dataDec.Decode(&n)
 			if err != nil {
 				p.onErr(err)
 				return
 			}
-
-			err = p.myself.NotarizationShare(n)
+			err = p.myself.NotarizationShare(&n)
 			if err != nil {
 				log.Error("Peer methods are not supposed to return error")
 				continue
@@ -622,6 +621,13 @@ func (p *Peer) NotarizationShare(n *consensus.NtShare) error {
 	if err != nil {
 		p.onErr(err)
 		return err
+	}
+
+	var de consensus.NtShare
+	dec := gob.NewDecoder(bytes.NewReader(pac.Data))
+	err = dec.Decode(&de)
+	if err != nil {
+		panic(err)
 	}
 
 	err = p.write(pac)

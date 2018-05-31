@@ -55,9 +55,8 @@ func TestPeer(t *testing.T) {
 		peerCh <- p
 	}
 
-	myself := &mocks.Peer{}
 	var net Network
-	err := net.Start(":8081", onPeerConnect, myself)
+	err := net.Start(":8081", onPeerConnect, &mocks.Peer{})
 	if err != nil {
 		panic(err)
 	}

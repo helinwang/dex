@@ -179,7 +179,7 @@ func (v *validator) ValidateNtShare(n *NtShare) (int, bool) {
 		return 0, false
 	}
 
-	// TODO: validate share is signed correctly.
+	// TODO: validate share signature is valid.
 	return nt, true
 }
 
@@ -210,6 +210,30 @@ func (v *validator) ValidateRandBeaconSigShare(r *RandBeaconSigShare) (int, bool
 	}
 
 	rb, _, _ := v.chain.RandomBeacon.Committees(targetDepth)
-	// TODO: validate sig, owner, round
+	group := v.chain.RandomBeacon.groups[rb]
+	if !group.MemberExists[r.Owner] {
+		log.Warn("ValidateNtShare: nt owner not a member of the nt cmte")
+		return 0, false
+	}
+
+	var sign bls.Sign
+	err := sign.Deserialize(r.OwnerSig)
+	if err != nil {
+		log.Warn("valid nt sig error", "err", err)
+		return 0, false
+	}
+
+	pk, ok := v.chain.LastFinalizedSysState.addrToPK[r.Owner]
+	if !ok {
+		log.Warn("nt owner not found", "owner", r.Owner)
+		return 0, false
+	}
+
+	if !sign.Verify(&pk, string(r.Encode(false))) {
+		log.Warn("invalid rand beacon share signature", "rand beacon share", r.Hash())
+		return 0, false
+	}
+
+	// TODO: validate share signature is valid.
 	return rb, true
 }

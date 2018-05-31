@@ -52,14 +52,14 @@ func recoverRandBeaconSig(shares map[Hash]*RandBeaconSigShare) (bls.Sign, error)
 	return sign, nil
 }
 
-func randBeaconSigMsg(round int, lastSigHash Hash) []byte {
+func randBeaconSigMsg(round uint64, lastSigHash Hash) []byte {
 	var rbs RandBeaconSig
 	rbs.LastSigHash = lastSigHash
 	rbs.Round = round
 	return rbs.Encode(false)
 }
 
-func signRandBeaconShare(sk, keyShare bls.SecretKey, round int, lastSigHash Hash) *RandBeaconSigShare {
+func signRandBeaconShare(sk, keyShare bls.SecretKey, round uint64, lastSigHash Hash) *RandBeaconSigShare {
 	msg := randBeaconSigMsg(round, lastSigHash)
 	share := keyShare.Sign(string(msg)).Serialize()
 	s := &RandBeaconSigShare{

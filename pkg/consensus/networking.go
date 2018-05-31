@@ -51,7 +51,7 @@ const (
 // ItemID is the identification of an item that the current node owns.
 type ItemID struct {
 	T         ItemType
-	ItemRound int
+	ItemRound uint64
 	Ref       Hash
 	Hash      Hash
 }
@@ -117,8 +117,9 @@ func (n *Networking) onPeerConnect(p Peer) {
 	inv = append(inv, n.chain.RandomBeacon.Inventory()...)
 	// TODO: do not need to broadcast finalized block items, only
 	// round is sufficient.
-	fmt.Println("on peer connect")
+
 	go p.Inventory(n.myself, inv)
+	log.Info("on peer connect, my inv", "inv", inv)
 
 	n.peers = append(n.peers, p)
 }
@@ -272,6 +273,8 @@ func (n *Networking) recvRandBeaconSigShare(r *RandBeaconSigShare) {
 		return
 	}
 
+	log.Info("recv RandBeaconSigShare", "hash", r.Hash())
+
 	sig, success := n.chain.RandomBeacon.AddRandBeaconSigShare(r, groupID)
 	if !success {
 		return
@@ -324,6 +327,7 @@ func (n *Networking) recvBlockProposal(bp *BlockProposal) {
 }
 
 func (n *Networking) recvNtShare(s *NtShare) {
+	log.Info("recv nt share", "hash", s.Hash())
 	groupID, valid := n.v.ValidateNtShare(s)
 	if !valid {
 		return
@@ -435,6 +439,9 @@ func (n *Networking) recvInventory(p Peer, ids []ItemID) {
 			if share != nil {
 				continue
 			}
+
+			log.Info("request RandBeaconShareItem", "item", id)
+
 			err := p.GetData(n.myself, []ItemID{id})
 			if err != nil {
 				log.Error("get data from peer error", "err", err)
@@ -509,6 +516,8 @@ func (n *Networking) serveData(p Peer, ids []ItemID) {
 			if !ok {
 				continue
 			}
+
+			log.Info("serve NtShareItem", "hash", nts.Hash(), "id", id)
 			err := p.NotarizationShare(nts)
 			if err != nil {
 				log.Error("send notarization share to peer error", "err", err)
@@ -520,6 +529,7 @@ func (n *Networking) serveData(p Peer, ids []ItemID) {
 				continue
 			}
 
+			log.Info("serve RandBeaconShareItem", "hash", share.Hash(), "id", id)
 			err := p.RandBeaconSigShare(share)
 			if err != nil {
 				log.Error("send random beacon sig share to peer error", "err", err)

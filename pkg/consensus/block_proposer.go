@@ -3,6 +3,7 @@ package consensus
 import (
 	"context"
 
+	"github.com/ethereum/go-ethereum/rlp"
 	log "github.com/helinwang/log15"
 
 	"github.com/dfinity/go-dfinity-crypto/bls"
@@ -41,7 +42,12 @@ func (b *BlockProposer) CollectTxn(ctx context.Context, txCh chan []byte, sysTxC
 		case <-ctx.Done():
 			bp.SysTxns = sysTransition.Txns()
 			data := transition.Txns()
-			bp.Data = gobEncode(data)
+			d, err := rlp.EncodeToBytes(data)
+			if err != nil {
+				panic(err)
+			}
+
+			bp.Data = d
 			bp.OwnerSig = b.sk.Sign(string(bp.Encode(false))).Serialize()
 			close(pendingTx)
 			return &bp

@@ -153,15 +153,15 @@ func (c *Chain) FinalizedChain() []*Block {
 	return bs
 }
 
-func (c *Chain) round() int {
+func (c *Chain) round() uint64 {
 	round := len(c.History)
 	round += len(c.Finalized)
 	round += maxHeight(c.Fork)
-	return round
+	return uint64(round)
 }
 
 // Round returns the current round.
-func (c *Chain) Round() int {
+func (c *Chain) Round() uint64 {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -437,7 +437,9 @@ func (c *Chain) addBlock(b *Block, weight float64) error {
 	round := c.round()
 	// when round n is started, round n - 3 can be finalized. See
 	// corollary 9.19 in https://arxiv.org/abs/1805.04548
-	c.finalize(round - 3)
+	if round > 3 {
+		c.finalize(round - 3)
+	}
 
 	if round == prevRound+1 {
 		// TODO: make it more robust
@@ -462,13 +464,16 @@ func (c *Chain) releaseBPs(s []*unNotarized) {
 }
 
 // must be called with mutex held
-func (c *Chain) finalize(round int) {
+func (c *Chain) finalize(round uint64) {
 	depth := round
-	depth -= len(c.History)
-	depth -= len(c.Finalized)
-	if depth < 0 {
+	var count uint64
+	count += uint64(len(c.History))
+	count += uint64(len(c.Finalized))
+	if depth < count {
 		return
 	}
+
+	depth -= count
 
 	c.releaseBPs(c.UnNotarizedNotOnFork)
 	c.UnNotarizedNotOnFork = nil

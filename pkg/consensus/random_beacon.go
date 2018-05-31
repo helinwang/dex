@@ -155,8 +155,8 @@ func (r *RandomBeacon) Inventory() []ItemID {
 	return ret
 }
 
-func (r *RandomBeacon) depth() int {
-	return len(r.sigHistory)
+func (r *RandomBeacon) depth() uint64 {
+	return uint64(len(r.sigHistory))
 }
 
 // Depth returns the depth of the random beacon.
@@ -165,7 +165,7 @@ func (r *RandomBeacon) depth() int {
 // - greater: when the node is synchronizing. It will synchronize the
 // random beacon first, and then synchronize the chain's blocks.
 // - equal: when the node is synchronized.
-func (r *RandomBeacon) Depth() int {
+func (r *RandomBeacon) Depth() uint64 {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -174,10 +174,14 @@ func (r *RandomBeacon) Depth() int {
 
 // Rank returns the rank for the given member in the current block
 // proposal committee.
-func (r *RandomBeacon) Rank(addr Addr, round int) (int, error) {
+func (r *RandomBeacon) Rank(addr Addr, round uint64) (int, error) {
+	if round < 1 {
+		panic("should not happen")
+	}
+
 	r.mu.Lock()
 	i := round - 1
-	for i >= len(r.nextBPCmteHistory) {
+	for i >= uint64(len(r.nextBPCmteHistory)) {
 		r.mu.Unlock()
 		time.Sleep(100 * time.Millisecond)
 		r.mu.Lock()
@@ -213,11 +217,14 @@ func (r *RandomBeacon) deriveRand(h Hash) {
 
 // Committees returns the current random beacon, block proposal,
 // notarization committees.
-func (r *RandomBeacon) Committees(round int) (rb, bp, nt int) {
+func (r *RandomBeacon) Committees(round uint64) (rb, bp, nt int) {
+	if round < 1 {
+		panic("should not happen")
+	}
 	r.mu.Lock()
 
 	idx := round - 1
-	for idx >= len(r.nextRBCmteHistory) {
+	for idx >= uint64(len(r.nextRBCmteHistory)) {
 		r.mu.Unlock()
 		time.Sleep(100 * time.Millisecond)
 		r.mu.Lock()
