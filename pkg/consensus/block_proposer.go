@@ -9,6 +9,8 @@ import (
 	"github.com/dfinity/go-dfinity-crypto/bls"
 )
 
+// TODO: remove this file, not needed anymore.
+
 // Validator validates the system transaction.
 type Validator interface {
 	Validate(SysTxn) bool

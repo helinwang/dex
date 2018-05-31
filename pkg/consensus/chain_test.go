@@ -7,7 +7,7 @@ import (
 )
 
 func TestGraphviz(t *testing.T) {
-	chain := NewChain(&Block{}, nil, Rand{}, Config{})
+	chain := NewChain(&Block{}, nil, Rand{}, Config{}, nil)
 	chain.History = append(chain.History, Hash{1})
 	chain.History = append(chain.History, Hash{2})
 	chain.Finalized = append(chain.Finalized, &finalized{Block: Hash{3}})

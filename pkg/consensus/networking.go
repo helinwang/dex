@@ -94,6 +94,7 @@ type Networking struct {
 	mu        sync.Mutex
 	peers     []Peer
 	peerAddrs []string
+	txnPool   TxnPool
 }
 
 // NewNetworking creates a new networking component.

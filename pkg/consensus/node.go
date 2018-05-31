@@ -1,7 +1,9 @@
 package consensus
 
 import (
+	"bytes"
 	"context"
+	"encoding/gob"
 	"sync"
 	"time"
 
@@ -42,10 +44,9 @@ type membership struct {
 
 // Config is the consensus layer configuration.
 type Config struct {
-	ProposalWaitDur time.Duration
-	BlockTime       time.Duration
-	GroupSize       int
-	GroupThreshold  int
+	BlockTime      time.Duration
+	GroupSize      int
+	GroupThreshold int
 }
 
 // NewNode creates a new node.
@@ -114,15 +115,28 @@ func (n *Node) StartRound(round uint64) {
 		}
 
 		if m.groupID == bp {
-			ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(n.cfg.ProposalWaitDur))
+			txns := n.chain.getTxns()
+			block, _, _ := n.chain.Leader()
+			var bp BlockProposal
+			bp.PrevBlock = SHA3(block.Encode(true))
+			bp.Round = block.Round + 1
+			bp.Owner = SHA3(n.sk.GetPublicKey().Serialize()).Addr()
+			// TODO: support SysTxn when needed (e.g., open participation)
+
+			var buf bytes.Buffer
+			enc := gob.NewEncoder(&buf)
+			err := enc.Encode(txns)
+			if err != nil {
+				// should never happend
+				panic(err)
+			}
+
+			bp.Data = buf.Bytes()
+			bp.OwnerSig = n.sk.Sign(string(bp.Encode(false))).Serialize()
+
 			go func() {
-				block, state, sysState := n.chain.Leader()
-				b := NewBlockProposer(n.sk, block, state, sysState)
-				// TODO: handle txn
-				proposal := b.CollectTxn(ctx, nil, nil, make(chan []byte, 100))
-				cancel()
-				log.Debug("proposing block", "addr", n.addr, "round", proposal.Round, "hash", proposal.Hash())
-				n.net.recvBlockProposal(proposal)
+				log.Debug("proposing block", "addr", n.addr, "round", bp.Round, "hash", bp.Hash())
+				n.net.recvBlockProposal(&bp)
 			}()
 		}
 
@@ -158,7 +172,8 @@ func (n *Node) RecvBlockProposal(bp *BlockProposal) {
 	}
 }
 
-func MakeNode(credentials NodeCredentials, net Network, cfg Config, genesis *Block, state State) *Node {
+// MakeNode makes a new node with the given configurations.
+func MakeNode(credentials NodeCredentials, net Network, cfg Config, genesis *Block, state State, txnPool TxnPool) *Node {
 	randSeed := Rand(SHA3([]byte("dex")))
 
 	sk, err := credentials.SK.Get()
@@ -166,7 +181,7 @@ func MakeNode(credentials NodeCredentials, net Network, cfg Config, genesis *Blo
 		panic(err)
 	}
 
-	chain := NewChain(genesis, state, randSeed, cfg)
+	chain := NewChain(genesis, state, randSeed, cfg, txnPool)
 	networking := NewNetworking(net, chain)
 	node := NewNode(chain, sk, networking, cfg)
 	for j := range credentials.Groups {

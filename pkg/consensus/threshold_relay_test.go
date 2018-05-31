@@ -71,14 +71,13 @@ func setupNodes() []*Node {
 	nodes := make([]*Node, len(nodeCredentials))
 
 	cfg := Config{
-		ProposalWaitDur: 150 * time.Millisecond,
-		BlockTime:       200 * time.Millisecond,
-		GroupSize:       groupSize,
-		GroupThreshold:  threshold,
+		BlockTime:      200 * time.Millisecond,
+		GroupSize:      groupSize,
+		GroupThreshold: threshold,
 	}
 
 	for i := range nodes {
-		nodes[i] = MakeNode(nodeCredentials[i], net, cfg, &genesis, &emptyState{})
+		nodes[i] = MakeNode(nodeCredentials[i], net, cfg, &genesis, &emptyState{}, nil)
 
 		peers := make([]string, len(nodes))
 		for i := range peers {

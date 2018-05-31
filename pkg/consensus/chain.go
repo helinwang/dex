@@ -40,6 +40,7 @@ type Chain struct {
 	cfg          Config
 	RandomBeacon *RandomBeacon
 	n            *Node
+	txnPool      TxnPool
 
 	mu sync.RWMutex
 	// the finalized block burried deep enough becomes part of the
@@ -68,7 +69,7 @@ type Chain struct {
 }
 
 // NewChain creates a new chain.
-func NewChain(genesis *Block, genesisState State, seed Rand, cfg Config) *Chain {
+func NewChain(genesis *Block, genesisState State, seed Rand, cfg Config, txnPool TxnPool) *Chain {
 	sysState := NewSysState()
 	t := sysState.Transition()
 	for _, txn := range genesis.SysTxns {
@@ -83,6 +84,7 @@ func NewChain(genesis *Block, genesisState State, seed Rand, cfg Config) *Chain 
 	gh := genesis.Hash()
 	return &Chain{
 		cfg:                   cfg,
+		txnPool:               txnPool,
 		RandomBeacon:          NewRandomBeacon(seed, sysState.groups, cfg),
 		History:               []Hash{gh},
 		LastHistoryState:      genesisState,
@@ -152,6 +154,14 @@ func (c *Chain) FinalizedChain() []*Block {
 	}
 
 	return bs
+}
+
+func (c *Chain) getTxns() [][]byte {
+	return c.txnPool.Txns()
+}
+
+func (c *Chain) addTxn(txn []byte) bool {
+	return c.txnPool.Add(txn)
 }
 
 func (c *Chain) round() uint64 {
@@ -374,6 +384,7 @@ func (c *Chain) addNtShare(n *NtShare, groupID int) (*Block, bool) {
 }
 
 func (c *Chain) addBlock(b *Block, weight float64) error {
+	// TODO: remove txn from the txn pool
 	log.Info("addBlock called", "hash", b.Hash(), "weight", weight)
 	c.mu.Lock()
 	defer c.mu.Unlock()

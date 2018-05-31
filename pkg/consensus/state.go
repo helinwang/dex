@@ -21,3 +21,14 @@ type State interface {
 	MatchOrders()
 	Transition() Transition
 }
+
+// TxnPool is the pool that stores the received transactions.
+type TxnPool interface {
+	// Add adds a transaction, the transaction pool should
+	// validate the txn and return true if the transaction is
+	// valid and not already in the pool. The caller should
+	// broadcast the transaction if the return value is true.
+	Add(txn []byte) (broadcast bool)
+	Txns() [][]byte
+	Remove(txn []byte)
+}

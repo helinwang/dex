@@ -30,14 +30,14 @@ func decodeFromFile(path string, v interface{}) {
 
 func createNode(c consensus.NodeCredentials, genesis *consensus.Block) *consensus.Node {
 	cfg := consensus.Config{
-		ProposalWaitDur: 150 * time.Millisecond,
-		BlockTime:       200 * time.Millisecond,
-		GroupSize:       3,
-		GroupThreshold:  2,
+		BlockTime:      200 * time.Millisecond,
+		GroupSize:      3,
+		GroupThreshold: 2,
 	}
 
 	db := trie.NewDatabase(ethdb.NewMemDatabase())
-	return consensus.MakeNode(c, &network.Network{}, cfg, genesis, dex.NewState(db))
+	state := dex.NewState(db)
+	return consensus.MakeNode(c, &network.Network{}, cfg, genesis, state, dex.NewTxnPool(state))
 }
 
 func main() {

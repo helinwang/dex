@@ -42,6 +42,7 @@ func (t *TxnPool) Txns() [][]byte {
 	return r
 }
 
-func (t *TxnPool) Remove(h consensus.Hash) {
-	delete(t.txns, h)
+func (t *TxnPool) Remove(b []byte) {
+	hash := consensus.SHA3(b)
+	delete(t.txns, hash)
 }
