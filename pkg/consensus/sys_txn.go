@@ -41,7 +41,7 @@ type RegGroupTxn struct {
 	ID         int
 	PK         []byte
 	MemberIDs  []int
-	MemberVVec [][]byte
+	MemberVVec []PK
 }
 
 // ListGroupsTxn lists the groups in the current epoch.

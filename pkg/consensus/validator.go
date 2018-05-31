@@ -156,7 +156,8 @@ func (v *validator) ValidateNtShare(n *NtShare) (int, bool) {
 
 	_, _, nt := v.chain.RandomBeacon.Committees(round)
 	group := v.chain.RandomBeacon.groups[nt]
-	if !group.MemberExists[n.Owner] {
+	sharePK, ok := group.MemberPK[n.Owner]
+	if !ok {
 		log.Warn("ValidateNtShare: nt owner not a member of the nt cmte")
 		return 0, false
 	}
@@ -180,6 +181,7 @@ func (v *validator) ValidateNtShare(n *NtShare) (int, bool) {
 	}
 
 	// TODO: validate share signature is valid.
+	_ = sharePK
 	return nt, true
 }
 
@@ -209,9 +211,15 @@ func (v *validator) ValidateRandBeaconSigShare(r *RandBeaconSigShare) (int, bool
 		return 0, false
 	}
 
+	if h := SHA3(v.chain.RandomBeacon.sigHistory[r.Round-1].Sig); h != r.LastSigHash {
+		log.Warn("validate random beacon share last sig error", "hash", r.LastSigHash, "expected", h)
+		return 0, false
+	}
+
 	rb, _, _ := v.chain.RandomBeacon.Committees(targetDepth)
 	group := v.chain.RandomBeacon.groups[rb]
-	if !group.MemberExists[r.Owner] {
+	sharePK, ok := group.MemberPK[r.Owner]
+	if !ok {
 		log.Warn("ValidateNtShare: nt owner not a member of the nt cmte")
 		return 0, false
 	}
@@ -219,13 +227,13 @@ func (v *validator) ValidateRandBeaconSigShare(r *RandBeaconSigShare) (int, bool
 	var sign bls.Sign
 	err := sign.Deserialize(r.OwnerSig)
 	if err != nil {
-		log.Warn("valid nt sig error", "err", err)
+		log.Warn("validate random beacon share sig error", "err", err)
 		return 0, false
 	}
 
 	pk, ok := v.chain.LastFinalizedSysState.addrToPK[r.Owner]
 	if !ok {
-		log.Warn("nt owner not found", "owner", r.Owner)
+		log.Warn("rancom beacon sig shareowner not found", "owner", r.Owner)
 		return 0, false
 	}
 
@@ -235,5 +243,18 @@ func (v *validator) ValidateRandBeaconSigShare(r *RandBeaconSigShare) (int, bool
 	}
 
 	// TODO: validate share signature is valid.
+	var shareSign bls.Sign
+	err = shareSign.Deserialize(r.Share)
+	if err != nil {
+		log.Warn("decode random beacon sig share error", "err", err)
+		return 0, false
+	}
+
+	msg := randBeaconSigMsg(r.Round, r.LastSigHash)
+	if !shareSign.Verify(&sharePK, string(msg)) {
+		log.Warn("validate random beacon sig share error")
+		return 0, false
+	}
+
 	return rb, true
 }

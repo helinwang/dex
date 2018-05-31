@@ -273,8 +273,6 @@ func (n *Networking) recvRandBeaconSigShare(r *RandBeaconSigShare) {
 		return
 	}
 
-	log.Info("recv RandBeaconSigShare", "hash", r.Hash())
-
 	sig, success := n.chain.RandomBeacon.AddRandBeaconSigShare(r, groupID)
 	if !success {
 		return

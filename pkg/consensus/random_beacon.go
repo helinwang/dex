@@ -86,11 +86,6 @@ func (r *RandomBeacon) AddRandBeaconSigShare(s *RandBeaconSigShare, groupID int)
 		return nil, true
 	}
 
-	if h := SHA3(r.sigHistory[s.Round-1].Sig); h != s.LastSigHash {
-		log.Warn("unexpected RandBeaconSigShare.LastSigHash", "hash", s.LastSigHash, "expected", h)
-		return nil, false
-	}
-
 	if _, ok := r.curRoundShares[s.Hash()]; ok {
 		return nil, false
 	}

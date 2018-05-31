@@ -101,7 +101,7 @@ func main() {
 		groupPK, shares, rand = makeShares(threshold, idVec, rand)
 		groupIDs[i] = i
 
-		memberVVec := make([][]byte, len(shares))
+		memberVVec := make([]consensus.PK, len(shares))
 		for i := range memberVVec {
 			memberVVec[i] = shares[i].GetPublicKey().Serialize()
 		}

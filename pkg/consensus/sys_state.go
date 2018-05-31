@@ -111,8 +111,13 @@ func (s *SysState) applyRegGroup(t RegGroupTxn) error {
 		g.Members = append(g.Members, addr)
 	}
 
-	for _, addr := range g.Members {
-		g.MemberExists[addr] = true
+	for i, addr := range g.Members {
+		pk, err := t.MemberVVec[i].Get()
+		if err != nil {
+			return err
+		}
+
+		g.MemberPK[addr] = pk
 	}
 
 	// TODO: parse vvec
