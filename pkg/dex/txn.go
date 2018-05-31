@@ -5,12 +5,13 @@ import (
 	"encoding/gob"
 
 	"github.com/dfinity/go-dfinity-crypto/bls"
+	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/helinwang/dex/pkg/consensus"
 	"github.com/helinwang/dex/pkg/matching"
 	log "github.com/helinwang/log15"
 )
 
-type TxnType int
+type TxnType uint8
 
 const (
 	PlaceOrder TxnType = iota
@@ -23,15 +24,14 @@ type Txn struct {
 	T          TxnType
 	Data       []byte
 	Owner      consensus.Addr
-	NonceIdx   int
+	NonceIdx   uint8
 	NonceValue uint64
 	Sig        []byte
 }
 
 func validateSigAndNonce(state *state, b []byte) (txn *Txn, acc *Account, ready, valid bool) {
 	txn = &Txn{}
-	dec := gob.NewDecoder(bytes.NewBuffer(b))
-	err := dec.Decode(&txn)
+	err := rlp.DecodeBytes(b, &txn)
 	if err != nil {
 		log.Warn("error decode txn", "err", err)
 		return
@@ -64,7 +64,7 @@ func validateSigAndNonce(state *state, b []byte) (txn *Txn, acc *Account, ready,
 		return
 	}
 
-	if txn.NonceIdx >= len(acc.NonceVec) {
+	if int(txn.NonceIdx) >= len(acc.NonceVec) {
 		if txn.NonceValue > 0 {
 			ready = false
 			valid = true
@@ -91,26 +91,17 @@ func validateSigAndNonce(state *state, b []byte) (txn *Txn, acc *Account, ready,
 }
 
 func (b *Txn) Encode(withSig bool) []byte {
-	use := b
+	en := *b
 	if !withSig {
-		newB := *b
-		newB.Sig = nil
-		use = &newB
+		en.Sig = nil
 	}
 
-	return gobEncode(use)
-}
-
-func (b *Txn) Decode(d []byte) error {
-	var use Txn
-	dec := gob.NewDecoder(bytes.NewBuffer(d))
-	err := dec.Decode(&use)
+	d, err := rlp.EncodeToBytes(en)
 	if err != nil {
-		return err
+		panic(err)
 	}
 
-	*b = use
-	return nil
+	return d
 }
 
 func (b *Txn) Hash() consensus.Hash {

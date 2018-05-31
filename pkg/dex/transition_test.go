@@ -134,6 +134,30 @@ var btcInfo = TokenInfo{
 	TotalSupply: 21000000,
 }
 
+func createTokenTxn(sk bls.SecretKey, addr consensus.Addr, t CreateTokenTxn) []byte {
+	txn := Txn{
+		T:     CreateToken,
+		Owner: addr,
+		Data:  gobEncode(t),
+	}
+	txn.Sig = sk.Sign(string(txn.Encode(false))).Serialize()
+	return txn.Encode(true)
+}
+
+func TestCreateToken(t *testing.T) {
+	s := NewState(trie.NewDatabase(ethdb.NewMemDatabase()))
+	s.tokenCache.Update(0, &bnbInfo)
+	sk, addr := createAccount(s, 100)
+	trans := s.Transition()
+	txn := createTokenTxn(sk, addr, CreateTokenTxn{Info: btcInfo})
+	trans.Record(txn)
+	trans.Commit()
+
+	assert.Equal(t, 2, s.tokenCache.Size())
+	assert.True(t, s.tokenCache.Exists(btcInfo.Symbol))
+	assert.Equal(t, &btcInfo, s.tokenCache.Info(1))
+}
+
 func TestPlaceOrder(t *testing.T) {
 	s := NewState(trie.NewDatabase(ethdb.NewMemDatabase()))
 	s.tokenCache.Update(0, &bnbInfo)

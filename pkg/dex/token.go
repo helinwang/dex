@@ -1,10 +1,12 @@
 package dex
 
+import "strings"
+
 type TokenSymbol string
 
 type TokenInfo struct {
 	Symbol      TokenSymbol
-	Decimals    int
+	Decimals    uint8
 	TotalSupply uint64
 }
 
@@ -16,17 +18,30 @@ type Token struct {
 }
 
 type TokenCache struct {
-	m map[TokenID]*TokenInfo
+	idToInfo map[TokenID]*TokenInfo
+	exists   map[TokenSymbol]bool
 }
 
 func newTokenCache() *TokenCache {
-	return &TokenCache{m: make(map[TokenID]*TokenInfo)}
+	return &TokenCache{
+		idToInfo: make(map[TokenID]*TokenInfo),
+		exists:   make(map[TokenSymbol]bool),
+	}
+}
+
+func (t *TokenCache) Exists(s TokenSymbol) bool {
+	return t.exists[s]
 }
 
 func (t *TokenCache) Info(id TokenID) *TokenInfo {
-	return t.m[id]
+	return t.idToInfo[id]
 }
 
 func (t *TokenCache) Update(id TokenID, info *TokenInfo) {
-	t.m[id] = info
+	t.idToInfo[id] = info
+	t.exists[TokenSymbol(strings.ToUpper(string(info.Symbol)))] = true
+}
+
+func (t *TokenCache) Size() int {
+	return len(t.idToInfo)
 }

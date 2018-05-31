@@ -2,16 +2,20 @@ package dex
 
 import (
 	"bytes"
+	"encoding/binary"
 	"encoding/gob"
+	"strings"
 
+	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/helinwang/dex/pkg/matching"
 	log "github.com/helinwang/log15"
 )
 
 type Transition struct {
 	state
-	owner *State
-	txns  [][]byte
+	owner          *State
+	tokenCreations []Token
+	txns           [][]byte
 }
 
 func newTransition(s *State, state state) *Transition {
@@ -48,7 +52,16 @@ func (t *Transition) Record(b []byte) (valid, success bool) {
 	case CancelOrder:
 		panic("not implemented")
 	case CreateToken:
-		panic("not implemented")
+		var txn CreateTokenTxn
+		err := dec.Decode(&txn)
+		if err != nil {
+			log.Warn("CreateTokenTxn decode failed", "err", err)
+			return
+		}
+		if !t.createToken(acc, txn) {
+			log.Warn("CreateTokenTxn failed")
+			return
+		}
 	case SendToken:
 		var txn SendTokenTxn
 		err := dec.Decode(&txn)
@@ -70,7 +83,6 @@ func (t *Transition) Record(b []byte) (valid, success bool) {
 
 func (t *Transition) placeOrder(owner *Account, txn PlaceOrderTxn) bool {
 	// TODO: check if fee is sufficient
-
 	baseInfo := t.tokenCache.Info(txn.Market.Base)
 	if baseInfo == nil {
 		log.Error("trying to place order on nonexistent token", "token", txn.Market.Base)
@@ -114,6 +126,39 @@ func (t *Transition) placeOrder(owner *Account, txn PlaceOrderTxn) bool {
 	t.UpdatePendingOrder(txn.Market, &add, nil)
 	return true
 }
+
+func (t *Transition) createToken(owner *Account, txn CreateTokenTxn) bool {
+	if t.tokenCache.Exists(txn.Info.Symbol) {
+		log.Warn("token symbol already exists", "symbol", txn.Info.Symbol)
+		return false
+	}
+
+	for _, v := range t.tokenCreations {
+		if strings.ToUpper(string(txn.Info.Symbol)) == strings.ToUpper(string(v.Symbol)) {
+			log.Warn("token symbol already exists in the current transition", "symbol", txn.Info.Symbol)
+			return false
+		}
+	}
+
+	id := TokenID(t.tokenCache.Size() + len(t.tokenCreations))
+	token := Token{ID: id, TokenInfo: txn.Info}
+	t.tokenCreations = append(t.tokenCreations, token)
+
+	b, err := rlp.EncodeToBytes(token)
+	if err != nil {
+		// should never happen
+		panic(err)
+	}
+
+	path := make([]byte, 64)
+	binary.LittleEndian.PutUint64(path, uint64(id))
+	t.tokens.Update(path, b)
+	// TODO: fiture out how to pay fee.
+	return true
+}
+
+// TODO: all elements in trie should be serialized using rlp, not gob,
+// since gob is not deterministic.
 
 func (t *Transition) sendToken(owner *Account, txn SendTokenTxn) bool {
 	if txn.Quant == 0 {

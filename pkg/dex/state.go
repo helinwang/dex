@@ -66,7 +66,7 @@ func (s *state) Account(addr consensus.Addr) *Account {
 	acc, err := s.accounts.TryGet(addr[:])
 	if err != nil || acc == nil {
 		if acc == nil {
-			err = fmt.Errorf("account %x does not exist", addr)
+			err = fmt.Errorf("account %v does not exist", addr)
 		}
 		log.Warn("get account error", "err", err)
 		return nil
@@ -278,6 +278,9 @@ func (s *State) Commit(t *Transition) {
 	s.tokens = t.state.tokens
 	s.pendingOrders = t.state.pendingOrders
 	s.reports = t.state.reports
+	for _, v := range t.tokenCreations {
+		s.tokenCache.Update(v.ID, &v.TokenInfo)
+	}
 }
 
 func (s *State) Accounts() consensus.Hash {
