@@ -136,7 +136,8 @@ func (c *Chain) NeedNotarize(h Hash) bool {
 		return b
 	}
 
-	return false
+	// treat bp that has not arrived yet as need notarize.
+	return true
 }
 
 // FinalizedChain returns the finalized block chain.
@@ -225,6 +226,7 @@ func findPrevBlock(prevBlock Hash, ns []*notarized) (*notarized, int) {
 }
 
 func (c *Chain) addBP(bp *BlockProposal, weight float64) error {
+	log.Info("addBP called", "hash", bp.Hash(), "weight", weight)
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	h := bp.Hash()
@@ -321,6 +323,7 @@ func (c *Chain) unregisterNtShare(h Hash) {
 }
 
 func (c *Chain) addNtShare(n *NtShare, groupID int) (*Block, bool) {
+	log.Info("addNtShare called", "hash", n.Hash(), "group", groupID)
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -371,6 +374,7 @@ func (c *Chain) addNtShare(n *NtShare, groupID int) (*Block, bool) {
 }
 
 func (c *Chain) addBlock(b *Block, weight float64) error {
+	log.Info("addBlock called", "hash", b.Hash(), "weight", weight)
 	c.mu.Lock()
 	defer c.mu.Unlock()
 

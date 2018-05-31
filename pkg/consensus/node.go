@@ -121,7 +121,7 @@ func (n *Node) StartRound(round uint64) {
 				// TODO: handle txn
 				proposal := b.CollectTxn(ctx, nil, nil, make(chan []byte, 100))
 				cancel()
-				log.Debug("proposing block", "addr", n.addr, "round", proposal.Round)
+				log.Debug("proposing block", "addr", n.addr, "round", proposal.Round, "hash", proposal.Hash())
 				n.net.recvBlockProposal(proposal)
 			}()
 		}
@@ -136,12 +136,12 @@ func (n *Node) StartRound(round uint64) {
 			n.notarizeChs = append(n.notarizeChs, inCh)
 			ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(n.cfg.BlockTime))
 			go func() {
-				shares := notary.Notarize(ctx, ntCancelCtx, inCh)
-				cancel()
-
-				for _, b := range shares {
-					go n.net.recvNtShare(b)
+				onNotarize := func(s *NtShare) {
+					go n.net.recvNtShare(s)
 				}
+
+				notary.Notarize(ctx, ntCancelCtx, inCh, onNotarize)
+				cancel()
 			}()
 		}
 	}

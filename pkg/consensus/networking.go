@@ -379,6 +379,8 @@ func (n *Networking) recvInventory(p Peer, ids []ItemID) {
 			panic("not implemented")
 		case BlockItem:
 			// TODO: improve logic of what to get, e.g., using id.Ref
+			log.Info("request BlockItem", "item", id)
+
 			if _, ok := n.chain.Block(id.Hash); !ok {
 				err := p.GetData(n.myself, []ItemID{id})
 				if err != nil {
@@ -397,6 +399,8 @@ func (n *Networking) recvInventory(p Peer, ids []ItemID) {
 			if _, ok := n.chain.BlockProposal(id.Hash); ok {
 				continue
 			}
+
+			log.Info("request BlockProposalItem", "item", id)
 
 			err := p.GetData(n.myself, []ItemID{id})
 			if err != nil {
@@ -419,6 +423,8 @@ func (n *Networking) recvInventory(p Peer, ids []ItemID) {
 			if !n.chain.NeedNotarize(id.Ref) {
 				continue
 			}
+
+			log.Info("request NtShareItem", "item", id)
 
 			err := p.GetData(n.myself, []ItemID{id})
 			if err != nil {
@@ -446,12 +452,14 @@ func (n *Networking) recvInventory(p Peer, ids []ItemID) {
 				n.removePeer(p)
 			}
 		case RandBeaconItem:
-			if id.ItemRound != round {
+			if id.ItemRound != n.chain.RandomBeacon.Depth() {
 				if id.ItemRound > round {
 					log.Warn("received random beacon share for a bigger round", "round", id.ItemRound, "expecting", round)
 				}
 				continue
 			}
+
+			log.Info("request RandBeaconItem", "item", id)
 
 			err := p.GetData(n.myself, []ItemID{id})
 			if err != nil {
@@ -494,6 +502,8 @@ func (n *Networking) serveData(p Peer, ids []ItemID) {
 			if !ok {
 				continue
 			}
+
+			log.Info("serving BlockItem", "id", id, "item", b.Hash())
 			err := p.Block(b)
 			if err != nil {
 				log.Error("send block to peer error", "err", err)
@@ -504,6 +514,8 @@ func (n *Networking) serveData(p Peer, ids []ItemID) {
 			if !ok {
 				continue
 			}
+
+			log.Info("serving BlockProposalItem", "id", id, "item", bp.Hash())
 			err := p.BlockProposal(bp)
 			if err != nil {
 				log.Error("send block proposal to peer error", "err", err)
@@ -515,7 +527,7 @@ func (n *Networking) serveData(p Peer, ids []ItemID) {
 				continue
 			}
 
-			log.Info("serve NtShareItem", "hash", nts.Hash(), "id", id)
+			log.Info("serving NtShareItem", "id", id, "item", nts.Hash())
 			err := p.NotarizationShare(nts)
 			if err != nil {
 				log.Error("send notarization share to peer error", "err", err)
@@ -527,7 +539,7 @@ func (n *Networking) serveData(p Peer, ids []ItemID) {
 				continue
 			}
 
-			log.Info("serve RandBeaconShareItem", "hash", share.Hash(), "id", id)
+			log.Info("serving RandBeaconShareItem", "id", id, "item", share.Hash())
 			err := p.RandBeaconSigShare(share)
 			if err != nil {
 				log.Error("send random beacon sig share to peer error", "err", err)
@@ -540,7 +552,9 @@ func (n *Networking) serveData(p Peer, ids []ItemID) {
 			}
 
 			history := n.chain.RandomBeacon.History()
-			err := p.RandBeaconSig(history[id.ItemRound])
+			r := history[id.ItemRound]
+			log.Info("serving RandBeaconItem", "id", id, "item", r.Hash())
+			err := p.RandBeaconSig(r)
 			if err != nil {
 				log.Error("send rand beacon sig to peer error", "err", err)
 				n.removePeer(p)

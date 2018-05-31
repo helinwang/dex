@@ -124,7 +124,8 @@ func (v *validator) ValidateBlockProposal(bp *BlockProposal) (float64, bool) {
 		return 0, false
 	}
 
-	return rankToWeight(rank), true
+	weight := rankToWeight(rank)
+	return weight, true
 }
 
 func (v *validator) ValidateNtShare(n *NtShare) (int, bool) {

@@ -18,6 +18,7 @@ type RandomBeacon struct {
 	nextRBCmteHistory []int
 	nextNtCmteHistory []int
 	nextBPCmteHistory []int
+	nextBPRandHistory []Rand
 	groups            []*Group
 
 	rbRand Rand
@@ -53,6 +54,7 @@ func NewRandomBeacon(seed Rand, groups []*Group, cfg Config) *RandomBeacon {
 		nextRBCmteHistory: []int{initRBGroup},
 		nextNtCmteHistory: []int{initNtGroup},
 		nextBPCmteHistory: []int{initBPGroup},
+		nextBPRandHistory: []Rand{bpRand},
 		curRoundShares:    make(map[Hash]*RandBeaconSigShare),
 		sigHistory: []*RandBeaconSig{
 			{Sig: []byte("DEX random beacon 0th signature")},
@@ -118,6 +120,8 @@ func (r *RandomBeacon) AddRandBeaconSigShare(s *RandBeaconSigShare, groupID int)
 func (r *RandomBeacon) AddRandBeaconSig(s *RandBeaconSig) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+
+	log.Info("AddRandBeaconSig", "round", s.Round, "hash", s.Hash())
 
 	if depth := r.depth(); depth != s.Round {
 		if s.Round > depth {
@@ -196,7 +200,7 @@ func (r *RandomBeacon) Rank(addr Addr, round uint64) (int, error) {
 		return 0, errors.New("addr not in the current block proposal committee")
 	}
 
-	perm := r.bpRand.Perm(idx+1, len(g.Members))
+	perm := r.nextBPRandHistory[i].Perm(idx+1, len(g.Members))
 	r.mu.Unlock()
 	return perm[idx], nil
 }
@@ -208,6 +212,7 @@ func (r *RandomBeacon) deriveRand(h Hash) {
 	r.nextNtCmteHistory = append(r.nextNtCmteHistory, r.ntRand.Mod(len(r.groups)))
 	r.bpRand = r.bpRand.Derive(h[:])
 	r.nextBPCmteHistory = append(r.nextBPCmteHistory, r.bpRand.Mod(len(r.groups)))
+	r.nextBPRandHistory = append(r.nextBPRandHistory, r.bpRand)
 }
 
 // Committees returns the current random beacon, block proposal,

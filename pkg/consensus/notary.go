@@ -28,31 +28,36 @@ func NewNotary(owner Addr, sk, share bls.SecretKey, chain *Chain) *Notary {
 // notarized block of the current round is received.
 // TODO: fix lint
 // nolint: gocyclo
-func (n *Notary) Notarize(ctx, cancel context.Context, bCh chan *BlockProposal) []*NtShare {
-	// TODO: validate BlockProposal, perhaps should be done by the
-	// data layer.
+func (n *Notary) Notarize(ctx, cancel context.Context, bCh chan *BlockProposal, onNotarize func(*NtShare)) {
 	var bestRankBPs []*BlockProposal
 	var bestRank int
 	for {
 		select {
 		case <-ctx.Done():
-			if len(bestRankBPs) == 0 {
+
+			for _, bp := range bestRankBPs {
+				s := n.notarize(bp)
+				onNotarize(s)
+			}
+
+			for {
 				select {
-				case b := <-bCh:
-					bestRankBPs = append(bestRankBPs, b)
 				case <-cancel.Done():
-					return nil
+					return
+				case bp := <-bCh:
+					rank, err := n.chain.RandomBeacon.Rank(bp.Owner, n.chain.Round())
+					if err != nil {
+						log.Error("get rank error", "err", err, "bp round", bp.Round, "chain round", n.chain.Round())
+						continue
+					}
+
+					if rank <= bestRank {
+						bestRank = rank
+						s := n.notarize(bp)
+						onNotarize(s)
+					}
 				}
 			}
-
-			var bps []*NtShare
-			for _, bp := range bestRankBPs {
-				b := n.notarize(bp)
-				bps = append(bps, b)
-			}
-
-			// TODO: continue to notarize even ctx is Done.
-			return bps
 		case bp := <-bCh:
 			rank, err := n.chain.RandomBeacon.Rank(bp.Owner, n.chain.Round())
 			if err != nil {
@@ -72,6 +77,8 @@ func (n *Notary) Notarize(ctx, cancel context.Context, bCh chan *BlockProposal) 
 			} else if rank == bestRank {
 				bestRankBPs = append(bestRankBPs, bp)
 			}
+		case <-cancel.Done():
+			return
 		}
 	}
 }
