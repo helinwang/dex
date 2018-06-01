@@ -27,6 +27,7 @@ func newTransition(s *State, state state) *Transition {
 
 // Record records a transition to the state transition.
 func (t *Transition) Record(b []byte) (valid, success bool) {
+	// TODO: increment nonce
 	txn, acc, ready, valid := validateSigAndNonce(&t.state, b)
 	if !valid {
 		return

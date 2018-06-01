@@ -43,7 +43,7 @@ func createAccount(s *State, quant uint64) (bls.SecretKey, consensus.Addr) {
 }
 
 func TestSendToken(t *testing.T) {
-	s := NewState(trie.NewDatabase(ethdb.NewMemDatabase()))
+	s := NewState(trie.NewDatabase(ethdb.NewMemDatabase()), nil)
 	sk, addr := createAccount(s, 100)
 
 	newAcc := s.Account(addr)
@@ -72,7 +72,7 @@ func TestSendToken(t *testing.T) {
 func TestTransitionNotCommitToDB(t *testing.T) {
 	memDB := ethdb.NewMemDatabase()
 	db := trie.NewDatabase(memDB)
-	s := NewState(db)
+	s := NewState(db, nil)
 	sk, addr := createAccount(s, 100)
 	h, err := s.accounts.Commit(nil)
 	if err != nil {
@@ -122,34 +122,32 @@ func placeOrderTxn(sk bls.SecretKey, addr consensus.Addr, t PlaceOrderTxn) []byt
 	return txn.Encode(true)
 }
 
-var bnbInfo = TokenInfo{
-	Symbol:      "BNB",
-	Decimals:    8,
-	TotalSupply: 200000000,
-}
-
 var btcInfo = TokenInfo{
 	Symbol:      "BTC",
 	Decimals:    8,
 	TotalSupply: 21000000,
 }
 
-func createTokenTxn(sk bls.SecretKey, addr consensus.Addr, t CreateTokenTxn) []byte {
-	txn := Txn{
-		T:     CreateToken,
-		Owner: addr,
-		Data:  gobEncode(t),
-	}
-	txn.Sig = sk.Sign(string(txn.Encode(false))).Serialize()
-	return txn.Encode(true)
+func TestGenesisCoinDistribution(t *testing.T) {
+	var sk bls.SecretKey
+	sk.SetByCSPRNG()
+	pk := consensus.PK(sk.GetPublicKey().Serialize())
+	s := NewState(trie.NewDatabase(ethdb.NewMemDatabase()), &pk)
+
+	assert.True(t, s.tokenCache.Exists(BNBInfo.Symbol))
+	assert.Equal(t, &BNBInfo, s.tokenCache.Info(0))
+
+	acc := s.Account(pk.Addr())
+	assert.Equal(t, uint64(BNBInfo.TotalSupply*uint64(math.Pow10(int(BNBInfo.Decimals)))), acc.Balances[0].Available)
+	assert.Equal(t, uint64(0), acc.Balances[0].Pending)
 }
 
 func TestCreateToken(t *testing.T) {
-	s := NewState(trie.NewDatabase(ethdb.NewMemDatabase()))
-	s.tokenCache.Update(0, &bnbInfo)
+	s := NewState(trie.NewDatabase(ethdb.NewMemDatabase()), nil)
+	s.tokenCache.Update(0, &BNBInfo)
 	sk, addr := createAccount(s, 100)
 	trans := s.Transition()
-	txn := createTokenTxn(sk, addr, CreateTokenTxn{Info: btcInfo})
+	txn := MakeCreateTokenTxn(sk, btcInfo, 0, 0)
 	trans.Record(txn)
 	trans.Commit()
 
@@ -163,8 +161,8 @@ func TestCreateToken(t *testing.T) {
 }
 
 func TestPlaceOrder(t *testing.T) {
-	s := NewState(trie.NewDatabase(ethdb.NewMemDatabase()))
-	s.tokenCache.Update(0, &bnbInfo)
+	s := NewState(trie.NewDatabase(ethdb.NewMemDatabase()), nil)
+	s.tokenCache.Update(0, &BNBInfo)
 	s.tokenCache.Update(1, &btcInfo)
 	sk, addr := createAccount(s, 100)
 	order := PlaceOrderTxn{

@@ -245,7 +245,13 @@ type State struct {
 	db *trie.Database
 }
 
-func NewState(db *trie.Database) *State {
+var BNBInfo = TokenInfo{
+	Symbol:      "BNB",
+	Decimals:    8,
+	TotalSupply: 200000000,
+}
+
+func NewState(db *trie.Database, nativeCoinOwner *consensus.PK) *State {
 	tokens, err := trie.New(common.Hash{}, db)
 	if err != nil {
 		panic(err)
@@ -266,7 +272,7 @@ func NewState(db *trie.Database) *State {
 		panic(err)
 	}
 
-	return &State{
+	s := &State{
 		db: db,
 		state: state{
 			tokenCache:    newTokenCache(),
@@ -276,6 +282,17 @@ func NewState(db *trie.Database) *State {
 			reports:       reports,
 		},
 	}
+
+	if nativeCoinOwner != nil {
+		createTokenTxn := CreateTokenTxn{Info: BNBInfo}
+		trans := s.Transition().(*Transition)
+		owner := &Account{
+			PK: *nativeCoinOwner,
+		}
+		trans.createToken(owner, createTokenTxn)
+		trans.Commit()
+	}
+	return s
 }
 
 func (s *State) Commit(t *Transition) {

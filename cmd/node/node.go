@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/gob"
 	"flag"
 	"io/ioutil"
@@ -28,7 +29,7 @@ func decodeFromFile(path string, v interface{}) {
 	}
 }
 
-func createNode(c consensus.NodeCredentials, genesis *consensus.Block) *consensus.Node {
+func createNode(c consensus.NodeCredentials, genesis *consensus.Block, nativeCoinOwnerPK consensus.PK) *consensus.Node {
 	cfg := consensus.Config{
 		BlockTime:      200 * time.Millisecond,
 		GroupSize:      3,
@@ -36,7 +37,7 @@ func createNode(c consensus.NodeCredentials, genesis *consensus.Block) *consensu
 	}
 
 	db := trie.NewDatabase(ethdb.NewMemDatabase())
-	state := dex.NewState(db)
+	state := dex.NewState(db, &nativeCoinOwnerPK)
 	return consensus.MakeNode(c, &network.Network{}, cfg, genesis, state, dex.NewTxnPool(state))
 }
 
@@ -46,11 +47,16 @@ func main() {
 		panic(err)
 	}
 
+	nativeCoinOwnerPK := flag.String("genesis-coin-owner-pk", "", "base64 encoded pre-mined native coin owner PK at the genesis")
 	c := flag.String("c", "", "path to the node credential file")
 	addr := flag.String("addr", ":8008", "node address to listen connection on")
 	seedNode := flag.String("seed", "", "seed node address")
 	g := flag.String("genesis", "", "path to the genesis block file")
 	flag.Parse()
+
+	if *nativeCoinOwnerPK == "" {
+		panic("please specify argument -genesis-coin-owner-pk")
+	}
 
 	var genesis consensus.Block
 	decodeFromFile(*g, &genesis)
@@ -67,7 +73,12 @@ func main() {
 		panic(err)
 	}
 
-	n := createNode(credentials, &genesis)
+	pk, err := base64.StdEncoding.DecodeString(*nativeCoinOwnerPK)
+	if err != nil {
+		panic(err)
+	}
+
+	n := createNode(credentials, &genesis, consensus.PK(pk))
 	n.Start(*addr, *seedNode)
 	n.StartRound(1)
 

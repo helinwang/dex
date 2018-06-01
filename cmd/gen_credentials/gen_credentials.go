@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/gob"
 	"flag"
 	"fmt"
@@ -164,6 +165,13 @@ func main() {
 			panic(err)
 		}
 	}
+
+	nativeCoinOwnerSK, err := nodes[0].SK.Get()
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println(base64.StdEncoding.EncodeToString(nativeCoinOwnerSK.GetPublicKey().Serialize()))
 }
 
 func gobEncode(v interface{}) []byte {

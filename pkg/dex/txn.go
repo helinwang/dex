@@ -120,6 +120,20 @@ type CancelOrderTxn struct {
 	Order consensus.Hash
 }
 
+func MakeCreateTokenTxn(sk bls.SecretKey, info TokenInfo, nonceIdx uint8, nonceValue uint64) []byte {
+	t := CreateTokenTxn{Info: info}
+	txn := Txn{
+		T:          CreateToken,
+		Data:       gobEncode(t),
+		NonceIdx:   nonceIdx,
+		NonceValue: nonceValue,
+		Owner:      consensus.PK(sk.GetPublicKey().Serialize()).Addr(),
+	}
+
+	txn.Sig = sk.Sign(string(txn.Encode(false))).Serialize()
+	return txn.Encode(true)
+}
+
 type CreateTokenTxn struct {
 	Info TokenInfo
 }
