@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"encoding/gob"
+	"math"
 	"strings"
 
 	"github.com/ethereum/go-ethereum/rlp"
@@ -140,6 +141,14 @@ func (t *Transition) createToken(owner *Account, txn CreateTokenTxn) bool {
 		}
 	}
 
+	// TODO: fiture out how to pay fee.
+
+	totalQuant := txn.Info.TotalSupply * uint64(math.Pow10(int(txn.Info.Decimals)))
+	if totalQuant < txn.Info.TotalSupply {
+		log.Warn("token total quant overflow", "total quant", totalQuant, "total supply", txn.Info.TotalSupply, "decimals", txn.Info.Decimals)
+		return false
+	}
+
 	id := TokenID(t.tokenCache.Size() + len(t.tokenCreations))
 	token := Token{ID: id, TokenInfo: txn.Info}
 	t.tokenCreations = append(t.tokenCreations, token)
@@ -153,13 +162,17 @@ func (t *Transition) createToken(owner *Account, txn CreateTokenTxn) bool {
 	path := make([]byte, 64)
 	binary.LittleEndian.PutUint64(path, uint64(id))
 	t.tokens.Update(path, b)
-	// TODO: fiture out how to pay fee.
+
+	if owner.Balances == nil {
+		owner.Balances = make(map[TokenID]*Balance)
+	}
+	owner.Balances[id] = &Balance{Available: totalQuant}
+	t.UpdateAccount(owner)
 	return true
 }
 
 // TODO: all elements in trie should be serialized using rlp, not gob,
 // since gob is not deterministic.
-
 func (t *Transition) sendToken(owner *Account, txn SendTokenTxn) bool {
 	if txn.Quant == 0 {
 		return false

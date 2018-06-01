@@ -1,6 +1,7 @@
 package dex
 
 import (
+	"math"
 	"testing"
 
 	"github.com/dfinity/go-dfinity-crypto/bls"
@@ -125,7 +126,7 @@ func placeOrderTxn(sk bls.SecretKey, addr consensus.Addr, t PlaceOrderTxn) []byt
 var bnbInfo = TokenInfo{
 	Symbol:      "BNB",
 	Decimals:    8,
-	TotalSupply: 194972068,
+	TotalSupply: 200000000,
 }
 
 var btcInfo = TokenInfo{
@@ -156,6 +157,10 @@ func TestCreateToken(t *testing.T) {
 	assert.Equal(t, 2, s.tokenCache.Size())
 	assert.True(t, s.tokenCache.Exists(btcInfo.Symbol))
 	assert.Equal(t, &btcInfo, s.tokenCache.Info(1))
+
+	acc := s.Account(addr)
+	assert.Equal(t, btcInfo.TotalSupply*uint64(math.Pow10(int(btcInfo.Decimals))), acc.Balances[1].Available)
+	assert.Equal(t, uint64(0), acc.Balances[1].Pending)
 }
 
 func TestPlaceOrder(t *testing.T) {
