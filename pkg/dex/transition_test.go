@@ -8,7 +8,6 @@ import (
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/trie"
 	"github.com/helinwang/dex/pkg/consensus"
-	"github.com/helinwang/dex/pkg/matching"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -169,7 +168,7 @@ func TestPlaceOrder(t *testing.T) {
 	s.tokenCache.Update(1, &btcInfo)
 	sk, addr := createAccount(s, 100)
 	order := PlaceOrderTxn{
-		Order: matching.Order{
+		Order: Order{
 			SellSide: false,
 			Quant:    40,
 			Price:    1,

@@ -2,12 +2,13 @@ package dex
 
 import (
 	"bytes"
+	"encoding/binary"
 	"encoding/gob"
+	"io"
 
 	"github.com/dfinity/go-dfinity-crypto/bls"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/helinwang/dex/pkg/consensus"
-	"github.com/helinwang/dex/pkg/matching"
 	log "github.com/helinwang/log15"
 )
 
@@ -109,7 +110,7 @@ func (b *Txn) Hash() consensus.Hash {
 }
 
 type PlaceOrderTxn struct {
-	matching.Order
+	Order
 	Market MarketSymbol
 	// the order is expired when ExpireHeight >= block height
 	ExpireHeight uint64
@@ -127,6 +128,67 @@ type SendTokenTxn struct {
 	TokenID TokenID
 	To      consensus.PK
 	Quant   uint64
+}
+
+type Order struct {
+	SellSide bool
+	Quant    uint64
+	Price    float64
+}
+
+func (o *Order) EncodeRLP(w io.Writer) error {
+	var buf bytes.Buffer
+	err := binary.Write(&buf, binary.LittleEndian, o.Price)
+	if err != nil {
+		return err
+	}
+
+	err = rlp.Encode(w, buf.Bytes())
+	if err != nil {
+		return err
+	}
+
+	err = rlp.Encode(w, o.Quant)
+	if err != nil {
+		return err
+	}
+
+	err = rlp.Encode(w, o.SellSide)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (o *Order) DecodeRLP(s *rlp.Stream) error {
+	var order Order
+	b, err := s.Bytes()
+	if err != nil {
+		return err
+	}
+
+	var f float64
+	err = binary.Read(bytes.NewReader(b), binary.LittleEndian, &f)
+	if err != nil {
+		return err
+	}
+	order.Price = f
+
+	v, err := s.Uint()
+	if err != nil {
+		return err
+	}
+	order.Quant = v
+
+	sell, err := s.Bool()
+	if err != nil {
+		return err
+	}
+	order.SellSide = sell
+
+	*o = order
+	return nil
 }
 
 // TODO: maybe move this func to common package

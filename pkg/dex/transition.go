@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/ethereum/go-ethereum/rlp"
-	"github.com/helinwang/dex/pkg/matching"
 	log "github.com/helinwang/log15"
 )
 
@@ -122,7 +121,7 @@ func (t *Transition) placeOrder(owner *Account, txn PlaceOrderTxn) bool {
 	t.UpdateAccount(owner)
 	add := PendingOrder{
 		Owner: owner.PK.Addr(),
-		Order: matching.Order{},
+		Order: Order{},
 	}
 	t.UpdatePendingOrder(txn.Market, &add, nil)
 	return true

@@ -3,14 +3,12 @@ package dex
 import (
 	"bytes"
 	"encoding/binary"
-	"encoding/gob"
 	"fmt"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
 	"github.com/helinwang/dex/pkg/consensus"
-	"github.com/helinwang/dex/pkg/matching"
 	log "github.com/helinwang/log15"
 )
 
@@ -55,7 +53,7 @@ type state struct {
 
 type PendingOrder struct {
 	Owner consensus.Addr
-	matching.Order
+	Order
 }
 
 func (s *state) UpdateAccount(acc *Account) {
@@ -88,15 +86,15 @@ func (s *state) Account(addr consensus.Addr) *Account {
 	return &account
 }
 
-func pendingOrdersToOrders(p []PendingOrder) []matching.Order {
-	o := make([]matching.Order, len(p))
+func pendingOrdersToOrders(p []PendingOrder) []Order {
+	o := make([]Order, len(p))
 	for i := range o {
 		o[i] = p[i].Order
 	}
 	return o
 }
 
-func ordersToPendingOrders(owner consensus.Addr, o []matching.Order) []PendingOrder {
+func ordersToPendingOrders(owner consensus.Addr, o []Order) []PendingOrder {
 	p := make([]PendingOrder, len(o))
 	for i := range p {
 		p[i].Owner = owner
@@ -156,9 +154,8 @@ func (s *state) MarketPendingOrders(market MarketSymbol) []PendingOrder {
 		foundPrefix = true
 
 		v := iter.LeafBlob()
-		var o []matching.Order
-		dec := gob.NewDecoder(bytes.NewReader(v))
-		err := dec.Decode(&o)
+		var o []Order
+		err := rlp.DecodeBytes(v, &o)
 		if err != nil {
 			log.Error("error decode pending order", "market", market, "path", path, "err", err)
 			continue
@@ -184,9 +181,8 @@ func (s *state) AccountPendingOrders(market MarketSymbol, addr consensus.Addr) [
 		return nil
 	}
 
-	var o []matching.Order
-	dec := gob.NewDecoder(bytes.NewReader(b))
-	err = dec.Decode(&o)
+	var o []Order
+	err = rlp.DecodeBytes(b, &o)
 	if err != nil {
 		log.Error("error decode pending orders", "err", err, "market", market)
 		return nil
@@ -234,7 +230,11 @@ func (s *state) UpdatePendingOrder(market MarketSymbol, add, remove *PendingOrde
 	}
 
 	o := pendingOrdersToOrders(p)
-	b := gobEncode(o)
+	b, err := rlp.EncodeToBytes(o)
+	if err != nil {
+		panic(err)
+	}
+
 	path := append(market.Bytes(), addr[:]...)
 	s.pendingOrders.Update(path, b)
 }

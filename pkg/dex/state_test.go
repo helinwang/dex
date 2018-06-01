@@ -7,7 +7,6 @@ import (
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/trie"
 	"github.com/helinwang/dex/pkg/consensus"
-	"github.com/helinwang/dex/pkg/matching"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -46,7 +45,7 @@ func TestPendingOrders(t *testing.T) {
 	m4 := MarketSymbol{Quote: 1, Base: 0}
 	add := PendingOrder{
 		Owner: consensus.Addr{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20},
-		Order: matching.Order{SellSide: true, Quant: 100, Price: 1},
+		Order: Order{SellSide: true, Quant: 100, Price: 1},
 	}
 	s.UpdatePendingOrder(m1, &add, nil)
 	s.UpdatePendingOrder(m2, &add, nil)
@@ -61,12 +60,12 @@ func TestPendingOrders(t *testing.T) {
 	assert.Equal(t, 0, len(s.MarketPendingOrders(m)))
 	add = PendingOrder{
 		Owner: consensus.Addr{1},
-		Order: matching.Order{SellSide: true, Quant: 100, Price: 1},
+		Order: Order{SellSide: true, Quant: 100, Price: 1},
 	}
 	s.UpdatePendingOrder(m, &add, nil)
 	add1 := PendingOrder{
 		Owner: consensus.Addr{2},
-		Order: matching.Order{SellSide: false, Quant: 50, Price: 1},
+		Order: Order{SellSide: false, Quant: 50, Price: 1},
 	}
 	s.UpdatePendingOrder(m, &add1, nil)
 	assert.Equal(t, 2, len(s.MarketPendingOrders(m)))
