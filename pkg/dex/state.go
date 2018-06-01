@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
 	"github.com/helinwang/dex/pkg/consensus"
 	"github.com/helinwang/dex/pkg/matching"
@@ -59,7 +60,12 @@ type PendingOrder struct {
 
 func (s *state) UpdateAccount(acc *Account) {
 	addr := acc.PK.Addr()
-	s.accounts.Update(addr[:], gobEncode(acc))
+	b, err := rlp.EncodeToBytes(acc)
+	if err != nil {
+		panic(err)
+	}
+
+	s.accounts.Update(addr[:], b)
 }
 
 func (s *state) Account(addr consensus.Addr) *Account {
@@ -73,10 +79,9 @@ func (s *state) Account(addr consensus.Addr) *Account {
 	}
 
 	var account Account
-	dec := gob.NewDecoder(bytes.NewBuffer(acc))
-	err = dec.Decode(&account)
+	err = rlp.DecodeBytes(acc, &account)
 	if err != nil {
-		log.Error("decode account error", "err", err)
+		log.Error("decode account error", "err", err, "b", acc)
 		return nil
 	}
 

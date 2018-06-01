@@ -39,7 +39,7 @@ func createAccount(s *State, quant uint64) (bls.SecretKey, consensus.Addr) {
 	addr := consensus.SHA3(acc.PK).Addr()
 	acc.Balances = make(map[TokenID]*Balance)
 	acc.Balances[0] = &Balance{Available: quant}
-	s.accounts.Update(addr[:], gobEncode(acc))
+	s.UpdateAccount(&acc)
 	return sk, addr
 }
 
