@@ -2,6 +2,7 @@ package dex
 
 import (
 	"io"
+	"sort"
 
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/helinwang/dex/pkg/consensus"
@@ -16,16 +17,21 @@ type Balance struct {
 	Pending   uint64
 }
 
-// TODO: record account has pending orders on which markets.
 type Account struct {
 	PK consensus.PK
 	// a vector of nonce that enables concurrent transactions.
-	NonceVec []uint64
-	Balances map[TokenID]*Balance
+	NonceVec            []uint64
+	Balances            map[TokenID]*Balance
+	PendingOrderMarkets []MarketSymbol
 }
 
 func (a *Account) EncodeRLP(w io.Writer) error {
 	err := rlp.Encode(w, a.PK)
+	if err != nil {
+		return err
+	}
+
+	err = rlp.Encode(w, a.PendingOrderMarkets)
 	if err != nil {
 		return err
 	}
@@ -38,10 +44,18 @@ func (a *Account) EncodeRLP(w io.Writer) error {
 	keys := make([]TokenID, len(a.Balances))
 	values := make([]*Balance, len(a.Balances))
 	i := 0
-	for k, v := range a.Balances {
+	for k := range a.Balances {
 		keys[i] = k
-		values[i] = v
 		i++
+	}
+
+	// sort keys so the encoded bytes are deterministic
+	sort.Slice(keys, func(i, j int) bool {
+		return keys[i] < keys[j]
+	})
+
+	for i, k := range keys {
+		values[i] = a.Balances[k]
 	}
 
 	err = rlp.Encode(w, keys)
@@ -66,6 +80,38 @@ func (a *Account) DecodeRLP(s *rlp.Stream) error {
 	b.PK = consensus.PK(v)
 
 	l, err := s.List()
+	if err != nil {
+		return err
+	}
+
+	// the rlp package is not returning the correct list size,
+	// devide by 3 will result a correct size. 3 seems to come
+	// from the fact that type `MarketSymbol` has 2 elements.
+	l = l / 3
+
+	ps := make([]MarketSymbol, int(l))
+	for i := range ps {
+		d, err := s.Raw()
+		if err != nil {
+			return err
+		}
+
+		var p MarketSymbol
+		err = rlp.DecodeBytes(d, &p)
+		if err != nil {
+			return err
+		}
+
+		ps[i] = p
+	}
+	b.PendingOrderMarkets = ps
+
+	err = s.ListEnd()
+	if err != nil {
+		return err
+	}
+
+	l, err = s.List()
 	if err != nil {
 		return err
 	}
