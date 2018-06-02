@@ -245,11 +245,11 @@ func (n *Networking) BroadcastItem(item ItemID) {
 	}
 }
 
-func (n *Networking) recvTxn(t []byte) {
+func (n *Networking) RecvTxn(t []byte) {
 	panic("not implemented")
 }
 
-func (n *Networking) recvSysTxn(t *SysTxn) {
+func (n *Networking) RecvSysTxn(t *SysTxn) {
 	panic("not implemented")
 }
 
@@ -587,12 +587,12 @@ type receiver struct {
 }
 
 func (r *receiver) Txn(t []byte) error {
-	r.n.recvTxn(t)
+	r.n.RecvTxn(t)
 	return nil
 }
 
 func (r *receiver) SysTxn(t *SysTxn) error {
-	r.n.recvSysTxn(t)
+	r.n.RecvSysTxn(t)
 	return nil
 }
 

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/gob"
+	"io/ioutil"
 	"sync"
 	"time"
 
@@ -195,4 +196,21 @@ func MakeNode(credentials NodeCredentials, net Network, cfg Config, genesis *Blo
 	}
 
 	return node
+}
+
+// LoadCredential loads node credential from disk.
+func LoadCredential(path string) (NodeCredentials, error) {
+	var c NodeCredentials
+	b, err := ioutil.ReadFile(path)
+	if err != nil {
+		return c, err
+	}
+
+	dec := gob.NewDecoder(bytes.NewReader(b))
+	err = dec.Decode(&c)
+	if err != nil {
+		return c, err
+	}
+
+	return c, nil
 }

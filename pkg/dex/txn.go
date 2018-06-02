@@ -120,17 +120,69 @@ type CancelOrderTxn struct {
 	Order consensus.Hash
 }
 
-func MakeCreateTokenTxn(sk bls.SecretKey, info TokenInfo, nonceIdx uint8, nonceValue uint64) []byte {
+func MakeSendTokenTxn(from consensus.SK, to consensus.PK, tokenID TokenID, quant uint64) []byte {
+	send := SendTokenTxn{
+		TokenID: tokenID,
+		To:      to,
+		Quant:   quant,
+	}
+
+	owner, err := from.PK()
+	if err != nil {
+		panic(err)
+	}
+
+	txn := Txn{
+		T:     SendToken,
+		Owner: owner.Addr(),
+		Data:  gobEncode(send),
+	}
+
+	sk, err := from.Get()
+	if err != nil {
+		panic(err)
+	}
+
+	txn.Sig = sk.Sign(string(txn.Encode(false))).Serialize()
+	return txn.Encode(true)
+}
+
+func MakePlaceOrderTxn(sk consensus.SK, addr consensus.Addr, t PlaceOrderTxn) []byte {
+	txn := Txn{
+		T:     PlaceOrder,
+		Owner: addr,
+		Data:  gobEncode(t),
+	}
+	key, err := sk.Get()
+	if err != nil {
+		panic(err)
+	}
+
+	txn.Sig = key.Sign(string(txn.Encode(false))).Serialize()
+	return txn.Encode(true)
+}
+
+func MakeCreateTokenTxn(sk consensus.SK, info TokenInfo, nonceIdx uint8, nonceValue uint64) []byte {
 	t := CreateTokenTxn{Info: info}
+	owner, err := sk.PK()
+	if err != nil {
+		panic(err)
+	}
+
 	txn := Txn{
 		T:          CreateToken,
 		Data:       gobEncode(t),
 		NonceIdx:   nonceIdx,
 		NonceValue: nonceValue,
-		Owner:      consensus.PK(sk.GetPublicKey().Serialize()).Addr(),
+		Owner:      owner.Addr(),
 	}
 
-	txn.Sig = sk.Sign(string(txn.Encode(false))).Serialize()
+	key, err := sk.Get()
+	if err != nil {
+		panic(err)
+	}
+
+	txn.Sig = key.Sign(string(txn.Encode(false))).Serialize()
 	return txn.Encode(true)
 }
 

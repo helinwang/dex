@@ -15,22 +15,7 @@ func init() {
 	bls.Init(int(bls.CurveFp254BNb))
 }
 
-func sendTokenTxn(sk bls.SecretKey, to consensus.PK, quant uint64) []byte {
-	send := SendTokenTxn{
-		TokenID: 0,
-		To:      to,
-		Quant:   quant,
-	}
-	txn := Txn{
-		T:     SendToken,
-		Owner: consensus.PK(sk.GetPublicKey().Serialize()).Addr(),
-		Data:  gobEncode(send),
-	}
-	txn.Sig = sk.Sign(string(txn.Encode(false))).Serialize()
-	return txn.Encode(true)
-}
-
-func createAccount(s *State, quant uint64) (bls.SecretKey, consensus.Addr) {
+func createAccount(s *State, quant uint64) (consensus.SK, consensus.Addr) {
 	var acc Account
 	var sk bls.SecretKey
 	sk.SetByCSPRNG()
@@ -39,7 +24,7 @@ func createAccount(s *State, quant uint64) (bls.SecretKey, consensus.Addr) {
 	acc.Balances = make(map[TokenID]*Balance)
 	acc.Balances[0] = &Balance{Available: quant}
 	s.UpdateAccount(&acc)
-	return sk, addr
+	return consensus.SK(sk.GetLittleEndian()), addr
 }
 
 func TestSendToken(t *testing.T) {
@@ -53,7 +38,7 @@ func TestSendToken(t *testing.T) {
 	skRecv.SetByCSPRNG()
 
 	to := consensus.PK(skRecv.GetPublicKey().Serialize())
-	txn := sendTokenTxn(sk, to, 20)
+	txn := MakeSendTokenTxn(sk, to, 20)
 	trans := s.Transition()
 	valid, success := trans.Record(txn)
 	assert.True(t, valid)
@@ -96,7 +81,7 @@ func TestTransitionNotCommitToDB(t *testing.T) {
 		skRecv.SetByCSPRNG()
 
 		to := consensus.PK(skRecv.GetPublicKey().Serialize())
-		txn := sendTokenTxn(sk, to, 1)
+		txn := MakeSendTokenTxn(sk, to, 1)
 		valid, success := trans.Record(txn)
 		assert.True(t, valid)
 		assert.True(t, success)
@@ -110,16 +95,6 @@ func TestTransitionNotCommitToDB(t *testing.T) {
 	trans.Commit()
 	newAcc = s.Account(addr)
 	assert.Equal(t, 1, int(newAcc.Balances[0].Available))
-}
-
-func placeOrderTxn(sk bls.SecretKey, addr consensus.Addr, t PlaceOrderTxn) []byte {
-	txn := Txn{
-		T:     PlaceOrder,
-		Owner: addr,
-		Data:  gobEncode(t),
-	}
-	txn.Sig = sk.Sign(string(txn.Encode(false))).Serialize()
-	return txn.Encode(true)
 }
 
 var btcInfo = TokenInfo{
@@ -175,7 +150,7 @@ func TestPlaceOrder(t *testing.T) {
 		ExpireHeight: 0,
 	}
 	trans := s.Transition()
-	trans.Record(placeOrderTxn(sk, addr, order))
+	trans.Record(MakePlaceOrderTxn(sk, addr, order))
 	trans.Commit()
 
 	acc := s.Account(addr)

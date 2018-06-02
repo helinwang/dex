@@ -10,8 +10,9 @@ import (
 )
 
 type RPCServer struct {
-	mu sync.Mutex
-	s  *state
+	mu  sync.Mutex
+	s   *state
+	net *consensus.Networking
 }
 
 func (r *RPCServer) updateConsensus(s *state) {
@@ -87,5 +88,10 @@ func (r *RPCServer) Tokens(_ int, t *TokenState) error {
 	}
 
 	t.Tokens = r.s.tokenCache.Tokens()
+	return nil
+}
+
+func (r *RPCServer) SendTxn(t []byte, _ *int) error {
+	r.net.RecvTxn(t)
 	return nil
 }
