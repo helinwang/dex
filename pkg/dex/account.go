@@ -17,6 +17,7 @@ type Balance struct {
 	Pending   uint64
 }
 
+// TODO: record account has pending orders on which markets.
 type Account struct {
 	PK consensus.PK
 	// a vector of nonce that enables concurrent transactions.
@@ -86,7 +87,7 @@ func (a *Account) DecodeRLP(s *rlp.Stream) error {
 
 	// the rlp package is not returning the correct list size,
 	// devide by 3 will result a correct size. 3 seems to come
-	// from the fact that type `MarketSymbol` has 2 elements.
+	// from the fact that type `MarketSymbol` has 2 fields.
 	l = l / 3
 
 	ps := make([]MarketSymbol, int(l))

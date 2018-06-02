@@ -173,7 +173,7 @@ func (n *Node) RecvBlockProposal(bp *BlockProposal) {
 }
 
 // MakeNode makes a new node with the given configurations.
-func MakeNode(credentials NodeCredentials, net Network, cfg Config, genesis *Block, state State, txnPool TxnPool) *Node {
+func MakeNode(credentials NodeCredentials, net Network, cfg Config, genesis *Block, state State, txnPool TxnPool, u Updater) *Node {
 	randSeed := Rand(SHA3([]byte("dex")))
 
 	sk, err := credentials.SK.Get()
@@ -181,7 +181,7 @@ func MakeNode(credentials NodeCredentials, net Network, cfg Config, genesis *Blo
 		panic(err)
 	}
 
-	chain := NewChain(genesis, state, randSeed, cfg, txnPool)
+	chain := NewChain(genesis, state, randSeed, cfg, txnPool, u)
 	networking := NewNetworking(net, chain)
 	node := NewNode(chain, sk, networking, cfg)
 	for j := range credentials.Groups {

@@ -20,6 +20,20 @@ func init() {
 	log.Root().SetHandler(log.LvlFilterHandler(log.LvlInfo, log.StdoutHandler))
 }
 
+type myTxnPool struct {
+}
+
+func (t *myTxnPool) Add(txn []byte) (broadcast bool) {
+	return false
+}
+
+func (t *myTxnPool) Txns() [][]byte {
+	return nil
+}
+
+func (t *myTxnPool) Remove(txn []byte) {
+}
+
 func makeShares(t int, idVec []bls.ID, rand Rand) (bls.PublicKey, []bls.SecretKey, Rand) {
 	sk := rand.SK()
 	rand = rand.Derive(rand[:])
@@ -77,7 +91,7 @@ func setupNodes() []*Node {
 	}
 
 	for i := range nodes {
-		nodes[i] = MakeNode(nodeCredentials[i], net, cfg, &genesis, &emptyState{}, nil)
+		nodes[i] = MakeNode(nodeCredentials[i], net, cfg, &genesis, &emptyState{}, &myTxnPool{}, &myUpdater{})
 
 		peers := make([]string, len(nodes))
 		for i := range peers {

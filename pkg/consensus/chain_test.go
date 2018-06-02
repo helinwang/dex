@@ -6,8 +6,14 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+type myUpdater struct {
+}
+
+func (m *myUpdater) Update(State) {
+}
+
 func TestGraphviz(t *testing.T) {
-	chain := NewChain(&Block{}, nil, Rand{}, Config{}, nil)
+	chain := NewChain(&Block{}, nil, Rand{}, Config{}, nil, &myUpdater{})
 	chain.History = append(chain.History, Hash{1})
 	chain.History = append(chain.History, Hash{2})
 	chain.Finalized = append(chain.Finalized, &finalized{Block: Hash{3}})

@@ -1,6 +1,9 @@
 package dex
 
-import "strings"
+import (
+	"sort"
+	"strings"
+)
 
 type TokenSymbol string
 
@@ -44,4 +47,26 @@ func (t *TokenCache) Update(id TokenID, info *TokenInfo) {
 
 func (t *TokenCache) Size() int {
 	return len(t.idToInfo)
+}
+
+func (t *TokenCache) Tokens() []Token {
+	keys := make([]TokenID, len(t.idToInfo))
+	i := 0
+	for k := range t.idToInfo {
+		keys[i] = k
+		i++
+	}
+
+	sort.Slice(keys, func(i, j int) bool {
+		return keys[i] < keys[j]
+	})
+
+	i = 0
+	tokens := make([]Token, len(keys))
+	for _, k := range keys {
+		tokens[i] = Token{ID: k, TokenInfo: *t.idToInfo[k]}
+		i++
+	}
+
+	return tokens
 }

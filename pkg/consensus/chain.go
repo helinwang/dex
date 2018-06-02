@@ -41,6 +41,7 @@ type Chain struct {
 	RandomBeacon *RandomBeacon
 	n            *Node
 	txnPool      TxnPool
+	updater      Updater
 
 	mu sync.RWMutex
 	// the finalized block burried deep enough becomes part of the
@@ -68,8 +69,14 @@ type Chain struct {
 	bpNeedNotarize        map[Hash]bool
 }
 
+// Updater updates the application layer (DEX) about the current
+// consensus.
+type Updater interface {
+	Update(s State)
+}
+
 // NewChain creates a new chain.
-func NewChain(genesis *Block, genesisState State, seed Rand, cfg Config, txnPool TxnPool) *Chain {
+func NewChain(genesis *Block, genesisState State, seed Rand, cfg Config, txnPool TxnPool, u Updater) *Chain {
 	sysState := NewSysState()
 	t := sysState.Transition()
 	for _, txn := range genesis.SysTxns {
@@ -79,11 +86,13 @@ func NewChain(genesis *Block, genesisState State, seed Rand, cfg Config, txnPool
 		}
 	}
 
+	u.Update(genesisState)
 	sysState = t.Apply()
 	sysState.Finalized()
 	gh := genesis.Hash()
 	return &Chain{
 		cfg:                   cfg,
+		updater:               u,
 		txnPool:               txnPool,
 		RandomBeacon:          NewRandomBeacon(seed, sysState.groups, cfg),
 		History:               []Hash{gh},
@@ -200,12 +209,7 @@ func (c *Chain) heaviestFork() *notarized {
 	return n
 }
 
-// Leader returns the notarized block of the current round whose chain
-// is the heaviest.
-func (c *Chain) Leader() (*Block, State, *SysState) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
+func (c *Chain) leader() (*Block, State, *SysState) {
 	if len(c.Finalized) == 0 {
 		if len(c.Fork) == 0 {
 			return c.hashToBlock[c.History[len(c.History)-1]], c.LastHistoryState, c.LastHistorySysState
@@ -218,6 +222,15 @@ func (c *Chain) Leader() (*Block, State, *SysState) {
 
 	n := c.heaviestFork()
 	return c.hashToBlock[n.Block], n.State, n.SysState
+
+}
+
+// Leader returns the notarized block of the current round whose chain
+// is the heaviest.
+func (c *Chain) Leader() (*Block, State, *SysState) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.leader()
 }
 
 func findPrevBlock(prevBlock Hash, ns []*notarized) (*notarized, int) {
@@ -455,6 +468,9 @@ func (c *Chain) addBlock(b *Block, weight float64) error {
 	if round > 3 {
 		c.finalize(round - 3)
 	}
+
+	_, s, _ := c.leader()
+	go c.updater.Update(s)
 
 	if round == prevRound+1 {
 		// TODO: make it more robust

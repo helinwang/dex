@@ -29,7 +29,7 @@ func decodeFromFile(path string, v interface{}) {
 	}
 }
 
-func createNode(c consensus.NodeCredentials, genesis *consensus.Block, nativeCoinOwnerPK consensus.PK) *consensus.Node {
+func createNode(c consensus.NodeCredentials, genesis *consensus.Block, nativeCoinOwnerPK consensus.PK, u consensus.Updater) *consensus.Node {
 	cfg := consensus.Config{
 		BlockTime:      200 * time.Millisecond,
 		GroupSize:      3,
@@ -38,7 +38,7 @@ func createNode(c consensus.NodeCredentials, genesis *consensus.Block, nativeCoi
 
 	db := trie.NewDatabase(ethdb.NewMemDatabase())
 	state := dex.NewState(db, &nativeCoinOwnerPK)
-	return consensus.MakeNode(c, &network.Network{}, cfg, genesis, state, dex.NewTxnPool(state))
+	return consensus.MakeNode(c, &network.Network{}, cfg, genesis, state, dex.NewTxnPool(state), u)
 }
 
 func main() {
@@ -52,6 +52,7 @@ func main() {
 	addr := flag.String("addr", ":8008", "node address to listen connection on")
 	seedNode := flag.String("seed", "", "seed node address")
 	g := flag.String("genesis", "", "path to the genesis block file")
+	rpcAddr := flag.String("rpc-addr", ":12001", "rpc address used to serve wallet RPC calls")
 	flag.Parse()
 
 	if *nativeCoinOwnerPK == "" {
@@ -78,7 +79,13 @@ func main() {
 		panic(err)
 	}
 
-	n := createNode(credentials, &genesis, consensus.PK(pk))
+	con := dex.NewConsensus()
+	err = con.StartServer(*rpcAddr)
+	if err != nil {
+		panic(err)
+	}
+
+	n := createNode(credentials, &genesis, consensus.PK(pk), con)
 	n.Start(*addr, *seedNode)
 	n.StartRound(1)
 

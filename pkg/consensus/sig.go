@@ -31,3 +31,13 @@ func (s SK) Get() (bls.SecretKey, error) {
 
 	return sk, nil
 }
+
+func (s SK) PK() (PK, error) {
+	var sk bls.SecretKey
+	err := sk.SetLittleEndian(s)
+	if err != nil {
+		return nil, err
+	}
+
+	return PK(sk.GetPublicKey().Serialize()), nil
+}
