@@ -14,11 +14,6 @@ import (
 
 var errChainDataAlreadyExists = errors.New("chain data already exists")
 
-type finalized struct {
-	Block Hash
-	BP    Hash
-}
-
 type unNotarized struct {
 	BP     Hash
 	Weight float64
@@ -45,19 +40,9 @@ type Chain struct {
 	updater      Updater
 
 	mu sync.RWMutex
-	// the finalized block burried deep enough becomes part of the
-	// history. Its block proposal and state will be discarded to
-	// save space.
-	History             []Hash
-	LastHistoryState    State
-	LastHistorySysState *SysState
 	// reorg will never happen to the finalized block, we will
-	// discard its associated state. The block proposal will not
-	// be discarded, so when a new client joins, he can replay the
-	// block proposals starting from LastHistoryState, verify the
-	// new state root hash against the one stored in the next
-	// block.
-	Finalized             []*finalized
+	// discard its associated state and block proposal.
+	Finalized             []Hash
 	LastFinalizedState    State
 	LastFinalizedSysState *SysState
 	Fork                  []*notarized
@@ -96,9 +81,7 @@ func NewChain(genesis *Block, genesisState State, seed Rand, cfg Config, txnPool
 		updater:               u,
 		TxnPool:               txnPool,
 		RandomBeacon:          NewRandomBeacon(seed, sysState.groups, cfg),
-		History:               []Hash{gh},
-		LastHistoryState:      genesisState,
-		LastHistorySysState:   sysState,
+		Finalized:             []Hash{gh},
 		LastFinalizedState:    genesisState,
 		LastFinalizedSysState: sysState,
 		hashToInventory:       make(map[Hash]ItemID),
@@ -152,20 +135,15 @@ func (c *Chain) NeedNotarize(h Hash) bool {
 // FinalizedChain returns the finalized block chain.
 func (c *Chain) FinalizedChain() []*Block {
 	var bs []*Block
-	for _, b := range c.History {
-		bs = append(bs, c.hashToBlock[b])
-	}
-
-	for _, b := range c.Finalized {
-		bs = append(bs, c.hashToBlock[b.Block])
+	for _, h := range c.Finalized {
+		bs = append(bs, c.hashToBlock[h])
 	}
 
 	return bs
 }
 
 func (c *Chain) round() uint64 {
-	round := len(c.History)
-	round += len(c.Finalized)
+	round := len(c.Finalized)
 	round += maxHeight(c.Fork)
 	return uint64(round)
 }
@@ -200,14 +178,8 @@ func (c *Chain) heaviestFork() *notarized {
 }
 
 func (c *Chain) leader() (*Block, State, *SysState) {
-	if len(c.Finalized) == 0 {
-		if len(c.Fork) == 0 {
-			return c.hashToBlock[c.History[len(c.History)-1]], c.LastHistoryState, c.LastHistorySysState
-		}
-	} else {
-		if len(c.Fork) == 0 {
-			return c.hashToBlock[c.Finalized[len(c.Finalized)-1].Block], c.LastFinalizedState, c.LastFinalizedSysState
-		}
+	if len(c.Fork) == 0 {
+		return c.hashToBlock[c.Finalized[len(c.Finalized)-1]], c.LastFinalizedState, c.LastFinalizedSysState
 	}
 
 	n := c.heaviestFork()
@@ -250,11 +222,7 @@ func (c *Chain) addBP(bp *BlockProposal, weight float64) error {
 
 	notarized, _ := findPrevBlock(bp.PrevBlock, c.Fork)
 	if notarized == nil {
-		if len(c.Finalized) > 0 {
-			if c.Finalized[len(c.Finalized)-1].Block != bp.PrevBlock {
-				return fmt.Errorf("block proposal's parent not found: %x, round: %d", bp.PrevBlock, bp.Round)
-			}
-		} else if c.History[len(c.History)-1] != bp.PrevBlock {
+		if c.Finalized[len(c.Finalized)-1] != bp.PrevBlock {
 			return fmt.Errorf("block proposal's parent not found: %x, round: %d", bp.PrevBlock, bp.Round)
 		}
 	}
@@ -436,12 +404,9 @@ func (c *Chain) addBlock(b *Block, weight float64) error {
 	if prev != nil {
 		prevState = prev.State
 		prevSysState = prev.SysState
-	} else if len(c.Finalized) > 0 && c.Finalized[len(c.Finalized)-1].Block == b.PrevBlock {
+	} else if c.Finalized[len(c.Finalized)-1] == b.PrevBlock {
 		prevState = c.LastFinalizedState
 		prevSysState = c.LastFinalizedSysState
-	} else if c.History[len(c.History)-1] == b.PrevBlock {
-		prevState = c.LastHistoryState
-		prevSysState = c.LastHistorySysState
 	} else {
 		return errors.New("can not connect block to the chain")
 	}
@@ -526,7 +491,6 @@ func (c *Chain) releaseBPs(s []*unNotarized) {
 func (c *Chain) finalize(round uint64) {
 	depth := round
 	var count uint64
-	count += uint64(len(c.History))
 	count += uint64(len(c.Finalized))
 	if depth < count {
 		return
@@ -546,7 +510,7 @@ func (c *Chain) finalize(round uint64) {
 		}
 
 		f := c.Fork[0]
-		c.Finalized = append(c.Finalized, &finalized{Block: f.Block, BP: f.BP})
+		c.Finalized = append(c.Finalized, f.Block)
 		// TODO: compact not used state
 		c.LastFinalizedState = f.State
 		c.LastFinalizedSysState = f.SysState
@@ -584,42 +548,35 @@ rankdir=LR;
 size="8,5"`
 		end = `}
 `
-		historyNode     = `node [shape = rect, style=filled, color = forestgreen];`
 		finalizedNode   = `node [shape = rect, style=filled, color = chartreuse2];`
 		notarizedNode   = `node [shape = rect, style=filled, color = aquamarine];`
 		unNotarizedNode = `node [shape = octagon, style=filled, color = aliceblue];`
 	)
 
-	history := historyNode
 	finalized := finalizedNode
 	notarized := notarizedNode
 	unNotarized := unNotarizedNode
 
 	var start string
-	graph := ""
-	for _, n := range c.History {
-		str := fmt.Sprintf("block_%x", n[:2])
-		start = str
-		history += " " + str
-		if graph == "" {
-			graph += str
-		} else {
-			graph += arrow + str
-		}
-	}
+	var graph string
 
-	for _, f := range c.Finalized {
-		str := fmt.Sprintf("block_%x", f.Block[:2])
+	for i, f := range c.Finalized {
+		str := fmt.Sprintf("block_%x", f[:2])
 		start = str
 		finalized += " " + str
-		graph += arrow + str
+
+		if i > 0 {
+			graph += arrow + str
+		} else {
+			graph = str
+		}
 	}
 
 	graph += "\n"
 
 	graph, unNotarized = updateUnNt(c.UnNotarizedNotOnFork, start, graph, unNotarized)
 	graph, notarized, unNotarized = updateNt(c.Fork, start, graph, notarized, unNotarized)
-	return strings.Join([]string{begin, history, finalized, notarized, unNotarized, graph, end}, "\n")
+	return strings.Join([]string{begin, finalized, notarized, unNotarized, graph, end}, "\n")
 }
 
 func updateUnNt(ns []*unNotarized, start, graph, unNotarized string) (string, string) {
