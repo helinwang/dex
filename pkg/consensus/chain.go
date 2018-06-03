@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/dfinity/go-dfinity-crypto/bls"
+	"github.com/ethereum/go-ethereum/rlp"
 	log "github.com/helinwang/log15"
 )
 
@@ -110,30 +111,27 @@ func NewChain(genesis *Block, genesisState State, seed Rand, cfg Config, txnPool
 }
 
 // Block returns the block of the given hash.
-func (c *Chain) Block(h Hash) (*Block, bool) {
+func (c *Chain) Block(h Hash) *Block {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	b, ok := c.hashToBlock[h]
-	return b, ok
+	return c.hashToBlock[h]
 }
 
 // BlockProposal returns the block of the given hash.
-func (c *Chain) BlockProposal(h Hash) (*BlockProposal, bool) {
+func (c *Chain) BlockProposal(h Hash) *BlockProposal {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	b, ok := c.hashToBP[h]
-	return b, ok
+	return c.hashToBP[h]
 }
 
 // NtShare returns the notarization share of the given hash.
-func (c *Chain) NtShare(h Hash) (*NtShare, bool) {
+func (c *Chain) NtShare(h Hash) *NtShare {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	b, ok := c.hashToNtShare[h]
-	return b, ok
+	return c.hashToNtShare[h]
 }
 
 // NeedNotarize returns if the block proposal of the given hash needs
@@ -388,6 +386,31 @@ func (c *Chain) addNtShare(n *NtShare, groupID int) (*Block, bool) {
 	return nil, true
 }
 
+func calculateStateRoot(state State, txnData []byte) (root Hash, err error) {
+	if len(txnData) == 0 {
+		return state.Accounts(), nil
+	}
+
+	var txns [][]byte
+	err = rlp.DecodeBytes(txnData, &txns)
+	if err != nil {
+		err = fmt.Errorf("invalid transactions: %v", err)
+		return
+	}
+
+	trans := state.Transition()
+	for _, t := range txns {
+		valid, success := trans.Record(t)
+		if !valid || !success {
+			err = errors.New("failed to apply transactions")
+			return
+		}
+	}
+
+	root = trans.Account()
+	return
+}
+
 func (c *Chain) addBlock(b *Block, weight float64) error {
 	// TODO: remove txn from the txn pool
 	log.Info("addBlock called", "hash", b.Hash(), "weight", weight)
@@ -422,6 +445,19 @@ func (c *Chain) addBlock(b *Block, weight float64) error {
 	} else {
 		return errors.New("can not connect block to the chain")
 	}
+
+	// TODO: iteratively get all dependent BP
+	bp, ok := c.hashToBP[b.BlockProposal]
+	if !ok {
+		panic("TODO: iteratively get all dependent BP")
+	}
+
+	account, err := calculateStateRoot(prevState, bp.Data)
+	if err != nil {
+		return err
+	}
+
+	fmt.Println("****", account, b.StateRoot)
 
 	// TODO: update state
 	nt.State = prevState

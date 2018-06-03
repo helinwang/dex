@@ -134,6 +134,7 @@ func (r *RPCServer) sendTxn(t []byte, _ *int) error {
 	return nil
 }
 
+// WalletService is the RPC service for wallet.
 type WalletService struct {
 	s *RPCServer
 }

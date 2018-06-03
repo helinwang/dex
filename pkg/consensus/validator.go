@@ -31,13 +31,13 @@ func (v *validator) ValidateBlock(b *Block) (float64, bool) {
 		return 0, false
 	}
 
-	if _, ok := v.chain.Block(b.Hash()); ok {
+	if b := v.chain.Block(b.Hash()); b != nil {
 		log.Warn("block already received")
 		return 0, false
 	}
 
-	prev, ok := v.chain.Block(b.PrevBlock)
-	if !ok {
+	prev := v.chain.Block(b.PrevBlock)
+	if prev == nil {
 		log.Warn("ValidateBlock: prev block not found")
 		return 0, false
 	}
@@ -84,13 +84,13 @@ func (v *validator) ValidateBlockProposal(bp *BlockProposal) (float64, bool) {
 		return 0, false
 	}
 
-	if _, ok := v.chain.BlockProposal(bp.Hash()); ok {
+	if bp := v.chain.BlockProposal(bp.Hash()); bp != nil {
 		log.Warn("block proposal already received")
 		return 0, false
 	}
 
-	prev, ok := v.chain.Block(bp.PrevBlock)
-	if !ok {
+	prev := v.chain.Block(bp.PrevBlock)
+	if prev == nil {
 		log.Warn("ValidateBlockProposal: prev block not found")
 		return 0, false
 	}
@@ -139,13 +139,13 @@ func (v *validator) ValidateNtShare(n *NtShare) (int, bool) {
 		return 0, false
 	}
 
-	if _, ok := v.chain.NtShare(n.Hash()); ok {
+	if nts := v.chain.NtShare(n.Hash()); nts != nil {
 		log.Warn("notarization share already received")
 		return 0, false
 	}
 
-	bp, ok := v.chain.BlockProposal(n.BP)
-	if !ok {
+	bp := v.chain.BlockProposal(n.BP)
+	if bp == nil {
 		log.Warn("ValidateNtShare: prev block not found")
 		return 0, false
 	}

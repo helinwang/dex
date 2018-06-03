@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/helinwang/dex/pkg/consensus"
 	log "github.com/helinwang/log15"
 )
 
@@ -23,6 +24,10 @@ func newTransition(s *State, state state) *Transition {
 		state: state,
 		owner: s,
 	}
+}
+
+func (t *Transition) Account() consensus.Hash {
+	return consensus.Hash(t.state.accounts.Hash())
 }
 
 // Record records a transition to the state transition.

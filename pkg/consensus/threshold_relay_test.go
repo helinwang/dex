@@ -27,8 +27,12 @@ func (t *myTxnPool) Add(txn []byte) (Hash, bool) {
 	return Hash{}, false
 }
 
-func (t *myTxnPool) Txns() []byte {
+func (t *myTxnPool) Txns() [][]byte {
 	return nil
+}
+
+func (t *myTxnPool) Need(Hash) bool {
+	return true
 }
 
 func (t *myTxnPool) Get(Hash) []byte {
@@ -220,4 +224,8 @@ func (e *emptyTransition) Txns() [][]byte {
 }
 
 func (e *emptyTransition) Commit() {
+}
+
+func (e *emptyTransition) Account() Hash {
+	return Hash{}
 }

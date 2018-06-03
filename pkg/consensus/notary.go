@@ -37,7 +37,9 @@ func (n *Notary) Notarize(ctx, cancel context.Context, bCh chan *BlockProposal, 
 
 			for _, bp := range bestRankBPs {
 				s := n.notarize(bp)
-				onNotarize(s)
+				if s != nil {
+					onNotarize(s)
+				}
 			}
 
 			for {
@@ -54,7 +56,9 @@ func (n *Notary) Notarize(ctx, cancel context.Context, bCh chan *BlockProposal, 
 					if rank <= bestRank {
 						bestRank = rank
 						s := n.notarize(bp)
-						onNotarize(s)
+						if s != nil {
+							onNotarize(s)
+						}
 					}
 				}
 			}
@@ -100,7 +104,22 @@ func (n *Notary) notarize(bp *BlockProposal) *NtShare {
 		BP:    bp.Hash(),
 	}
 
+	prevBlock := n.chain.Block(bp.PrevBlock)
+	if prevBlock == nil {
+		panic("TODO")
+	}
+
 	blk := bpToBlock(bp)
+
+	// state := prevBlock.State
+
+	// root, err := calculateStateRoot(state, bp.Data)
+	// if err != nil {
+	// 	log.Warn("failed to calculate state root during notarization", "err", err)
+	// 	return nil
+	// }
+	// blk.StateRoot = root
+
 	b.SigShare = n.share.Sign(string(blk.Encode(false))).Serialize()
 	b.Owner = n.owner
 	b.OwnerSig = n.sk.Sign(string(b.Encode(false))).Serialize()

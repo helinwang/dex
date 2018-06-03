@@ -10,6 +10,10 @@ type Transition interface {
 
 	// Commit commits the transition to the state root.
 	Commit()
+
+	// Account returns the account trie state root hash if the
+	// transition is committed.
+	Account() Hash
 }
 
 // State is the blockchain state.
@@ -30,6 +34,7 @@ type TxnPool interface {
 	// broadcast the transaction if the return value is true.
 	Add(txn []byte) (Hash Hash, broadcast bool)
 	Get(hash Hash) []byte
-	Txns() []byte
+	Need(hash Hash) bool
+	Txns() [][]byte
 	Remove(hash Hash)
 }

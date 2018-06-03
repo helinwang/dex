@@ -377,14 +377,20 @@ func (n *Networking) recvInventory(p Peer, ids []ItemID) {
 	for _, id := range ids {
 		switch id.T {
 		case TxnItem:
-			panic("not implemented")
+			if n.chain.TxnPool.Need(id.Hash) {
+				log.Info("request TxnItem", "item", id)
+				err := p.GetData(n.myself, []ItemID{id})
+				if err != nil {
+					log.Error("get data from peer error", "err", err)
+					n.removePeer(p)
+				}
+			}
 		case SysTxnItem:
 			panic("not implemented")
 		case BlockItem:
 			// TODO: improve logic of what to get, e.g., using id.Ref
-			log.Info("request BlockItem", "item", id)
-
-			if _, ok := n.chain.Block(id.Hash); !ok {
+			if b := n.chain.Block(id.Hash); b == nil {
+				log.Info("request BlockItem", "item", id)
 				err := p.GetData(n.myself, []ItemID{id})
 				if err != nil {
 					log.Error("get data from peer error", "err", err)
@@ -399,7 +405,7 @@ func (n *Networking) recvInventory(p Peer, ids []ItemID) {
 				continue
 			}
 
-			if _, ok := n.chain.BlockProposal(id.Hash); ok {
+			if bp := n.chain.BlockProposal(id.Hash); bp != nil {
 				continue
 			}
 
@@ -419,7 +425,7 @@ func (n *Networking) recvInventory(p Peer, ids []ItemID) {
 				continue
 			}
 
-			if _, ok := n.chain.NtShare(id.Hash); ok {
+			if nt := n.chain.NtShare(id.Hash); nt != nil {
 				continue
 			}
 
@@ -508,8 +514,8 @@ func (n *Networking) serveData(p Peer, ids []ItemID) {
 		case SysTxnItem:
 			panic("not implemented")
 		case BlockItem:
-			b, ok := n.chain.Block(id.Hash)
-			if !ok {
+			b := n.chain.Block(id.Hash)
+			if b == nil {
 				continue
 			}
 
@@ -520,8 +526,8 @@ func (n *Networking) serveData(p Peer, ids []ItemID) {
 				n.removePeer(p)
 			}
 		case BlockProposalItem:
-			bp, ok := n.chain.BlockProposal(id.Hash)
-			if !ok {
+			bp := n.chain.BlockProposal(id.Hash)
+			if bp == nil {
 				continue
 			}
 
@@ -532,8 +538,8 @@ func (n *Networking) serveData(p Peer, ids []ItemID) {
 				n.removePeer(p)
 			}
 		case NtShareItem:
-			nts, ok := n.chain.NtShare(id.Hash)
-			if !ok {
+			nts := n.chain.NtShare(id.Hash)
+			if nts == nil {
 				continue
 			}
 

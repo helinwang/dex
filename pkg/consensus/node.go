@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ethereum/go-ethereum/rlp"
 	log "github.com/helinwang/log15"
 
 	"github.com/dfinity/go-dfinity-crypto/bls"
@@ -117,13 +118,18 @@ func (n *Node) StartRound(round uint64) {
 
 		if m.groupID == bp {
 			txns := n.chain.TxnPool.Txns()
+			b, err := rlp.EncodeToBytes(txns)
+			if err != nil {
+				panic(err)
+			}
+
 			block, _, _ := n.chain.Leader()
 			var bp BlockProposal
 			bp.PrevBlock = SHA3(block.Encode(true))
 			bp.Round = block.Round + 1
 			bp.Owner = SHA3(n.sk.GetPublicKey().Serialize()).Addr()
 			// TODO: support SysTxn when needed (e.g., open participation)
-			bp.Data = txns
+			bp.Data = b
 			bp.OwnerSig = n.sk.Sign(string(bp.Encode(false))).Serialize()
 
 			go func() {

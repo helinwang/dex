@@ -3,7 +3,6 @@ package dex
 import (
 	"sync"
 
-	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/helinwang/dex/pkg/consensus"
 )
 
@@ -38,6 +37,15 @@ func (t *TxnPool) Add(b []byte) (hash consensus.Hash, boardcast bool) {
 	return hash, true
 }
 
+func (t *TxnPool) Need(h consensus.Hash) bool {
+	// TODO: return false for txn that are already in the block.
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	_, ok := t.txns[h]
+	return !ok
+}
+
 func (t *TxnPool) Get(h consensus.Hash) []byte {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -45,7 +53,7 @@ func (t *TxnPool) Get(h consensus.Hash) []byte {
 	return t.txns[h]
 }
 
-func (t *TxnPool) Txns() []byte {
+func (t *TxnPool) Txns() [][]byte {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -55,12 +63,7 @@ func (t *TxnPool) Txns() []byte {
 		r[i] = v
 		i++
 	}
-	b, err := rlp.EncodeToBytes(r)
-	if err != nil {
-		panic(err)
-	}
-
-	return b
+	return r
 }
 
 func (t *TxnPool) Remove(hash consensus.Hash) {
