@@ -79,13 +79,10 @@ func main() {
 		panic(err)
 	}
 
-	con := dex.NewConsensus()
-	err = con.StartServer(*rpcAddr)
-	if err != nil {
-		panic(err)
-	}
-
-	n := createNode(credentials, &genesis, consensus.PK(pk), con)
+	server := dex.NewRPCServer()
+	n := createNode(credentials, &genesis, consensus.PK(pk), server)
+	server.SetSender(n)
+	server.Start(*rpcAddr)
 	n.Start(*addr, *seedNode)
 	n.StartRound(1)
 

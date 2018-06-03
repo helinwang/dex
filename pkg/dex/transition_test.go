@@ -38,7 +38,7 @@ func TestSendToken(t *testing.T) {
 	skRecv.SetByCSPRNG()
 
 	to := consensus.PK(skRecv.GetPublicKey().Serialize())
-	txn := MakeSendTokenTxn(sk, to, 20)
+	txn := MakeSendTokenTxn(sk, to, 0, 20)
 	trans := s.Transition()
 	valid, success := trans.Record(txn)
 	assert.True(t, valid)
@@ -81,7 +81,7 @@ func TestTransitionNotCommitToDB(t *testing.T) {
 		skRecv.SetByCSPRNG()
 
 		to := consensus.PK(skRecv.GetPublicKey().Serialize())
-		txn := MakeSendTokenTxn(sk, to, 1)
+		txn := MakeSendTokenTxn(sk, to, 0, 1)
 		valid, success := trans.Record(txn)
 		assert.True(t, valid)
 		assert.True(t, success)

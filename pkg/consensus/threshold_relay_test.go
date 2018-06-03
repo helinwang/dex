@@ -23,15 +23,19 @@ func init() {
 type myTxnPool struct {
 }
 
-func (t *myTxnPool) Add(txn []byte) (broadcast bool) {
-	return false
+func (t *myTxnPool) Add(txn []byte) (Hash, bool) {
+	return Hash{}, false
 }
 
-func (t *myTxnPool) Txns() [][]byte {
+func (t *myTxnPool) Txns() []byte {
 	return nil
 }
 
-func (t *myTxnPool) Remove(txn []byte) {
+func (t *myTxnPool) Get(Hash) []byte {
+	return nil
+}
+
+func (t *myTxnPool) Remove(Hash) {
 }
 
 func makeShares(t int, idVec []bls.ID, rand Rand) (bls.PublicKey, []bls.SecretKey, Rand) {

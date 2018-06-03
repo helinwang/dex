@@ -22,7 +22,7 @@ var credentialPath string
 
 func getTokens(client *rpc.Client) ([]dex.Token, error) {
 	var tokens dex.TokenState
-	err := client.Call("RPCServer.Tokens", 0, &tokens)
+	err := client.Call("WalletService.Tokens", 0, &tokens)
 	if err != nil {
 		return nil, err
 	}
@@ -79,7 +79,7 @@ func printAccount(c *cli.Context) error {
 	}
 
 	var w dex.WalletState
-	err = client.Call("RPCServer.WalletState", addr, &w)
+	err = client.Call("WalletService.WalletState", addr, &w)
 	if err != nil {
 		return err
 	}
@@ -159,7 +159,7 @@ func sendToken(c *cli.Context) error {
 	}
 
 	txn := dex.MakeSendTokenTxn(credential.SK, pk, tokenID, uint64(quant*mul))
-	err = client.Call("RPCServer.SendTxn", txn, nil)
+	err = client.Call("WalletService.SendTxn", txn, nil)
 	if err != nil {
 		return err
 	}

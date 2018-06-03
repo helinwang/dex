@@ -116,23 +116,14 @@ func (n *Node) StartRound(round uint64) {
 		}
 
 		if m.groupID == bp {
-			txns := n.chain.getTxns()
+			txns := n.chain.TxnPool.Txns()
 			block, _, _ := n.chain.Leader()
 			var bp BlockProposal
 			bp.PrevBlock = SHA3(block.Encode(true))
 			bp.Round = block.Round + 1
 			bp.Owner = SHA3(n.sk.GetPublicKey().Serialize()).Addr()
 			// TODO: support SysTxn when needed (e.g., open participation)
-
-			var buf bytes.Buffer
-			enc := gob.NewEncoder(&buf)
-			err := enc.Encode(txns)
-			if err != nil {
-				// should never happend
-				panic(err)
-			}
-
-			bp.Data = buf.Bytes()
+			bp.Data = txns
 			bp.OwnerSig = n.sk.Sign(string(bp.Encode(false))).Serialize()
 
 			go func() {
@@ -171,6 +162,10 @@ func (n *Node) RecvBlockProposal(bp *BlockProposal) {
 	for _, ch := range n.notarizeChs {
 		ch <- bp
 	}
+}
+
+func (n *Node) SendTxn(t []byte) {
+	n.net.RecvTxn(t)
 }
 
 // MakeNode makes a new node with the given configurations.

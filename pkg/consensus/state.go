@@ -28,7 +28,8 @@ type TxnPool interface {
 	// validate the txn and return true if the transaction is
 	// valid and not already in the pool. The caller should
 	// broadcast the transaction if the return value is true.
-	Add(txn []byte) (broadcast bool)
-	Txns() [][]byte
-	Remove(txn []byte)
+	Add(txn []byte) (Hash Hash, broadcast bool)
+	Get(hash Hash) []byte
+	Txns() []byte
+	Remove(hash Hash)
 }

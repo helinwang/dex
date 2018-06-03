@@ -94,7 +94,6 @@ type Networking struct {
 	mu        sync.Mutex
 	peers     []Peer
 	peerAddrs []string
-	txnPool   TxnPool
 }
 
 // NewNetworking creates a new networking component.
@@ -246,7 +245,10 @@ func (n *Networking) BroadcastItem(item ItemID) {
 }
 
 func (n *Networking) RecvTxn(t []byte) {
-	panic("not implemented")
+	hash, broadcast := n.chain.TxnPool.Add(t)
+	if broadcast {
+		go n.BroadcastItem(ItemID{T: TxnItem, Hash: hash})
+	}
 }
 
 func (n *Networking) RecvSysTxn(t *SysTxn) {
@@ -495,7 +497,14 @@ func (n *Networking) serveData(p Peer, ids []ItemID) {
 	for _, id := range ids {
 		switch id.T {
 		case TxnItem:
-			panic("not implemented")
+			txn := n.chain.TxnPool.Get(id.Hash)
+			if txn != nil {
+				err := p.Txn(txn)
+				if err != nil {
+					log.Error("send txn to peer error", "err", err)
+					n.removePeer(p)
+				}
+			}
 		case SysTxnItem:
 			panic("not implemented")
 		case BlockItem:

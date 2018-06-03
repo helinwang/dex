@@ -3,22 +3,60 @@ package dex
 import (
 	"errors"
 	"fmt"
+	"net"
+	"net/http"
+	"net/rpc"
 	"sync"
 
 	"github.com/helinwang/dex/pkg/consensus"
 	log "github.com/helinwang/log15"
 )
 
-type RPCServer struct {
-	mu  sync.Mutex
-	s   *state
-	net *consensus.Networking
+type TxnSender interface {
+	SendTxn([]byte)
 }
 
-func (r *RPCServer) updateConsensus(s *state) {
+type RPCServer struct {
+	mu     sync.Mutex
+	s      *state
+	sender TxnSender
+}
+
+func NewRPCServer() *RPCServer {
+	return &RPCServer{}
+}
+
+func (r *RPCServer) SetSender(sender TxnSender) {
+	r.sender = sender
+}
+
+func (r *RPCServer) Update(state consensus.State) {
+	s := state.(*State)
 	r.mu.Lock()
-	r.s = s
+	r.s = &s.state
 	r.mu.Unlock()
+}
+
+func (r *RPCServer) Start(addr string) error {
+	w := &WalletService{s: r}
+
+	err := rpc.Register(w)
+	if err != nil {
+		return err
+	}
+
+	rpc.HandleHTTP()
+	l, err := net.Listen("tcp", addr)
+	if err != nil {
+		return err
+	}
+	go func() {
+		err = http.Serve(l, nil)
+		if err != nil {
+			log.Error("error serving RPC server", "err", err)
+		}
+	}()
+	return nil
 }
 
 type TokenState struct {
@@ -40,7 +78,7 @@ type WalletState struct {
 	PendingOrders []UserOrder
 }
 
-func (r *RPCServer) WalletState(addr consensus.Addr, w *WalletState) error {
+func (r *RPCServer) walletState(addr consensus.Addr, w *WalletState) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -79,7 +117,7 @@ func (r *RPCServer) WalletState(addr consensus.Addr, w *WalletState) error {
 	return nil
 }
 
-func (r *RPCServer) Tokens(_ int, t *TokenState) error {
+func (r *RPCServer) tokens(_ int, t *TokenState) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -91,7 +129,23 @@ func (r *RPCServer) Tokens(_ int, t *TokenState) error {
 	return nil
 }
 
-func (r *RPCServer) SendTxn(t []byte, _ *int) error {
-	r.net.RecvTxn(t)
+func (r *RPCServer) sendTxn(t []byte, _ *int) error {
+	r.sender.SendTxn(t)
 	return nil
+}
+
+type WalletService struct {
+	s *RPCServer
+}
+
+func (s *WalletService) WalletState(addr consensus.Addr, w *WalletState) error {
+	return s.s.walletState(addr, w)
+}
+
+func (s *WalletService) Tokens(d int, t *TokenState) error {
+	return s.s.tokens(d, t)
+}
+
+func (s *WalletService) SendTxn(t []byte, d *int) error {
+	return s.s.sendTxn(t, d)
 }

@@ -40,7 +40,7 @@ type Chain struct {
 	cfg          Config
 	RandomBeacon *RandomBeacon
 	n            *Node
-	txnPool      TxnPool
+	TxnPool      TxnPool
 	updater      Updater
 
 	mu sync.RWMutex
@@ -93,7 +93,7 @@ func NewChain(genesis *Block, genesisState State, seed Rand, cfg Config, txnPool
 	return &Chain{
 		cfg:                   cfg,
 		updater:               u,
-		txnPool:               txnPool,
+		TxnPool:               txnPool,
 		RandomBeacon:          NewRandomBeacon(seed, sysState.groups, cfg),
 		History:               []Hash{gh},
 		LastHistoryState:      genesisState,
@@ -163,14 +163,6 @@ func (c *Chain) FinalizedChain() []*Block {
 	}
 
 	return bs
-}
-
-func (c *Chain) getTxns() [][]byte {
-	return c.txnPool.Txns()
-}
-
-func (c *Chain) addTxn(txn []byte) bool {
-	return c.txnPool.Add(txn)
 }
 
 func (c *Chain) round() uint64 {
