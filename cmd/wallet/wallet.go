@@ -21,6 +21,16 @@ import (
 var rpcAddr string
 var credentialPath string
 
+func nonce(client *rpc.Client, addr consensus.Addr) (uint8, uint64, error) {
+	var slot dex.NonceSlot
+	err := client.Call("WalletService.Nonce", addr, &slot)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	return slot.Idx, slot.Val, nil
+}
+
 func getTokens(client *rpc.Client) ([]dex.Token, error) {
 	var tokens dex.TokenState
 	err := client.Call("WalletService.Tokens", 0, &tokens)
@@ -168,12 +178,18 @@ func sendToken(c *cli.Context) error {
 		return fmt.Errorf("symbol not found: %s", symbol)
 	}
 
-	txn := dex.MakeSendTokenTxn(credential.SK, pk, tokenID, uint64(quant*mul))
+	idx, val, err := nonce(client, credential.SK.MustPK().Addr())
+	if err != nil {
+		return err
+	}
+
+	txn := dex.MakeSendTokenTxn(credential.SK, pk, tokenID, uint64(quant*mul), idx, val)
 	err = client.Call("WalletService.SendTxn", txn, nil)
 	if err != nil {
 		return err
 	}
 
+	fmt.Println(consensus.SHA3(txn).Hex())
 	return nil
 }
 

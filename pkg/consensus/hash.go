@@ -20,6 +20,11 @@ func (h Hash) String() string {
 	return fmt.Sprintf("%x", h[:2])
 }
 
+// Hex is the hex representation of hash.
+func (h Hash) Hex() string {
+	return fmt.Sprintf("%x", h[:])
+}
+
 // SHA3 hashs the given slices with SHA3.
 func SHA3(b ...[]byte) Hash {
 	d := sha3.New256()

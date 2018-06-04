@@ -19,25 +19,27 @@ func NewTxnPool(state *State) *TxnPool {
 	}
 }
 
-func (t *TxnPool) Add(b []byte) (hash consensus.Hash, boardcast bool) {
+func (t *TxnPool) Add(b []byte) (boardcast bool) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	hash = consensus.SHA3(b)
+	hash := consensus.SHA3(b)
 	if t.txns[hash] != nil {
-		return hash, false
+		return false
 	}
 
 	_, _, _, valid := validateSigAndNonce(&t.state.state, b)
 	if !valid {
-		return hash, false
+		return false
 	}
 
 	t.txns[hash] = b
-	return hash, true
+	return true
 }
 
-func (t *TxnPool) Need(h consensus.Hash) bool {
+// TODO: remove txn which is no longer valid.
+
+func (t *TxnPool) NotSeen(h consensus.Hash) bool {
 	// TODO: return false for txn that are already in the block.
 	t.mu.Lock()
 	defer t.mu.Unlock()

@@ -97,12 +97,23 @@ func NewChain(genesis *Block, genesisState State, seed Rand, cfg Config, txnPool
 
 func (c *Chain) ProposeBlock(sk SK) *BlockProposal {
 	txns := c.TxnPool.Txns()
+	block, state, _ := c.Leader()
+
+	trans := state.Transition()
+	for _, txn := range txns {
+		valid, _ := trans.Record(txn)
+		if !valid {
+			// TODO: handle "lost" txn due to reorg.
+			c.TxnPool.Remove(SHA3(txn))
+		}
+	}
+
+	txns = trans.Txns()
 	b, err := rlp.EncodeToBytes(txns)
 	if err != nil {
 		panic(err)
 	}
 
-	block, _, _ := c.Leader()
 	var bp BlockProposal
 	bp.PrevBlock = SHA3(block.Encode(true))
 	bp.Round = block.Round + 1

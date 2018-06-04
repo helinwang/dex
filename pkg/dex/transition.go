@@ -33,7 +33,6 @@ func (t *Transition) Account() consensus.Hash {
 
 // Record records a transition to the state transition.
 func (t *Transition) Record(b []byte) (valid, success bool) {
-	// TODO: increment nonce
 	txn, acc, ready, valid := validateSigAndNonce(&t.state, b)
 	if !valid {
 		return
@@ -42,6 +41,11 @@ func (t *Transition) Record(b []byte) (valid, success bool) {
 	if !ready {
 		return true, false
 	}
+
+	if len(acc.NonceVec) <= int(txn.NonceIdx) {
+		acc.NonceVec = append(acc.NonceVec, make([]uint64, int(txn.NonceIdx)-len(acc.NonceVec)+1)...)
+	}
+	acc.NonceVec[txn.NonceIdx]++
 
 	dec := gob.NewDecoder(bytes.NewBuffer(txn.Data))
 	switch txn.T {

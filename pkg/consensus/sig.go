@@ -61,3 +61,13 @@ func (s SK) PK() (PK, error) {
 
 	return PK(sk.GetPublicKey().Serialize()), nil
 }
+
+func (s SK) MustPK() PK {
+	var sk bls.SecretKey
+	err := sk.SetLittleEndian(s)
+	if err != nil {
+		panic(err)
+	}
+
+	return PK(sk.GetPublicKey().Serialize())
+}

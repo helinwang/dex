@@ -17,9 +17,10 @@ type TxnSender interface {
 }
 
 type RPCServer struct {
-	mu     sync.Mutex
-	s      *state
 	sender TxnSender
+
+	mu sync.Mutex
+	s  *state
 }
 
 func NewRPCServer() *RPCServer {
@@ -134,6 +135,34 @@ func (r *RPCServer) sendTxn(t []byte, _ *int) error {
 	return nil
 }
 
+type NonceSlot struct {
+	Idx uint8
+	Val uint64
+}
+
+func (r *RPCServer) nonce(addr consensus.Addr, slot *NonceSlot) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	// TODO: returns a slot that does not collide with the ones in
+	// the pending txns.
+
+	if r.s == nil {
+		return errors.New("waiting for reaching consensus")
+	}
+
+	acc := r.s.Account(addr)
+	if acc == nil {
+		return fmt.Errorf("account %x does not exist", addr[:])
+	}
+
+	if len(acc.NonceVec) > 0 {
+		slot.Val = acc.NonceVec[0]
+	}
+
+	return nil
+}
+
 // WalletService is the RPC service for wallet.
 type WalletService struct {
 	s *RPCServer
@@ -149,4 +178,8 @@ func (s *WalletService) Tokens(d int, t *TokenState) error {
 
 func (s *WalletService) SendTxn(t []byte, d *int) error {
 	return s.s.sendTxn(t, d)
+}
+
+func (s *WalletService) Nonce(addr consensus.Addr, slot *NonceSlot) error {
+	return s.s.nonce(addr, slot)
 }

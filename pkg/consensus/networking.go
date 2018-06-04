@@ -245,9 +245,9 @@ func (n *Networking) BroadcastItem(item ItemID) {
 }
 
 func (n *Networking) RecvTxn(t []byte) {
-	hash, broadcast := n.chain.TxnPool.Add(t)
+	broadcast := n.chain.TxnPool.Add(t)
 	if broadcast {
-		go n.BroadcastItem(ItemID{T: TxnItem, Hash: hash})
+		go n.BroadcastItem(ItemID{T: TxnItem, Hash: SHA3(t)})
 	}
 }
 
@@ -377,7 +377,7 @@ func (n *Networking) recvInventory(p Peer, ids []ItemID) {
 	for _, id := range ids {
 		switch id.T {
 		case TxnItem:
-			if n.chain.TxnPool.Need(id.Hash) {
+			if n.chain.TxnPool.NotSeen(id.Hash) {
 				log.Info("request TxnItem", "item", id)
 				err := p.GetData(n.myself, []ItemID{id})
 				if err != nil {

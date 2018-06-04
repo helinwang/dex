@@ -23,15 +23,15 @@ func init() {
 type myTxnPool struct {
 }
 
-func (t *myTxnPool) Add(txn []byte) (Hash, bool) {
-	return Hash{}, false
+func (t *myTxnPool) Add(txn []byte) bool {
+	return false
 }
 
 func (t *myTxnPool) Txns() [][]byte {
 	return nil
 }
 
-func (t *myTxnPool) Need(Hash) bool {
+func (t *myTxnPool) NotSeen(Hash) bool {
 	return true
 }
 

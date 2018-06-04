@@ -120,7 +120,7 @@ type CancelOrderTxn struct {
 	Order consensus.Hash
 }
 
-func MakeSendTokenTxn(from consensus.SK, to consensus.PK, tokenID TokenID, quant uint64) []byte {
+func MakeSendTokenTxn(from consensus.SK, to consensus.PK, tokenID TokenID, quant uint64, nonceIdx uint8, nonce uint64) []byte {
 	send := SendTokenTxn{
 		TokenID: tokenID,
 		To:      to,
@@ -133,9 +133,11 @@ func MakeSendTokenTxn(from consensus.SK, to consensus.PK, tokenID TokenID, quant
 	}
 
 	txn := Txn{
-		T:     SendToken,
-		Owner: owner.Addr(),
-		Data:  gobEncode(send),
+		T:          SendToken,
+		Owner:      owner.Addr(),
+		NonceIdx:   nonceIdx,
+		NonceValue: nonce,
+		Data:       gobEncode(send),
 	}
 
 	sk, err := from.Get()
