@@ -8,7 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ethereum/go-ethereum/rlp"
 	log "github.com/helinwang/log15"
 
 	"github.com/dfinity/go-dfinity-crypto/bls"
@@ -21,7 +20,7 @@ import (
 type Node struct {
 	addr  Addr
 	cfg   Config
-	sk    bls.SecretKey
+	sk    SK
 	net   *Networking
 	chain *Chain
 
@@ -52,10 +51,13 @@ type Config struct {
 }
 
 // NewNode creates a new node.
-func NewNode(chain *Chain, sk bls.SecretKey, net *Networking, cfg Config) *Node {
-	pk := sk.GetPublicKey()
-	pkHash := SHA3(pk.Serialize())
-	addr := pkHash.Addr()
+func NewNode(chain *Chain, sk SK, net *Networking, cfg Config) *Node {
+	pk, err := sk.PK()
+	if err != nil {
+		panic(err)
+	}
+
+	addr := pk.Addr()
 	n := &Node{
 		addr:  addr,
 		cfg:   cfg,
@@ -111,30 +113,16 @@ func (n *Node) StartRound(round uint64) {
 				}
 
 				lastSigHash := SHA3(history[idx].Sig)
-				s := signRandBeaconShare(n.sk, keyShare, round, lastSigHash)
+				s := signRandBeaconShare(n.sk.MustGet(), keyShare, round, lastSigHash)
 				n.net.recvRandBeaconSigShare(s)
 			}()
 		}
 
 		if m.groupID == bp {
-			txns := n.chain.TxnPool.Txns()
-			b, err := rlp.EncodeToBytes(txns)
-			if err != nil {
-				panic(err)
-			}
-
-			block, _, _ := n.chain.Leader()
-			var bp BlockProposal
-			bp.PrevBlock = SHA3(block.Encode(true))
-			bp.Round = block.Round + 1
-			bp.Owner = SHA3(n.sk.GetPublicKey().Serialize()).Addr()
-			// TODO: support SysTxn when needed (e.g., open participation)
-			bp.Data = b
-			bp.OwnerSig = n.sk.Sign(string(bp.Encode(false))).Serialize()
-
+			bp := n.chain.ProposeBlock(n.sk)
 			go func() {
 				log.Debug("proposing block", "addr", n.addr, "round", bp.Round, "hash", bp.Hash())
-				n.net.recvBlockProposal(&bp)
+				n.net.recvBlockProposal(bp)
 			}()
 		}
 
@@ -143,7 +131,7 @@ func (n *Node) StartRound(round uint64) {
 				ntCancelCtx, n.cancelNotarize = context.WithCancel(context.Background())
 			}
 
-			notary := NewNotary(n.addr, n.sk, m.skShare, n.chain)
+			notary := NewNotary(n.addr, n.sk.MustGet(), m.skShare, n.chain)
 			inCh := make(chan *BlockProposal, 20)
 			n.notarizeChs = append(n.notarizeChs, inCh)
 			ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(n.cfg.BlockTime))
@@ -177,15 +165,9 @@ func (n *Node) SendTxn(t []byte) {
 // MakeNode makes a new node with the given configurations.
 func MakeNode(credentials NodeCredentials, net Network, cfg Config, genesis *Block, state State, txnPool TxnPool, u Updater) *Node {
 	randSeed := Rand(SHA3([]byte("dex")))
-
-	sk, err := credentials.SK.Get()
-	if err != nil {
-		panic(err)
-	}
-
 	chain := NewChain(genesis, state, randSeed, cfg, txnPool, u)
 	networking := NewNetworking(net, chain)
-	node := NewNode(chain, sk, networking, cfg)
+	node := NewNode(chain, credentials.SK, networking, cfg)
 	for j := range credentials.Groups {
 		share, err := credentials.GroupShares[j].Get()
 		if err != nil {

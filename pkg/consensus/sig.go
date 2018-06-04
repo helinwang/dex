@@ -5,6 +5,16 @@ import "github.com/dfinity/go-dfinity-crypto/bls"
 // PK is a serialized public key.
 type PK []byte
 
+func (p PK) MustGet() bls.PublicKey {
+	var pk bls.PublicKey
+	err := pk.Deserialize(p)
+	if err != nil {
+		panic(err)
+	}
+
+	return pk
+}
+
 func (p PK) Get() (bls.PublicKey, error) {
 	var pk bls.PublicKey
 	err := pk.Deserialize(p)
@@ -30,6 +40,16 @@ func (s SK) Get() (bls.SecretKey, error) {
 	}
 
 	return sk, nil
+}
+
+func (s SK) MustGet() bls.SecretKey {
+	var sk bls.SecretKey
+	err := sk.SetLittleEndian(s)
+	if err != nil {
+		panic(err)
+	}
+
+	return sk
 }
 
 func (s SK) PK() (PK, error) {

@@ -34,4 +34,7 @@ func main() {
 
 	pkStr := base64.StdEncoding.EncodeToString(pk)
 	fmt.Printf("PK: %s\n", pkStr)
+
+	addr := pk.Addr()
+	fmt.Printf("Addr: %x\n", addr[:])
 }

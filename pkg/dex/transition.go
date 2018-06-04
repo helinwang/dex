@@ -8,21 +8,22 @@ import (
 	"strings"
 
 	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/ethereum/go-ethereum/trie"
 	"github.com/helinwang/dex/pkg/consensus"
 	log "github.com/helinwang/log15"
 )
 
 type Transition struct {
 	state
-	owner          *State
 	tokenCreations []Token
 	txns           [][]byte
+	db             *trie.Database
 }
 
-func newTransition(s *State, state state) *Transition {
+func newTransition(state state, db *trie.Database) *Transition {
 	return &Transition{
 		state: state,
-		owner: s,
+		db:    db,
 	}
 }
 
@@ -200,12 +201,14 @@ func (t *Transition) sendToken(owner *Account, txn SendTokenTxn) bool {
 	if err != nil || to == nil {
 		toAcc = &Account{PK: txn.To, Balances: make(map[TokenID]*Balance)}
 	} else {
-		dec := gob.NewDecoder(bytes.NewBuffer(to))
-		err := dec.Decode(toAcc)
+		var de Account
+		err = rlp.DecodeBytes(to, &de)
 		if err != nil {
 			log.Error("error decode recv account", "account", toAddr)
 			return false
 		}
+
+		toAcc = &de
 	}
 
 	owner.Balances[txn.TokenID].Available -= txn.Quant
@@ -223,6 +226,12 @@ func (t *Transition) Txns() [][]byte {
 }
 
 // Commit commits the transition to the state root.
-func (t *Transition) Commit() {
-	t.owner.Commit(t)
+func (t *Transition) Commit() consensus.State {
+	t.state.Commit()
+	s := &State{state: t.state, db: t.db}
+	for _, v := range t.tokenCreations {
+		s.tokenCache.Update(v.ID, &v.TokenInfo)
+	}
+
+	return s
 }

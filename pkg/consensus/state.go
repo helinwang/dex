@@ -8,8 +8,8 @@ type Transition interface {
 	// Txns returns the recorded transactions.
 	Txns() [][]byte
 
-	// Commit commits the transition to the state root.
-	Commit()
+	// Commit commits the transition, creating a new state.
+	Commit() State
 
 	// Account returns the account trie state root hash if the
 	// transition is committed.

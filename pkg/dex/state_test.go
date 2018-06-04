@@ -34,7 +34,7 @@ func TestMarketSymbolBytes(t *testing.T) {
 }
 
 func TestPendingOrders(t *testing.T) {
-	s := NewState(trie.NewDatabase(ethdb.NewMemDatabase()), nil)
+	s := NewState(trie.NewDatabase(ethdb.NewMemDatabase()))
 
 	// Add orders to some irrelevant markets to make sure the
 	// pending order trie works correctly when other markets

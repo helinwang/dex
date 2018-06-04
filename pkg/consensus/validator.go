@@ -221,7 +221,7 @@ func (v *validator) ValidateRandBeaconSigShare(r *RandBeaconSigShare) (int, bool
 	group := v.chain.RandomBeacon.groups[rb]
 	sharePK, ok := group.MemberPK[r.Owner]
 	if !ok {
-		log.Warn("ValidateNtShare: nt owner not a member of the nt cmte")
+		log.Warn("ValidateRandBeaconSigShare: owner not a member of the rb cmte")
 		return 0, false
 	}
 

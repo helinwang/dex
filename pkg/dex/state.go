@@ -56,6 +56,13 @@ type PendingOrder struct {
 	Order
 }
 
+func (s *state) Commit() {
+	s.accounts.Commit(nil)
+	s.tokens.Commit(nil)
+	s.pendingOrders.Commit(nil)
+	s.reports.Commit(nil)
+}
+
 func (s *state) UpdateAccount(acc *Account) {
 	addr := acc.PK.Addr()
 	b, err := rlp.EncodeToBytes(acc)
@@ -251,7 +258,7 @@ var BNBInfo = TokenInfo{
 	TotalSupply: 200000000,
 }
 
-func NewState(db *trie.Database, nativeCoinOwner *consensus.PK) *State {
+func NewState(db *trie.Database) *State {
 	tokens, err := trie.New(common.Hash{}, db)
 	if err != nil {
 		panic(err)
@@ -283,26 +290,17 @@ func NewState(db *trie.Database, nativeCoinOwner *consensus.PK) *State {
 		},
 	}
 
-	if nativeCoinOwner != nil {
-		createTokenTxn := CreateTokenTxn{Info: BNBInfo}
-		trans := s.Transition().(*Transition)
-		owner := &Account{
-			PK: *nativeCoinOwner,
-		}
-		trans.createToken(owner, createTokenTxn)
-		trans.Commit()
-	}
 	return s
 }
 
-func (s *State) Commit(t *Transition) {
-	s.accounts = t.state.accounts
-	s.tokens = t.state.tokens
-	s.pendingOrders = t.state.pendingOrders
-	s.reports = t.state.reports
-	for _, v := range t.tokenCreations {
-		s.tokenCache.Update(v.ID, &v.TokenInfo)
+func (s *State) GenesisDistribution(owner *consensus.PK, tokenInfo TokenInfo) consensus.State {
+	createTokenTxn := CreateTokenTxn{Info: BNBInfo}
+	trans := s.Transition().(*Transition)
+	o := &Account{
+		PK: *owner,
 	}
+	trans.createToken(o, createTokenTxn)
+	return trans.Commit()
 }
 
 func (s *State) Accounts() consensus.Hash {
@@ -372,5 +370,5 @@ func (s *State) Transition() consensus.Transition {
 		pendingOrders: pendingOrders,
 		reports:       reports,
 	}
-	return newTransition(s, state)
+	return newTransition(state, s.db)
 }

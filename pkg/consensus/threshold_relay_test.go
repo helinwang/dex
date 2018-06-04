@@ -223,7 +223,8 @@ func (e *emptyTransition) Txns() [][]byte {
 	return nil
 }
 
-func (e *emptyTransition) Commit() {
+func (e *emptyTransition) Commit() State {
+	return nil
 }
 
 func (e *emptyTransition) Account() Hash {

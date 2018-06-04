@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
@@ -95,14 +96,12 @@ func printAccount(c *cli.Context) error {
 	for _, b := range w.Balances {
 		symbol := idToToken[b.Token].Symbol
 		decimals := int(idToToken[b.Token].Decimals)
-		divide := math.Pow10(decimals)
-		available := fmt.Sprintf("%.*f", decimals, float64(b.Available)/divide)
-		pending := fmt.Sprintf("%.*f", decimals, float64(b.Pending)/divide)
+		available := quantToStr(b.Available, decimals)
+		pending := quantToStr(b.Pending, decimals)
 		_, err = fmt.Fprintf(tw, "\t%s\t%s\t%s\t\n", symbol, available, pending)
 		if err != nil {
 			return err
 		}
-
 	}
 	err = tw.Flush()
 	if err != nil {
@@ -110,6 +109,17 @@ func printAccount(c *cli.Context) error {
 	}
 
 	return nil
+}
+
+func quantToStr(quant uint64, decimals int) string {
+	str := strconv.FormatUint(quant, 10)
+	if len(str) <= decimals {
+		return "0." + string(bytes.Repeat([]byte("0"), decimals-len(str))) + str
+	}
+
+	intPart := str[:len(str)-decimals]
+	rest := str[len(str)-decimals:]
+	return intPart + "." + rest
 }
 
 func sendToken(c *cli.Context) error {

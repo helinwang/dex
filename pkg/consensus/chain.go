@@ -26,9 +26,7 @@ type notarized struct {
 	NtChildren    []*notarized
 	NonNtChildren []*unNotarized
 
-	BP       Hash
-	State    State
-	SysState *SysState
+	BP Hash
 }
 
 // Chain is the blockchain.
@@ -47,6 +45,8 @@ type Chain struct {
 	LastFinalizedSysState *SysState
 	Fork                  []*notarized
 	UnNotarizedNotOnFork  []*unNotarized
+	unFinalizedState      map[Hash]State
+	unFinalizedSysState   map[Hash]*SysState
 	hashToBlock           map[Hash]*Block
 	hashToBP              map[Hash]*BlockProposal
 	hashToNtShare         map[Hash]*NtShare
@@ -84,6 +84,8 @@ func NewChain(genesis *Block, genesisState State, seed Rand, cfg Config, txnPool
 		Finalized:             []Hash{gh},
 		LastFinalizedState:    genesisState,
 		LastFinalizedSysState: sysState,
+		unFinalizedState:      make(map[Hash]State),
+		unFinalizedSysState:   make(map[Hash]*SysState),
 		hashToInventory:       make(map[Hash]ItemID),
 		hashToBlock:           map[Hash]*Block{gh: genesis},
 		hashToBP:              make(map[Hash]*BlockProposal),
@@ -91,6 +93,34 @@ func NewChain(genesis *Block, genesisState State, seed Rand, cfg Config, txnPool
 		bpToNtShares:          make(map[Hash][]*NtShare),
 		bpNeedNotarize:        make(map[Hash]bool),
 	}
+}
+
+func (c *Chain) ProposeBlock(sk SK) *BlockProposal {
+	txns := c.TxnPool.Txns()
+	b, err := rlp.EncodeToBytes(txns)
+	if err != nil {
+		panic(err)
+	}
+
+	block, _, _ := c.Leader()
+	var bp BlockProposal
+	bp.PrevBlock = SHA3(block.Encode(true))
+	bp.Round = block.Round + 1
+	pk, err := sk.PK()
+	if err != nil {
+		panic(err)
+	}
+
+	bp.Owner = pk.Addr()
+	// TODO: support SysTxn when needed (e.g., open participation)
+	bp.Data = b
+	key, err := sk.Get()
+	if err != nil {
+		panic(err)
+	}
+
+	bp.OwnerSig = key.Sign(string(bp.Encode(false))).Serialize()
+	return &bp
 }
 
 // Block returns the block of the given hash.
@@ -183,7 +213,7 @@ func (c *Chain) leader() (*Block, State, *SysState) {
 	}
 
 	n := c.heaviestFork()
-	return c.hashToBlock[n.Block], n.State, n.SysState
+	return c.hashToBlock[n.Block], c.unFinalizedState[n.Block], c.unFinalizedSysState[n.Block]
 
 }
 
@@ -338,8 +368,12 @@ func (c *Chain) addNtShare(n *NtShare, groupID int) (*Block, bool) {
 			panic("impossible: group sig not valid")
 		}
 
-		b := bpToBlock(bp)
-		b.StateRoot = n.StateRoot
+		b, err := c.BPToBlock(bp)
+		if err != nil {
+			panic(err)
+		}
+
+		//		b.StateRoot = n.StateRoot
 		b.NotarizationSig = sig.Serialize()
 
 		delete(c.bpNeedNotarize, n.BP)
@@ -354,9 +388,27 @@ func (c *Chain) addNtShare(n *NtShare, groupID int) (*Block, bool) {
 	return nil, true
 }
 
-func calculateStateRoot(state State, txnData []byte) (root Hash, err error) {
+func (c *Chain) BPToBlock(bp *BlockProposal) (*Block, error) {
+	trans, err := c.bpTransition(bp)
+	if err != nil {
+		return nil, err
+	}
+
+	return &Block{
+		Owner:         bp.Owner,
+		Round:         bp.Round,
+		BlockProposal: bp.Hash(),
+		PrevBlock:     bp.PrevBlock,
+		SysTxns:       bp.SysTxns,
+		StateRoot:     trans.Account(),
+	}, nil
+}
+
+func getTransition(state State, txnData []byte) (trans Transition, err error) {
+	trans = state.Transition()
+
 	if len(txnData) == 0 {
-		return state.Accounts(), nil
+		return
 	}
 
 	var txns [][]byte
@@ -366,7 +418,6 @@ func calculateStateRoot(state State, txnData []byte) (root Hash, err error) {
 		return
 	}
 
-	trans := state.Transition()
 	for _, t := range txns {
 		valid, success := trans.Record(t)
 		if !valid || !success {
@@ -375,8 +426,27 @@ func calculateStateRoot(state State, txnData []byte) (root Hash, err error) {
 		}
 	}
 
-	root = trans.Account()
 	return
+}
+
+func (c *Chain) bpTransition(bp *BlockProposal) (Transition, error) {
+	var prevState State
+
+	prev := c.hashToBlock[bp.PrevBlock]
+	if prev == nil {
+		panic("TODO")
+	}
+
+	if bp.PrevBlock == c.Finalized[len(c.Finalized)-1] {
+		prevState = c.LastFinalizedState
+	} else {
+		prevState = c.unFinalizedState[bp.PrevBlock]
+		if prevState == nil {
+			panic("TODO")
+		}
+	}
+
+	return getTransition(prevState, bp.Data)
 }
 
 func (c *Chain) addBlock(b *Block, weight float64) error {
@@ -392,50 +462,38 @@ func (c *Chain) addBlock(b *Block, weight float64) error {
 		return errChainDataAlreadyExists
 	}
 
-	if _, ok := c.hashToBP[b.BlockProposal]; !ok {
-		return errors.New("block's proposal not found")
-	}
-
-	var prevState State
-	var prevSysState *SysState
-
-	nt := &notarized{Block: h, Weight: weight, BP: b.BlockProposal}
-	prev, removeIdx := findPrevBlock(b.PrevBlock, c.Fork)
-	if prev != nil {
-		prevState = prev.State
-		prevSysState = prev.SysState
-	} else if c.Finalized[len(c.Finalized)-1] == b.PrevBlock {
-		prevState = c.LastFinalizedState
-		prevSysState = c.LastFinalizedSysState
-	} else {
-		return errors.New("can not connect block to the chain")
-	}
-
-	// TODO: iteratively get all dependent BP
 	bp, ok := c.hashToBP[b.BlockProposal]
 	if !ok {
 		panic("TODO: iteratively get all dependent BP")
 	}
 
-	account, err := calculateStateRoot(prevState, bp.Data)
+	trans, err := c.bpTransition(bp)
 	if err != nil {
 		return err
 	}
 
-	fmt.Println("****", account, b.StateRoot)
+	if root := trans.Account(); root != b.StateRoot {
+		return fmt.Errorf("fatal: block state not valid, expected: %x, got: %x", root[:], b.StateRoot[:])
+	}
 
-	// TODO: update state
-	nt.State = prevState
+	nt := &notarized{Block: h, Weight: weight, BP: b.BlockProposal}
+	c.unFinalizedState[nt.Block] = trans.Commit()
 
-	// TODO: update sys state once need to support system txn.
-	nt.SysState = prevSysState
-
-	// TODO: independently generate the state root and verify state root hash
-
-	if prev != nil {
-		prev.NtChildren = append(prev.NtChildren, nt)
-		prev.NonNtChildren = append(prev.NonNtChildren[:removeIdx], prev.NonNtChildren[removeIdx+1:]...)
+	var prevSysState *SysState
+	prevFinalized := false
+	if bp.PrevBlock == c.Finalized[len(c.Finalized)-1] {
+		prevSysState = c.LastFinalizedSysState
+		prevFinalized = true
 	} else {
+		prevSysState = c.unFinalizedSysState[bp.PrevBlock]
+		if prevSysState == nil {
+			panic("TODO")
+		}
+	}
+	// TODO: update sys state once need to support system txn.
+	c.unFinalizedSysState[nt.Block] = prevSysState
+
+	if prevFinalized {
 		c.Fork = append(c.Fork, nt)
 		removeIdx := -1
 		for i, e := range c.UnNotarizedNotOnFork {
@@ -449,6 +507,10 @@ func (c *Chain) addBlock(b *Block, weight float64) error {
 		} else {
 			c.UnNotarizedNotOnFork = append(c.UnNotarizedNotOnFork[:removeIdx], c.UnNotarizedNotOnFork[removeIdx+1:]...)
 		}
+	} else {
+		prev, removeIdx := findPrevBlock(bp.PrevBlock, c.Fork)
+		prev.NtChildren = append(prev.NtChildren, nt)
+		prev.NonNtChildren = append(prev.NonNtChildren[:removeIdx], prev.NonNtChildren[removeIdx+1:]...)
 	}
 
 	c.registerBlock(b)
@@ -459,6 +521,8 @@ func (c *Chain) addBlock(b *Block, weight float64) error {
 	// when round n is started, round n - 3 can be finalized. See
 	// corollary 9.19 in https://arxiv.org/abs/1805.04548
 	if round > 3 {
+		// TODO: use less aggressive finalize block count
+		// (currently 3).
 		c.finalize(round - 3)
 	}
 
@@ -512,8 +576,10 @@ func (c *Chain) finalize(round uint64) {
 		f := c.Fork[0]
 		c.Finalized = append(c.Finalized, f.Block)
 		// TODO: compact not used state
-		c.LastFinalizedState = f.State
-		c.LastFinalizedSysState = f.SysState
+		c.LastFinalizedState = c.unFinalizedState[f.Block]
+		delete(c.unFinalizedState, f.Block)
+		c.LastFinalizedSysState = c.unFinalizedSysState[f.Block]
+		delete(c.unFinalizedSysState, f.Block)
 		c.Fork = f.NtChildren
 		c.UnNotarizedNotOnFork = f.NonNtChildren
 		return
@@ -530,7 +596,12 @@ func (c *Chain) finalize(round uint64) {
 }
 
 func (c *Chain) validateGroupSig(sig bls.Sign, groupID int, bp *BlockProposal) bool {
-	b := bpToBlock(bp)
+	b, err := c.BPToBlock(bp)
+	if err != nil {
+		log.Error("error reconstruct block during validateGroupSig", "err", err)
+		return false
+	}
+
 	msg := b.Encode(false)
 	return sig.Verify(&c.RandomBeacon.groups[groupID].PK, string(msg))
 }
