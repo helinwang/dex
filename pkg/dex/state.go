@@ -87,9 +87,12 @@ func decodeAddr(b []byte) []byte {
 // State is the state of the DEX.
 type State struct {
 	tokenCache *TokenCache
-	trie       *trie.Trie
+	state      *trie.Trie
+	receipt    *trie.Trie
 	db         *trie.Database
 }
+
+// TODO: add receipt for create, send, freeze, burn token.
 
 var BNBInfo = TokenInfo{
 	Symbol:      "BNB",
@@ -106,14 +109,14 @@ func NewState(db *trie.Database) *State {
 	s := &State{
 		db:         db,
 		tokenCache: newTokenCache(),
-		trie:       t,
+		state:      t,
 	}
 
 	return s
 }
 
 func (s *State) Commit() {
-	s.trie.Commit(nil)
+	s.state.Commit(nil)
 }
 
 var (
@@ -145,7 +148,7 @@ func (s *State) UpdateToken(token Token) {
 		panic(err)
 	}
 
-	s.trie.Update(path, b)
+	s.state.Update(path, b)
 }
 
 func (s *State) UpdateAccount(acc *Account) {
@@ -155,11 +158,11 @@ func (s *State) UpdateAccount(acc *Account) {
 		panic(err)
 	}
 
-	s.trie.Update(accountAddrToPath(addr), b)
+	s.state.Update(accountAddrToPath(addr), b)
 }
 
 func (s *State) Account(addr consensus.Addr) *Account {
-	acc, err := s.trie.TryGet(accountAddrToPath(addr))
+	acc, err := s.state.TryGet(accountAddrToPath(addr))
 	if err != nil || acc == nil {
 		return nil
 	}
@@ -179,7 +182,7 @@ func (s *State) MarketPendingOrders(market MarketSymbol) []PendingOrder {
 	prefix = encodePrefix(prefix)
 	emptyAddr := consensus.Addr{}
 	start := append(prefix, encodePrefix(emptyAddr[:])...)
-	iter := s.trie.NodeIterator(start)
+	iter := s.state.NodeIterator(start)
 	var p []PendingOrder
 
 	hasNext := true
@@ -223,7 +226,7 @@ func (s *State) MarketPendingOrders(market MarketSymbol) []PendingOrder {
 
 func (s *State) AccountPendingOrders(market MarketSymbol, addr consensus.Addr) []PendingOrder {
 	path := append(market.Bytes(), addr[:]...)
-	b, err := s.trie.TryGet(pendingOrderPath(path))
+	b, err := s.state.TryGet(pendingOrderPath(path))
 	if err != nil {
 		return nil
 	}
@@ -287,10 +290,10 @@ func (s *State) UpdatePendingOrder(market MarketSymbol, add, remove *PendingOrde
 	}
 
 	path := append(market.Bytes(), addr[:]...)
-	s.trie.Update(pendingOrderPath(path), b)
+	s.state.Update(pendingOrderPath(path), b)
 }
 
-func (s *State) GenesisDistribution(owner *consensus.PK, tokenInfo TokenInfo) consensus.State {
+func (s *State) GenesisDistribution(owner *consensus.PK) consensus.State {
 	createTokenTxn := CreateTokenTxn{Info: BNBInfo}
 	trans := s.Transition().(*Transition)
 	o := &Account{
@@ -301,14 +304,14 @@ func (s *State) GenesisDistribution(owner *consensus.PK, tokenInfo TokenInfo) co
 }
 
 func (s *State) Hash() consensus.Hash {
-	return consensus.Hash(s.trie.Hash())
+	return consensus.Hash(s.state.Hash())
 }
 
 func (s *State) MatchOrders() {
 }
 
 func (s *State) Transition() consensus.Transition {
-	root, err := s.trie.Commit(nil)
+	root, err := s.state.Commit(nil)
 	if err != nil {
 		panic(err)
 	}
@@ -321,7 +324,7 @@ func (s *State) Transition() consensus.Transition {
 	state := &State{
 		db:         s.db,
 		tokenCache: s.tokenCache.Clone(),
-		trie:       trie,
+		state:      trie,
 	}
 	return newTransition(state)
 }

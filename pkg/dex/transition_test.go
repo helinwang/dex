@@ -59,7 +59,7 @@ func TestTransitionNotCommitToDB(t *testing.T) {
 	db := trie.NewDatabase(memDB)
 	s := NewState(db)
 	sk, addr := createAccount(s, 100)
-	h, err := s.trie.Commit(nil)
+	h, err := s.state.Commit(nil)
 	if err != nil {
 		panic(err)
 	}
@@ -108,7 +108,7 @@ func TestGenesisCoinDistribution(t *testing.T) {
 	sk.SetByCSPRNG()
 	pk := consensus.PK(sk.GetPublicKey().Serialize())
 	s := NewState(trie.NewDatabase(ethdb.NewMemDatabase()))
-	s = s.GenesisDistribution(&pk, BNBInfo).(*State)
+	s = s.GenesisDistribution(&pk).(*State)
 
 	assert.True(t, s.tokenCache.Exists(BNBInfo.Symbol))
 	assert.Equal(t, &BNBInfo, s.tokenCache.Info(0))

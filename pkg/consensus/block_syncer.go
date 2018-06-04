@@ -24,13 +24,14 @@ import (
 type blockSyncer struct {
 	v                 *validator
 	chain             *Chain
-	requester         blockRequester
+	requester         requester
 	orphanBlockCache  *lru.Cache
 	invalidBlockCache *lru.Cache
 }
 
-type blockRequester interface {
+type requester interface {
 	RequestBlock(ctx context.Context, hash Hash) (*Block, error)
+	RequestBlockProposal(ctx context.Context, hash Hash) (*BlockProposal, error)
 }
 
 var errCanNotConnectToChain = errors.New("can not connect to chain")
@@ -98,23 +99,23 @@ a. create token, send token, ICO:
 b. orders:
 
   replay each order txn to update the pending orders state, and then
-  replay the trade records.
+  replay the trade receipts.
 
   observer does not need to do order matching, it can just replay the
-  order matchin result recorded in the trade records.
+  order matchin result according to the trade receipts.
 
   Order book: for the markets that the observer cares, he can
   reconstruct the order book of that market from the pending orders.
 
-  Trade report: can be constructed from trade records.
+  Trade report: can be constructed from trade receipts.
 
 steps:
 
   1. replay block proposal, but do not do order matching
 
-  2. replay the trade records (order matching results)
+  2. replay the trade receipts (order matching results)
 
-  3. block proposals and trade blocks will be discarded after x
+  3. block proposals and trade receipts will be discarded after x
   blocks, we can have archiving nodes who persists them to disk or
   IPFS.
 
@@ -124,14 +125,13 @@ steps:
 
 data structure related to state updates:
 
-trade block:
-trades happened in a given block.
-
 block:
   - state root hash
     state is a patricia merkle trie, it contains: token infos,
     accounts, pending orders.
-  - trade record hash: the hash for the block's trade records.
+  - receipt root hash
+    receipt is a patricia merkle trie, it contains: trade receipts and
+    token creation, send, freeze, burn receipts.
 
 */
 
@@ -154,7 +154,7 @@ Stale client synchronization:
   random beacon, and the group public key from the latest key frame.
 
   d. downloading the state of the (tip - n) block, replay the block
-  proposal and trade records to tip, and verify that the state root
+  proposal and trade receipts to tip, and verify that the state root
   hashes matches.
 
 */
