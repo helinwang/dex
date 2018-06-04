@@ -95,6 +95,12 @@ func NewChain(genesis *Block, genesisState State, seed Rand, cfg Config, txnPool
 	}
 }
 
+func (c *Chain) Genesis() Hash {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.Finalized[0]
+}
+
 func (c *Chain) ProposeBlock(sk SK) *BlockProposal {
 	txns := c.TxnPool.Txns()
 	block, state, _ := c.Leader()
@@ -181,6 +187,12 @@ func (c *Chain) FinalizedChain() []*Block {
 	}
 
 	return bs
+}
+
+func (c *Chain) FinalizedRound() uint64 {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return uint64(len(c.Finalized))
 }
 
 func (c *Chain) round() uint64 {
