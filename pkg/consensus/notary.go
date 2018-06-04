@@ -99,10 +99,23 @@ func (n *Notary) notarize(bp *BlockProposal) *NtShare {
 		panic("TODO")
 	}
 
-	blk, err := n.chain.BPToBlock(bp)
+	state := n.chain.BlockToState(bp.PrevBlock)
+	if state == nil {
+		panic("TODO")
+	}
+
+	trans, err := getTransition(state, bp.Data)
 	if err != nil {
-		log.Warn("failed to calculate state root during notarization", "err", err)
-		return nil
+		panic("TODO: " + err.Error())
+	}
+
+	blk := &Block{
+		Owner:         bp.Owner,
+		Round:         bp.Round,
+		BlockProposal: bp.Hash(),
+		PrevBlock:     bp.PrevBlock,
+		SysTxns:       bp.SysTxns,
+		StateRoot:     trans.StateHash(),
 	}
 
 	b.SigShare = n.share.Sign(string(blk.Encode(false))).Serialize()

@@ -19,7 +19,7 @@ type Transition interface {
 // State is the blockchain state.
 type State interface {
 	Hash() Hash
-	MatchOrders()
+	MatchOrders() Hash
 	Transition() Transition
 }
 

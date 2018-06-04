@@ -88,7 +88,6 @@ func decodeAddr(b []byte) []byte {
 type State struct {
 	tokenCache *TokenCache
 	state      *trie.Trie
-	receipt    *trie.Trie
 	db         *trie.Database
 }
 
@@ -307,7 +306,8 @@ func (s *State) Hash() consensus.Hash {
 	return consensus.Hash(s.state.Hash())
 }
 
-func (s *State) MatchOrders() {
+func (s *State) MatchOrders() consensus.Hash {
+	return consensus.Hash{}
 }
 
 func (s *State) Transition() consensus.Transition {

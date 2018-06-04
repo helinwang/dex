@@ -193,7 +193,8 @@ func (e *emptyState) Hash() Hash {
 	return SHA3([]byte("abc"))
 }
 
-func (e *emptyState) MatchOrders() {
+func (e *emptyState) MatchOrders() Hash {
+	return Hash{}
 }
 
 func (e *emptyState) Transition() Transition {

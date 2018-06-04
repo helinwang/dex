@@ -7,7 +7,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dfinity/go-dfinity-crypto/bls"
 	"github.com/ethereum/go-ethereum/rlp"
 	log "github.com/helinwang/log15"
 )
@@ -387,16 +386,30 @@ func (c *Chain) addNtShare(n *NtShare, groupID int) (*Block, bool) {
 			panic(err)
 		}
 
-		if !c.validateGroupSig(sig, groupID, bp) {
+		state := c.blockToState(bp.PrevBlock)
+		if state == nil {
+			panic("TODO")
+		}
+
+		trans, err := getTransition(state, bp.Data)
+		if err != nil {
+			panic("TODO")
+		}
+
+		b := &Block{
+			Owner:         bp.Owner,
+			Round:         bp.Round,
+			BlockProposal: bp.Hash(),
+			PrevBlock:     bp.PrevBlock,
+			SysTxns:       bp.SysTxns,
+			StateRoot:     trans.StateHash(),
+		}
+
+		msg := b.Encode(false)
+		if !sig.Verify(&c.RandomBeacon.groups[groupID].PK, string(msg)) {
 			panic("impossible: group sig not valid")
 		}
 
-		b, err := c.BPToBlock(bp)
-		if err != nil {
-			panic(err)
-		}
-
-		//		b.StateRoot = n.StateRoot
 		b.NotarizationSig = sig.Serialize()
 
 		delete(c.bpNeedNotarize, n.BP)
@@ -409,22 +422,6 @@ func (c *Chain) addNtShare(n *NtShare, groupID int) (*Block, bool) {
 
 	c.registerNtShare(n)
 	return nil, true
-}
-
-func (c *Chain) BPToBlock(bp *BlockProposal) (*Block, error) {
-	trans, err := c.bpTransition(bp)
-	if err != nil {
-		return nil, err
-	}
-
-	return &Block{
-		Owner:         bp.Owner,
-		Round:         bp.Round,
-		BlockProposal: bp.Hash(),
-		PrevBlock:     bp.PrevBlock,
-		SysTxns:       bp.SysTxns,
-		StateRoot:     trans.StateHash(),
-	}, nil
 }
 
 func getTransition(state State, txnData []byte) (trans Transition, err error) {
@@ -452,24 +449,19 @@ func getTransition(state State, txnData []byte) (trans Transition, err error) {
 	return
 }
 
-func (c *Chain) bpTransition(bp *BlockProposal) (Transition, error) {
-	var prevState State
+func (c *Chain) BlockToState(h Hash) State {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 
-	prev := c.hashToBlock[bp.PrevBlock]
-	if prev == nil {
-		panic("TODO")
+	return c.blockToState(h)
+}
+
+func (c *Chain) blockToState(h Hash) State {
+	if h == c.Finalized[len(c.Finalized)-1] {
+		return c.LastFinalizedState
 	}
 
-	if bp.PrevBlock == c.Finalized[len(c.Finalized)-1] {
-		prevState = c.LastFinalizedState
-	} else {
-		prevState = c.unFinalizedState[bp.PrevBlock]
-		if prevState == nil {
-			panic("TODO")
-		}
-	}
-
-	return getTransition(prevState, bp.Data)
+	return c.unFinalizedState[h]
 }
 
 func (c *Chain) addBlock(b *Block, weight float64) error {
@@ -490,7 +482,12 @@ func (c *Chain) addBlock(b *Block, weight float64) error {
 		panic("TODO: iteratively get all dependent BP")
 	}
 
-	trans, err := c.bpTransition(bp)
+	state := c.blockToState(bp.PrevBlock)
+	if state == nil {
+		panic("TODO")
+	}
+
+	trans, err := getTransition(state, bp.Data)
 	if err != nil {
 		return err
 	}
@@ -616,17 +613,6 @@ func (c *Chain) finalize(round uint64) {
 	// the peer of the finalized parents
 
 	panic("not under normal operation, not implemented")
-}
-
-func (c *Chain) validateGroupSig(sig bls.Sign, groupID int, bp *BlockProposal) bool {
-	b, err := c.BPToBlock(bp)
-	if err != nil {
-		log.Error("error reconstruct block during validateGroupSig", "err", err)
-		return false
-	}
-
-	msg := b.Encode(false)
-	return sig.Verify(&c.RandomBeacon.groups[groupID].PK, string(msg))
 }
 
 // Graphviz returns the Graphviz dot formate encoded chain
