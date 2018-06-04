@@ -219,3 +219,7 @@ func (e *emptyTransition) Commit() State {
 func (e *emptyTransition) StateHash() Hash {
 	return Hash{}
 }
+
+func (e *emptyTransition) ApplyTrades([]byte) error {
+	return nil
+}

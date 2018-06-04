@@ -88,8 +88,7 @@ func (n *Notary) Notarize(ctx, cancel context.Context, bCh chan *BlockProposal, 
 }
 
 func (n *Notary) notarize(bp *BlockProposal) *NtShare {
-	// TODO: calculate state root
-	b := &NtShare{
+	nts := &NtShare{
 		Round: bp.Round,
 		BP:    bp.Hash(),
 	}
@@ -109,6 +108,9 @@ func (n *Notary) notarize(bp *BlockProposal) *NtShare {
 		panic("TODO: " + err.Error())
 	}
 
+	state = trans.Commit()
+	trades := state.MatchOrders()
+
 	blk := &Block{
 		Owner:         bp.Owner,
 		Round:         bp.Round,
@@ -116,10 +118,12 @@ func (n *Notary) notarize(bp *BlockProposal) *NtShare {
 		PrevBlock:     bp.PrevBlock,
 		SysTxns:       bp.SysTxns,
 		StateRoot:     trans.StateHash(),
+		Trades:        trades,
 	}
 
-	b.SigShare = n.share.Sign(string(blk.Encode(false))).Serialize()
-	b.Owner = n.owner
-	b.OwnerSig = n.sk.Sign(string(b.Encode(false))).Serialize()
-	return b
+	nts.Trades = trades
+	nts.SigShare = n.share.Sign(string(blk.Encode(false))).Serialize()
+	nts.Owner = n.owner
+	nts.OwnerSig = n.sk.Sign(string(nts.Encode(false))).Serialize()
+	return nts
 }

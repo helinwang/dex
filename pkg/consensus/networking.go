@@ -2,11 +2,11 @@ package consensus
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"math/rand"
 	"sync"
 
+	lru "github.com/hashicorp/golang-lru"
 	log "github.com/helinwang/log15"
 )
 
@@ -25,6 +25,7 @@ type Peer interface {
 	NotarizationShare(n *NtShare) error
 	Inventory(sender Peer, items []ItemID) error
 	GetData(requester Peer, items []ItemID) error
+	// TODO: make Peers, Sync asynchronous.
 	Peers() ([]string, error)
 	UpdatePeers([]string) error
 	Ping(ctx context.Context) error
@@ -86,27 +87,112 @@ type Network interface {
 // Networking is the component that enables the node to talk to its
 // peers over the network.
 type Networking struct {
-	net    Network
-	myself Peer
-	v      *validator
-	chain  *Chain
+	net         Network
+	myself      Peer
+	v           *validator
+	chain       *Chain
+	blockCache  *lru.Cache
+	bpCache     *lru.Cache
+	tradesCache *lru.Cache
+	blockSyncer *blockSyncer
 
-	mu        sync.Mutex
-	peers     []Peer
-	peerAddrs []string
+	mu            sync.Mutex
+	peers         []Peer
+	peerAddrs     []string
+	blockWaiters  map[Hash][]chan *Block
+	bpWaiters     map[Hash][]chan *BlockProposal
+	tradesWaiters map[Hash][]chan []byte
 }
 
 // NewNetworking creates a new networking component.
 func NewNetworking(net Network, chain *Chain) *Networking {
+	bCache, err := lru.New(1024)
+	if err != nil {
+		panic(err)
+	}
+
+	bpCache, err := lru.New(1024)
+	if err != nil {
+		panic(err)
+	}
+
+	tradesCache, err := lru.New(1024)
+	if err != nil {
+		panic(err)
+	}
+
 	r := &receiver{}
 	n := &Networking{
-		myself: r,
-		net:    net,
-		v:      newValidator(chain),
-		chain:  chain,
+		myself:        r,
+		net:           net,
+		v:             newValidator(chain),
+		chain:         chain,
+		blockCache:    bCache,
+		bpCache:       bpCache,
+		tradesCache:   tradesCache,
+		blockWaiters:  make(map[Hash][]chan *Block),
+		bpWaiters:     make(map[Hash][]chan *BlockProposal),
+		tradesWaiters: make(map[Hash][]chan []byte),
 	}
 	r.n = n
+	bs := newBlockSyncer(n.v, chain, n)
+	n.blockSyncer = bs
 	return n
+}
+
+func (n *Networking) RequestBlock(ctx context.Context, hash Hash) (*Block, error) {
+	v, ok := n.blockCache.Get(hash)
+	if ok {
+		return v.(*Block), nil
+	}
+
+	if b := n.chain.Block(hash); b != nil {
+		return b, nil
+	}
+
+	c := make(chan *Block, 1)
+	n.mu.Lock()
+	n.blockWaiters[hash] = append(n.blockWaiters[hash], c)
+	n.mu.Unlock()
+
+	select {
+	case b := <-c:
+		return b, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+func (n *Networking) RequestBlockProposal(ctx context.Context, hash Hash) (*BlockProposal, error) {
+	v, ok := n.bpCache.Get(hash)
+	if ok {
+		return v.(*BlockProposal), nil
+	}
+
+	if bp := n.chain.BlockProposal(hash); bp != nil {
+		return bp, nil
+	}
+
+	c := make(chan *BlockProposal, 1)
+	n.mu.Lock()
+	n.bpWaiters[hash] = append(n.bpWaiters[hash], c)
+	n.mu.Unlock()
+
+	select {
+	case bp := <-c:
+		return bp, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+func (n *Networking) RequestTrades(ctx context.Context, hash Hash) ([]byte, error) {
+	v, ok := n.tradesCache.Get(hash)
+	if ok {
+		return v.([]byte), nil
+	}
+
+	return nil, nil
 }
 
 func (n *Networking) onPeerConnect(p Peer) {
@@ -196,7 +282,7 @@ func (n *Networking) Start(addr, seedAddr string) error {
 		// TODO: sync random beacon from other peers rather than the
 		// seed
 
-		rb, bs, err := p.Sync(len(n.chain.RandomBeacon.History()))
+		rb, _, err := p.Sync(len(n.chain.RandomBeacon.History()))
 		if err != nil {
 			return err
 		}
@@ -205,17 +291,6 @@ func (n *Networking) Start(addr, seedAddr string) error {
 			success := n.chain.RandomBeacon.AddRandBeaconSig(r)
 			if !success {
 				return fmt.Errorf("add RandBeaconSig failed, round: %d, beacon depth: %d", r.Round, n.chain.RandomBeacon.Depth())
-			}
-		}
-
-		for _, b := range bs {
-			weight, valid := n.v.ValidateBlock(b)
-			if !valid {
-				return errors.New("invalid block when syncing")
-			}
-			err = n.chain.addBlock(b, weight)
-			if err != nil {
-				return err
 			}
 		}
 	}
@@ -290,22 +365,27 @@ func (n *Networking) recvRandBeaconSigShare(r *RandBeaconSigShare) {
 }
 
 func (n *Networking) recvBlock(b *Block) {
-	weight, valid := n.v.ValidateBlock(b)
+	// TODO: if not able to validate block, wait until random
+	// beacon syncer finished the corresponding round.
+	_, valid := n.v.ValidateBlock(b)
 
 	if !valid {
 		return
 	}
 
-	// TODO: make sure received all block's parents and block
-	// proposal before processing this block.
+	h := b.Hash()
 
-	err := n.chain.addBlock(b, weight)
-	if err == errChainDataAlreadyExists {
-		return
+	n.mu.Lock()
+	for _, c := range n.blockWaiters[h] {
+		c <- b
 	}
+	n.mu.Unlock()
 
+	n.blockCache.Add(b.Hash(), b)
+
+	err := n.blockSyncer.SyncBlock(h, b.Round)
 	if err != nil {
-		log.Warn("add block failed", "err", err)
+		log.Warn("sync block error", "err", err)
 		return
 	}
 

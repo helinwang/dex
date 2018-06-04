@@ -191,7 +191,7 @@ func (c *Chain) FinalizedChain() []*Block {
 func (c *Chain) FinalizedRound() uint64 {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return uint64(len(c.Finalized))
+	return uint64(len(c.Finalized) - 1)
 }
 
 func (c *Chain) round() uint64 {
@@ -396,6 +396,9 @@ func (c *Chain) addNtShare(n *NtShare, groupID int) (*Block, bool) {
 			panic("TODO")
 		}
 
+		// TODO: make sure the fields (except signature and
+		// owner) of all nt shares are same
+
 		b := &Block{
 			Owner:         bp.Owner,
 			Round:         bp.Round,
@@ -403,6 +406,7 @@ func (c *Chain) addNtShare(n *NtShare, groupID int) (*Block, bool) {
 			PrevBlock:     bp.PrevBlock,
 			SysTxns:       bp.SysTxns,
 			StateRoot:     trans.StateHash(),
+			Trades:        c.bpToNtShares[n.BP][0].Trades,
 		}
 
 		msg := b.Encode(false)
@@ -464,7 +468,7 @@ func (c *Chain) blockToState(h Hash) State {
 	return c.unFinalizedState[h]
 }
 
-func (c *Chain) addBlock(b *Block, weight float64) error {
+func (c *Chain) addBlock(b *Block, bp *BlockProposal, s State, trades []byte, weight float64) error {
 	// TODO: remove txn from the txn pool
 	log.Info("addBlock called", "hash", b.Hash(), "weight", weight)
 	c.mu.Lock()
@@ -477,27 +481,8 @@ func (c *Chain) addBlock(b *Block, weight float64) error {
 		return errChainDataAlreadyExists
 	}
 
-	bp, ok := c.hashToBP[b.BlockProposal]
-	if !ok {
-		panic("TODO: iteratively get all dependent BP")
-	}
-
-	state := c.blockToState(bp.PrevBlock)
-	if state == nil {
-		panic("TODO")
-	}
-
-	trans, err := getTransition(state, bp.Data)
-	if err != nil {
-		return err
-	}
-
-	if root := trans.StateHash(); root != b.StateRoot {
-		return fmt.Errorf("fatal: block state not valid, expected: %x, got: %x", root[:], b.StateRoot[:])
-	}
-
 	nt := &notarized{Block: h, Weight: weight, BP: b.BlockProposal}
-	c.unFinalizedState[nt.Block] = trans.Commit()
+	c.unFinalizedState[nt.Block] = s
 
 	var prevSysState *SysState
 	prevFinalized := false
@@ -546,8 +531,8 @@ func (c *Chain) addBlock(b *Block, weight float64) error {
 		c.finalize(round - 3)
 	}
 
-	_, s, _ := c.leader()
-	go c.updater.Update(s)
+	_, leaderState, _ := c.leader()
+	go c.updater.Update(leaderState)
 
 	if round == prevRound+1 {
 		// TODO: make it more robust

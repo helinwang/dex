@@ -104,12 +104,12 @@ func TestRandSigEncodeDecode(t *testing.T) {
 
 func TestNtShareEncodeDecode(t *testing.T) {
 	nt := NtShare{
-		Round:     1,
-		BP:        Hash{2},
-		StateRoot: Hash{3},
-		SigShare:  []byte{4},
-		Owner:     Addr{5},
-		OwnerSig:  []byte{6},
+		Round:    1,
+		BP:       Hash{2},
+		Trades:   Hash{3},
+		SigShare: []byte{4},
+		Owner:    Addr{5},
+		OwnerSig: []byte{6},
 	}
 
 	var nt0 NtShare

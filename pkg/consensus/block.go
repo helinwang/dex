@@ -102,12 +102,12 @@ func (r *RandBeaconSigShare) Hash() Hash {
 // recovered, and a block can be made from the signature and the block
 // proposal.
 type NtShare struct {
-	Round     uint64
-	BP        Hash
-	StateRoot Hash
-	SigShare  []byte
-	Owner     Addr
-	OwnerSig  []byte
+	Round    uint64
+	BP       Hash
+	Trades   Hash
+	SigShare []byte
+	Owner    Addr
+	OwnerSig []byte
 }
 
 // Encode encodes the notarization share.
@@ -175,6 +175,7 @@ type Block struct {
 	// The signature of the gob serialized block with
 	// NotarizationSig set to nil.
 	NotarizationSig []byte
+	Trades          Hash
 }
 
 // Encode encodes the block.

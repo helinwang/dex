@@ -20,6 +20,10 @@ func newTransition(s *State) *Transition {
 	return &Transition{state: s}
 }
 
+func (t *Transition) ApplyTrades(b []byte) error {
+	return nil
+}
+
 // Record records a transition to the state transition.
 func (t *Transition) Record(b []byte) (valid, success bool) {
 	txn, acc, ready, valid := validateSigAndNonce(t.state, b)

@@ -25,63 +25,131 @@ type blockSyncer struct {
 	v                 *validator
 	chain             *Chain
 	requester         requester
-	orphanBlockCache  *lru.Cache
 	invalidBlockCache *lru.Cache
+}
+
+func newBlockSyncer(v *validator, chain *Chain, requester requester) *blockSyncer {
+	c, err := lru.New(1024)
+	if err != nil {
+		panic(err)
+	}
+
+	return &blockSyncer{
+		v:                 v,
+		chain:             chain,
+		requester:         requester,
+		invalidBlockCache: c,
+	}
 }
 
 type requester interface {
 	RequestBlock(ctx context.Context, hash Hash) (*Block, error)
 	RequestBlockProposal(ctx context.Context, hash Hash) (*BlockProposal, error)
+	RequestTrades(ctx context.Context, hash Hash) ([]byte, error)
 }
 
 var errCanNotConnectToChain = errors.New("can not connect to chain")
 
 func (s *blockSyncer) SyncBlock(hash Hash, round uint64) error {
-	err := s.syncBlockAndConnectToChain(hash, round)
+	_, err := s.syncBlockAndConnectToChain(hash, round)
 	if err == errCanNotConnectToChain {
 		s.invalidBlockCache.Add(hash, struct{}{})
 	}
 	return err
 }
 
-func (s *blockSyncer) syncBlockAndConnectToChain(hash Hash, round uint64) error {
+type tradesResult struct {
+	T []byte
+	E error
+}
+
+type bpResult struct {
+	BP *BlockProposal
+	E  error
+}
+
+func (s *blockSyncer) syncBlockAndConnectToChain(hash Hash, round uint64) (State, error) {
+	// TODO: validate block, get weight
+	// TODO: prevent syncing the same block concurrently
+
 	b := s.chain.Block(hash)
 	if b != nil {
 		// already connected to the chain
-		return nil
+		return s.chain.BlockToState(hash), nil
 	}
 
 	if round <= s.chain.FinalizedRound() {
-		return errCanNotConnectToChain
+		return nil, errCanNotConnectToChain
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	defer cancel()
+
 	b, err := s.requester.RequestBlock(ctx, hash)
-	cancel()
 	if err != nil {
-		return err
+		return nil, err
 	}
+
+	tCh := make(chan tradesResult, 1)
+	go func() {
+		t, err := s.requester.RequestTrades(ctx, b.Trades)
+		tCh <- tradesResult{T: t, E: err}
+	}()
+
+	bpCh := make(chan bpResult, 1)
+	go func() {
+		bp, err := s.requester.RequestBlockProposal(ctx, b.BlockProposal)
+		bpCh <- bpResult{BP: bp, E: err}
+	}()
+
+	var state State
 
 	if round == 1 {
-		if b.PrevBlock == s.chain.Genesis() {
-			return nil
+		if b.PrevBlock != s.chain.Genesis() {
+			return nil, errCanNotConnectToChain
 		}
-		return errCanNotConnectToChain
+
+		state = s.chain.BlockToState(b.PrevBlock)
+	} else {
+		state, err = s.syncBlockAndConnectToChain(b.PrevBlock, round-1)
+		if err != nil {
+			if err == errCanNotConnectToChain {
+				s.invalidBlockCache.Add(b.PrevBlock, struct{}{})
+			}
+
+			return nil, err
+		}
 	}
 
-	err = s.syncBlockAndConnectToChain(b.PrevBlock, round-1)
+	tr := <-tCh
+	if tr.E != nil {
+		return nil, tr.E
+	}
+
+	bpr := <-bpCh
+	if bpr.E != nil {
+		return nil, bpr.E
+	}
+
+	bp := bpr.BP
+	trans, err := getTransition(state, bp.Data)
 	if err != nil {
-		if err == errCanNotConnectToChain {
-			s.invalidBlockCache.Add(b.PrevBlock, struct{}{})
-		}
-
-		return err
+		return nil, err
 	}
 
-	// now prev block is connected to chain, validate the current
-	// block
+	err = trans.ApplyTrades(tr.T)
+	if err != nil {
+		return nil, err
+	}
 
-	return nil
+	if trans.StateHash() != b.StateRoot {
+		s.invalidBlockCache.Add(b.Hash(), struct{}{})
+		return nil, errors.New("invalid state root")
+	}
+
+	state = trans.Commit()
+	s.chain.addBlock(b, bp, state, tr.T, 0)
+	return state, nil
 }
 
 func (s *blockSyncer) SyncBlockProposal(item ItemID) error {

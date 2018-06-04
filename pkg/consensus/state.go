@@ -14,6 +14,8 @@ type Transition interface {
 	// StateHash returns the state root hash of the state after
 	// applying the transition.
 	StateHash() Hash
+
+	ApplyTrades([]byte) error
 }
 
 // State is the blockchain state.
