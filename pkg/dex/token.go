@@ -25,6 +25,7 @@ type TokenCache struct {
 	exists   map[TokenSymbol]bool
 }
 
+// TODO: when syncing, fill token cache from the state trie.
 func newTokenCache() *TokenCache {
 	return &TokenCache{
 		idToInfo: make(map[TokenID]*TokenInfo),

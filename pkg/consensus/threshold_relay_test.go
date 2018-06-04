@@ -189,23 +189,11 @@ func (n *LocalNet) Connect(addr string, myself Peer) (Peer, error) {
 type emptyState struct {
 }
 
-func (e *emptyState) Accounts() Hash {
+func (e *emptyState) Hash() Hash {
 	return SHA3([]byte("abc"))
 }
 
 func (e *emptyState) MatchOrders() {
-}
-
-func (e *emptyState) Tokens() Hash {
-	return SHA3([]byte("abc"))
-}
-
-func (e *emptyState) PendingOrders() Hash {
-	return SHA3([]byte("abc"))
-}
-
-func (e *emptyState) Reports() Hash {
-	return SHA3([]byte("abc"))
 }
 
 func (e *emptyState) Transition() Transition {
@@ -227,6 +215,6 @@ func (e *emptyTransition) Commit() State {
 	return nil
 }
 
-func (e *emptyTransition) Account() Hash {
+func (e *emptyTransition) StateHash() Hash {
 	return Hash{}
 }

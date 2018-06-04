@@ -2,12 +2,10 @@ package dex
 
 import (
 	"bytes"
-	"encoding/binary"
 	"encoding/gob"
 	"math"
 	"strings"
 
-	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/helinwang/dex/pkg/consensus"
 	log "github.com/helinwang/log15"
 )
@@ -20,10 +18,6 @@ type Transition struct {
 
 func newTransition(s *State) *Transition {
 	return &Transition{state: s}
-}
-
-func (t *Transition) Account() consensus.Hash {
-	return consensus.Hash(t.state.accounts.Hash())
 }
 
 // Record records a transition to the state transition.
@@ -157,16 +151,7 @@ func (t *Transition) createToken(owner *Account, txn CreateTokenTxn) bool {
 	id := TokenID(t.state.tokenCache.Size() + len(t.tokenCreations))
 	token := Token{ID: id, TokenInfo: txn.Info}
 	t.tokenCreations = append(t.tokenCreations, token)
-
-	b, err := rlp.EncodeToBytes(token)
-	if err != nil {
-		// should never happen
-		panic(err)
-	}
-
-	path := make([]byte, 64)
-	binary.LittleEndian.PutUint64(path, uint64(id))
-	t.state.tokens.Update(path, b)
+	t.state.UpdateToken(token)
 
 	if owner.Balances == nil {
 		owner.Balances = make(map[TokenID]*Balance)
@@ -195,19 +180,9 @@ func (t *Transition) sendToken(owner *Account, txn SendTokenTxn) bool {
 	}
 
 	toAddr := txn.To.Addr()
-	to, err := t.state.accounts.TryGet(toAddr[:])
-	var toAcc *Account
-	if err != nil || to == nil {
+	toAcc := t.state.Account(toAddr)
+	if toAcc == nil {
 		toAcc = &Account{PK: txn.To, Balances: make(map[TokenID]*Balance)}
-	} else {
-		var de Account
-		err = rlp.DecodeBytes(to, &de)
-		if err != nil {
-			log.Error("error decode recv account", "account", toAddr)
-			return false
-		}
-
-		toAcc = &de
 	}
 
 	owner.Balances[txn.TokenID].Available -= txn.Quant
@@ -222,6 +197,10 @@ func (t *Transition) sendToken(owner *Account, txn SendTokenTxn) bool {
 
 func (t *Transition) Txns() [][]byte {
 	return t.txns
+}
+
+func (t *Transition) StateHash() consensus.Hash {
+	return t.state.Hash()
 }
 
 // Commit commits the transition to the state root.

@@ -423,7 +423,7 @@ func (c *Chain) BPToBlock(bp *BlockProposal) (*Block, error) {
 		BlockProposal: bp.Hash(),
 		PrevBlock:     bp.PrevBlock,
 		SysTxns:       bp.SysTxns,
-		StateRoot:     trans.Account(),
+		StateRoot:     trans.StateHash(),
 	}, nil
 }
 
@@ -495,7 +495,7 @@ func (c *Chain) addBlock(b *Block, weight float64) error {
 		return err
 	}
 
-	if root := trans.Account(); root != b.StateRoot {
+	if root := trans.StateHash(); root != b.StateRoot {
 		return fmt.Errorf("fatal: block state not valid, expected: %x, got: %x", root[:], b.StateRoot[:])
 	}
 

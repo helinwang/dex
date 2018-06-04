@@ -3,7 +3,6 @@ package dex
 import (
 	"bytes"
 	"encoding/binary"
-	"fmt"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/rlp"
@@ -87,12 +86,9 @@ func decodeAddr(b []byte) []byte {
 
 // State is the state of the DEX.
 type State struct {
-	tokenCache    *TokenCache
-	tokens        *trie.Trie
-	accounts      *trie.Trie
-	pendingOrders *trie.Trie
-	reports       *trie.Trie
-	db            *trie.Database
+	tokenCache *TokenCache
+	trie       *trie.Trie
+	db         *trie.Database
 }
 
 var BNBInfo = TokenInfo{
@@ -102,43 +98,54 @@ var BNBInfo = TokenInfo{
 }
 
 func NewState(db *trie.Database) *State {
-	tokens, err := trie.New(common.Hash{}, db)
-	if err != nil {
-		panic(err)
-	}
-
-	accounts, err := trie.New(common.Hash{}, db)
-	if err != nil {
-		panic(err)
-	}
-
-	pendingOrders, err := trie.New(common.Hash{}, db)
-	if err != nil {
-		panic(err)
-	}
-
-	reports, err := trie.New(common.Hash{}, db)
+	t, err := trie.New(common.Hash{}, db)
 	if err != nil {
 		panic(err)
 	}
 
 	s := &State{
-		db:            db,
-		tokenCache:    newTokenCache(),
-		tokens:        tokens,
-		accounts:      accounts,
-		pendingOrders: pendingOrders,
-		reports:       reports,
+		db:         db,
+		tokenCache: newTokenCache(),
+		trie:       t,
 	}
 
 	return s
 }
 
 func (s *State) Commit() {
-	s.accounts.Commit(nil)
-	s.tokens.Commit(nil)
-	s.pendingOrders.Commit(nil)
-	s.reports.Commit(nil)
+	s.trie.Commit(nil)
+}
+
+var (
+	accountPrefix      = []byte("a")
+	pendingOrderPrefix = []byte("p")
+	tokenPrefix        = []byte("t")
+)
+
+func accountAddrToPath(addr consensus.Addr) []byte {
+	return append(accountPrefix, addr[:]...)
+}
+
+func pendingOrderPath(path []byte) []byte {
+	return append(pendingOrderPrefix, path...)
+}
+
+func tokenPath(tokenID TokenID) []byte {
+	path := make([]byte, 64)
+	binary.LittleEndian.PutUint64(path, uint64(tokenID))
+	return append(tokenPrefix, path...)
+}
+
+func (s *State) UpdateToken(token Token) {
+	path := tokenPath(token.ID)
+
+	b, err := rlp.EncodeToBytes(token)
+	if err != nil {
+		// should never happen
+		panic(err)
+	}
+
+	s.trie.Update(path, b)
 }
 
 func (s *State) UpdateAccount(acc *Account) {
@@ -148,16 +155,12 @@ func (s *State) UpdateAccount(acc *Account) {
 		panic(err)
 	}
 
-	s.accounts.Update(addr[:], b)
+	s.trie.Update(accountAddrToPath(addr), b)
 }
 
 func (s *State) Account(addr consensus.Addr) *Account {
-	acc, err := s.accounts.TryGet(addr[:])
+	acc, err := s.trie.TryGet(accountAddrToPath(addr))
 	if err != nil || acc == nil {
-		if acc == nil {
-			err = fmt.Errorf("account %v does not exist", addr)
-		}
-		log.Warn("get account error", "err", err)
 		return nil
 	}
 
@@ -172,11 +175,11 @@ func (s *State) Account(addr consensus.Addr) *Account {
 }
 
 func (s *State) MarketPendingOrders(market MarketSymbol) []PendingOrder {
-	prefix := market.Bytes()
+	prefix := pendingOrderPath(market.Bytes())
 	prefix = encodePrefix(prefix)
 	emptyAddr := consensus.Addr{}
 	start := append(prefix, encodePrefix(emptyAddr[:])...)
-	iter := s.pendingOrders.NodeIterator(start)
+	iter := s.trie.NodeIterator(start)
 	var p []PendingOrder
 
 	hasNext := true
@@ -220,7 +223,7 @@ func (s *State) MarketPendingOrders(market MarketSymbol) []PendingOrder {
 
 func (s *State) AccountPendingOrders(market MarketSymbol, addr consensus.Addr) []PendingOrder {
 	path := append(market.Bytes(), addr[:]...)
-	b, err := s.pendingOrders.TryGet(path)
+	b, err := s.trie.TryGet(pendingOrderPath(path))
 	if err != nil {
 		return nil
 	}
@@ -284,7 +287,7 @@ func (s *State) UpdatePendingOrder(market MarketSymbol, add, remove *PendingOrde
 	}
 
 	path := append(market.Bytes(), addr[:]...)
-	s.pendingOrders.Update(path, b)
+	s.trie.Update(pendingOrderPath(path), b)
 }
 
 func (s *State) GenesisDistribution(owner *consensus.PK, tokenInfo TokenInfo) consensus.State {
@@ -297,73 +300,28 @@ func (s *State) GenesisDistribution(owner *consensus.PK, tokenInfo TokenInfo) co
 	return trans.Commit()
 }
 
-func (s *State) Accounts() consensus.Hash {
-	return consensus.Hash(s.accounts.Hash())
-}
-
-func (s *State) Tokens() consensus.Hash {
-	return consensus.Hash(s.tokens.Hash())
-}
-
-func (s *State) PendingOrders() consensus.Hash {
-	return consensus.Hash(s.pendingOrders.Hash())
-}
-
-func (s *State) Reports() consensus.Hash {
-	return consensus.Hash(s.reports.Hash())
+func (s *State) Hash() consensus.Hash {
+	return consensus.Hash(s.trie.Hash())
 }
 
 func (s *State) MatchOrders() {
 }
 
 func (s *State) Transition() consensus.Transition {
-	tokenRoot, err := s.tokens.Commit(nil)
+	root, err := s.trie.Commit(nil)
 	if err != nil {
 		panic(err)
 	}
 
-	tokens, err := trie.New(tokenRoot, s.db)
-	if err != nil {
-		panic(err)
-	}
-
-	accRoot, err := s.accounts.Commit(nil)
-	if err != nil {
-		panic(err)
-	}
-
-	accounts, err := trie.New(accRoot, s.db)
-	if err != nil {
-		panic(err)
-	}
-
-	pendingOrderRoot, err := s.pendingOrders.Commit(nil)
-	if err != nil {
-		panic(err)
-	}
-
-	pendingOrders, err := trie.New(pendingOrderRoot, s.db)
-	if err != nil {
-		panic(err)
-	}
-
-	reportRoot, err := s.reports.Commit(nil)
-	if err != nil {
-		panic(err)
-	}
-
-	reports, err := trie.New(reportRoot, s.db)
+	trie, err := trie.New(root, s.db)
 	if err != nil {
 		panic(err)
 	}
 
 	state := &State{
-		db:            s.db,
-		tokenCache:    s.tokenCache.Clone(),
-		tokens:        tokens,
-		accounts:      accounts,
-		pendingOrders: pendingOrders,
-		reports:       reports,
+		db:         s.db,
+		tokenCache: s.tokenCache.Clone(),
+		trie:       trie,
 	}
 	return newTransition(state)
 }

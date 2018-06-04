@@ -11,17 +11,14 @@ type Transition interface {
 	// Commit commits the transition, creating a new state.
 	Commit() State
 
-	// Account returns the account trie state root hash if the
-	// transition is committed.
-	Account() Hash
+	// StateHash returns the state root hash of the state after
+	// applying the transition.
+	StateHash() Hash
 }
 
 // State is the blockchain state.
 type State interface {
-	Accounts() Hash
-	Tokens() Hash
-	PendingOrders() Hash
-	Reports() Hash
+	Hash() Hash
 	MatchOrders()
 	Transition() Transition
 }

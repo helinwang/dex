@@ -59,7 +59,7 @@ func TestTransitionNotCommitToDB(t *testing.T) {
 	db := trie.NewDatabase(memDB)
 	s := NewState(db)
 	sk, addr := createAccount(s, 100)
-	h, err := s.accounts.Commit(nil)
+	h, err := s.trie.Commit(nil)
 	if err != nil {
 		panic(err)
 	}
