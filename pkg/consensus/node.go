@@ -122,7 +122,7 @@ func (n *Node) StartRound(round uint64) {
 			bp := n.chain.ProposeBlock(n.sk)
 			go func() {
 				log.Debug("proposing block", "addr", n.addr, "round", bp.Round, "hash", bp.Hash())
-				n.net.recvBlockProposal(bp)
+				n.net.recvBlockProposal(n.net.myself, bp)
 			}()
 		}
 

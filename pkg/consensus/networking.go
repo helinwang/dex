@@ -20,8 +20,8 @@ type Peer interface {
 	SysTxn(s *SysTxn) error
 	RandBeaconSigShare(r *RandBeaconSigShare) error
 	RandBeaconSig(r *RandBeaconSig) error
-	Block(b *Block) error
-	BlockProposal(b *BlockProposal) error
+	Block(sender Peer, b *Block) error
+	BlockProposal(sender Peer, b *BlockProposal) error
 	NotarizationShare(n *NtShare) error
 	Inventory(sender Peer, items []ItemID) error
 	GetData(requester Peer, items []ItemID) error
@@ -140,7 +140,7 @@ func NewNetworking(net Network, chain *Chain) *Networking {
 	return n
 }
 
-func (n *Networking) RequestBlock(ctx context.Context, hash Hash) (*Block, error) {
+func (n *Networking) RequestBlock(ctx context.Context, p Peer, hash Hash) (*Block, error) {
 	v, ok := n.blockCache.Get(hash)
 	if ok {
 		return v.(*Block), nil
@@ -153,6 +153,9 @@ func (n *Networking) RequestBlock(ctx context.Context, hash Hash) (*Block, error
 	c := make(chan *Block, 1)
 	n.mu.Lock()
 	n.blockWaiters[hash] = append(n.blockWaiters[hash], c)
+	if len(n.blockWaiters[hash]) == 1 {
+		go p.GetData(n.myself, []ItemID{ItemID{T: BlockItem, Hash: hash}})
+	}
 	n.mu.Unlock()
 
 	select {
@@ -163,7 +166,7 @@ func (n *Networking) RequestBlock(ctx context.Context, hash Hash) (*Block, error
 	}
 }
 
-func (n *Networking) RequestBlockProposal(ctx context.Context, hash Hash) (*BlockProposal, error) {
+func (n *Networking) RequestBlockProposal(ctx context.Context, p Peer, hash Hash) (*BlockProposal, error) {
 	v, ok := n.bpCache.Get(hash)
 	if ok {
 		return v.(*BlockProposal), nil
@@ -176,6 +179,9 @@ func (n *Networking) RequestBlockProposal(ctx context.Context, hash Hash) (*Bloc
 	c := make(chan *BlockProposal, 1)
 	n.mu.Lock()
 	n.bpWaiters[hash] = append(n.bpWaiters[hash], c)
+	if len(n.bpWaiters[hash]) == 1 {
+		go p.GetData(n.myself, []ItemID{ItemID{T: BlockItem, Hash: hash}})
+	}
 	n.mu.Unlock()
 
 	select {
@@ -186,7 +192,7 @@ func (n *Networking) RequestBlockProposal(ctx context.Context, hash Hash) (*Bloc
 	}
 }
 
-func (n *Networking) RequestTrades(ctx context.Context, hash Hash) ([]byte, error) {
+func (n *Networking) RequestTrades(ctx context.Context, p Peer, hash Hash) ([]byte, error) {
 	v, ok := n.tradesCache.Get(hash)
 	if ok {
 		return v.([]byte), nil
@@ -364,7 +370,7 @@ func (n *Networking) recvRandBeaconSigShare(r *RandBeaconSigShare) {
 	go n.BroadcastItem(ItemID{T: RandBeaconShareItem, Hash: r.Hash(), ItemRound: r.Round})
 }
 
-func (n *Networking) recvBlock(b *Block) {
+func (n *Networking) recvBlock(p Peer, b *Block) {
 	// TODO: if not able to validate block, wait until random
 	// beacon syncer finished the corresponding round.
 	_, valid := n.v.ValidateBlock(b)
@@ -374,16 +380,16 @@ func (n *Networking) recvBlock(b *Block) {
 	}
 
 	h := b.Hash()
+	n.blockCache.Add(h, b)
 
 	n.mu.Lock()
 	for _, c := range n.blockWaiters[h] {
 		c <- b
 	}
+	n.blockWaiters[h] = nil
 	n.mu.Unlock()
 
-	n.blockCache.Add(b.Hash(), b)
-
-	err := n.blockSyncer.SyncBlock(h, b.Round)
+	err := n.blockSyncer.SyncBlock(p, h, b.Round)
 	if err != nil {
 		log.Warn("sync block error", "err", err)
 		return
@@ -392,9 +398,30 @@ func (n *Networking) recvBlock(b *Block) {
 	go n.BroadcastItem(ItemID{T: BlockItem, Hash: b.Hash(), ItemRound: b.Round, Ref: b.PrevBlock})
 }
 
-func (n *Networking) recvBlockProposal(bp *BlockProposal) {
+func (n *Networking) recvBlockProposal(p Peer, bp *BlockProposal) {
 	weight, valid := n.v.ValidateBlockProposal(bp)
 	if !valid {
+		return
+	}
+
+	h := bp.Hash()
+	n.bpCache.Add(h, bp)
+
+	n.mu.Lock()
+	for _, c := range n.bpWaiters[h] {
+		c <- bp
+	}
+	n.bpWaiters[h] = nil
+	n.mu.Unlock()
+
+	if bp.Round > 0 {
+		err := n.blockSyncer.SyncBlock(p, bp.PrevBlock, bp.Round-1)
+		if err != nil {
+			log.Warn("sync block error", "err", err)
+			return
+		}
+	} else {
+		log.Error("round 0 does should not have block proposal")
 		return
 	}
 
@@ -420,7 +447,7 @@ func (n *Networking) recvNtShare(s *NtShare) {
 	}
 
 	if b != nil {
-		go n.recvBlock(b)
+		go n.recvBlock(n.myself, b)
 		return
 	}
 
@@ -600,7 +627,7 @@ func (n *Networking) serveData(p Peer, ids []ItemID) {
 			}
 
 			log.Info("serving BlockItem", "id", id, "item", b.Hash())
-			err := p.Block(b)
+			err := p.Block(n.myself, b)
 			if err != nil {
 				log.Error("send block to peer error", "err", err)
 				n.removePeer(p)
@@ -612,7 +639,7 @@ func (n *Networking) serveData(p Peer, ids []ItemID) {
 			}
 
 			log.Info("serving BlockProposalItem", "id", id, "item", bp.Hash())
-			err := p.BlockProposal(bp)
+			err := p.BlockProposal(n.myself, bp)
 			if err != nil {
 				log.Error("send block proposal to peer error", "err", err)
 				n.removePeer(p)
@@ -701,13 +728,13 @@ func (r *receiver) RandBeaconSig(s *RandBeaconSig) error {
 	return nil
 }
 
-func (r *receiver) Block(b *Block) error {
-	r.n.recvBlock(b)
+func (r *receiver) Block(p Peer, b *Block) error {
+	r.n.recvBlock(p, b)
 	return nil
 }
 
-func (r *receiver) BlockProposal(bp *BlockProposal) error {
-	r.n.recvBlockProposal(bp)
+func (r *receiver) BlockProposal(sender Peer, bp *BlockProposal) error {
+	r.n.recvBlockProposal(sender, bp)
 	return nil
 }
 

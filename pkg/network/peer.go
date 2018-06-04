@@ -170,7 +170,7 @@ func (p *Peer) read() {
 				return
 			}
 
-			err = p.myself.Block(&b)
+			err = p.myself.Block(p, &b)
 			if err != nil {
 				log.Error("Peer methods are not supposed to return error")
 				continue
@@ -183,7 +183,7 @@ func (p *Peer) read() {
 				return
 			}
 
-			err = p.myself.BlockProposal(&b)
+			err = p.myself.BlockProposal(p, &b)
 			if err != nil {
 				log.Error("Peer methods are not supposed to return error")
 				continue
@@ -554,7 +554,7 @@ func (p *Peer) RandBeaconSig(r *consensus.RandBeaconSig) error {
 	return nil
 }
 
-func (p *Peer) Block(b *consensus.Block) error {
+func (p *Peer) Block(sender consensus.Peer, b *consensus.Block) error {
 	p.mu.Lock()
 	if err := p.err; err != nil {
 		p.mu.Unlock()
@@ -580,7 +580,7 @@ func (p *Peer) Block(b *consensus.Block) error {
 	return nil
 }
 
-func (p *Peer) BlockProposal(b *consensus.BlockProposal) error {
+func (p *Peer) BlockProposal(sender consensus.Peer, b *consensus.BlockProposal) error {
 	p.mu.Lock()
 	if err := p.err; err != nil {
 		p.mu.Unlock()

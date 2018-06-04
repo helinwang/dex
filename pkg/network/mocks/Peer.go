@@ -10,13 +10,13 @@ type Peer struct {
 	mock.Mock
 }
 
-// Block provides a mock function with given fields: b
-func (_m *Peer) Block(b *consensus.Block) error {
-	ret := _m.Called(b)
+// Block provides a mock function with given fields: sender, b
+func (_m *Peer) Block(sender consensus.Peer, b *consensus.Block) error {
+	ret := _m.Called(sender, b)
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(*consensus.Block) error); ok {
-		r0 = rf(b)
+	if rf, ok := ret.Get(0).(func(consensus.Peer, *consensus.Block) error); ok {
+		r0 = rf(sender, b)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -24,13 +24,13 @@ func (_m *Peer) Block(b *consensus.Block) error {
 	return r0
 }
 
-// BlockProposal provides a mock function with given fields: b
-func (_m *Peer) BlockProposal(b *consensus.BlockProposal) error {
-	ret := _m.Called(b)
+// BlockProposal provides a mock function with given fields: sender, b
+func (_m *Peer) BlockProposal(sender consensus.Peer, b *consensus.BlockProposal) error {
+	ret := _m.Called(sender, b)
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(*consensus.BlockProposal) error); ok {
-		r0 = rf(b)
+	if rf, ok := ret.Get(0).(func(consensus.Peer, *consensus.BlockProposal) error); ok {
+		r0 = rf(sender, b)
 	} else {
 		r0 = ret.Error(0)
 	}

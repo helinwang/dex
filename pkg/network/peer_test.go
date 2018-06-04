@@ -75,8 +75,8 @@ func TestPeer(t *testing.T) {
 	dst.On("SysTxn", mock.Anything).Return(nil)
 	dst.On("RandBeaconSigShare", mock.Anything).Return(nil)
 	dst.On("RandBeaconSig", mock.Anything).Return(nil)
-	dst.On("Block", mock.Anything).Return(nil)
-	dst.On("BlockProposal", mock.Anything).Return(nil)
+	dst.On("Block", mock.Anything, mock.Anything).Return(nil)
+	dst.On("BlockProposal", mock.Anything, mock.Anything).Return(nil)
 	dst.On("NotarizationShare", mock.Anything).Return(nil)
 	dst.On("Inventory", mock.Anything, mock.Anything).Return(nil)
 	dst.On("GetData", mock.Anything, mock.Anything).Return(nil)
@@ -95,9 +95,9 @@ func TestPeer(t *testing.T) {
 		a3 := &consensus.RandBeaconSig{Round: 1}
 		p.RandBeaconSig(a3)
 		a4 := &consensus.Block{Round: 1}
-		p.Block(a4)
+		p.Block(nil, a4)
 		a5 := &consensus.BlockProposal{Round: 1}
-		p.BlockProposal(a5)
+		p.BlockProposal(nil, a5)
 		a6 := &consensus.NtShare{Round: 1}
 		p.NotarizationShare(a6)
 		a71 := []consensus.ItemID{consensus.ItemID{ItemRound: 1}}
@@ -116,8 +116,8 @@ func TestPeer(t *testing.T) {
 		dst.AssertCalled(t, "SysTxn", a1)
 		dst.AssertCalled(t, "RandBeaconSigShare", a2)
 		dst.AssertCalled(t, "RandBeaconSig", a3)
-		dst.AssertCalled(t, "Block", a4)
-		dst.AssertCalled(t, "BlockProposal", a5)
+		dst.AssertCalled(t, "Block", mock.Anything, a4)
+		dst.AssertCalled(t, "BlockProposal", mock.Anything, a5)
 		dst.AssertCalled(t, "NotarizationShare", a6)
 		dst.AssertCalled(t, "Inventory", mock.Anything, a71)
 		dst.AssertCalled(t, "GetData", mock.Anything, a81)

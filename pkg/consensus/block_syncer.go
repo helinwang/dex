@@ -6,21 +6,21 @@ import (
 	"time"
 
 	lru "github.com/hashicorp/golang-lru"
+	log "github.com/helinwang/log15"
 )
 
 // blockSyncer downloads blocks and block proposals, validates them
 // and connect them to the chain.
 //
 // The synchronization steps:
-// 1. got a new block proposal BP, if got a new block, skip to 3
-// 2. ask for block proposal's prev block
-// 3. got a new block B
-// 4. get all prev block of the block, until connected to the chain,
+// 1. got a new block hash
+// 2. get the block B corresponding to the hash
+// 3. get all prev block of the block, until connected to the chain,
 // or reached the finalized block in the chain but can not connect to
 // the chain, stop if can not connect to the chain
-// 5. validate B and all it's prev blocks, then connect to the chain
+// 4. validate B and all it's prev blocks, then connect to the chain
 // if valid
-// 6. validate BP, then connect to the chain if validate
+// 5. validate BP, then connect to the chain if validate
 type blockSyncer struct {
 	v                 *validator
 	chain             *Chain
@@ -43,15 +43,15 @@ func newBlockSyncer(v *validator, chain *Chain, requester requester) *blockSynce
 }
 
 type requester interface {
-	RequestBlock(ctx context.Context, hash Hash) (*Block, error)
-	RequestBlockProposal(ctx context.Context, hash Hash) (*BlockProposal, error)
-	RequestTrades(ctx context.Context, hash Hash) ([]byte, error)
+	RequestBlock(ctx context.Context, p Peer, hash Hash) (*Block, error)
+	RequestBlockProposal(ctx context.Context, p Peer, hash Hash) (*BlockProposal, error)
+	RequestTrades(ctx context.Context, p Peer, hash Hash) ([]byte, error)
 }
 
 var errCanNotConnectToChain = errors.New("can not connect to chain")
 
-func (s *blockSyncer) SyncBlock(hash Hash, round uint64) error {
-	_, err := s.syncBlockAndConnectToChain(hash, round)
+func (s *blockSyncer) SyncBlock(p Peer, hash Hash, round uint64) error {
+	_, err := s.syncBlockAndConnectToChain(p, hash, round)
 	if err == errCanNotConnectToChain {
 		s.invalidBlockCache.Add(hash, struct{}{})
 	}
@@ -68,7 +68,7 @@ type bpResult struct {
 	E  error
 }
 
-func (s *blockSyncer) syncBlockAndConnectToChain(hash Hash, round uint64) (State, error) {
+func (s *blockSyncer) syncBlockAndConnectToChain(p Peer, hash Hash, round uint64) (State, error) {
 	// TODO: validate block, get weight
 	// TODO: prevent syncing the same block concurrently
 
@@ -85,20 +85,20 @@ func (s *blockSyncer) syncBlockAndConnectToChain(hash Hash, round uint64) (State
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
 
-	b, err := s.requester.RequestBlock(ctx, hash)
+	b, err := s.requester.RequestBlock(ctx, p, hash)
 	if err != nil {
 		return nil, err
 	}
 
 	tCh := make(chan tradesResult, 1)
 	go func() {
-		t, err := s.requester.RequestTrades(ctx, b.Trades)
+		t, err := s.requester.RequestTrades(ctx, p, b.Trades)
 		tCh <- tradesResult{T: t, E: err}
 	}()
 
 	bpCh := make(chan bpResult, 1)
 	go func() {
-		bp, err := s.requester.RequestBlockProposal(ctx, b.BlockProposal)
+		bp, err := s.requester.RequestBlockProposal(ctx, p, b.BlockProposal)
 		bpCh <- bpResult{BP: bp, E: err}
 	}()
 
@@ -111,7 +111,7 @@ func (s *blockSyncer) syncBlockAndConnectToChain(hash Hash, round uint64) (State
 
 		state = s.chain.BlockToState(b.PrevBlock)
 	} else {
-		state, err = s.syncBlockAndConnectToChain(b.PrevBlock, round-1)
+		state, err = s.syncBlockAndConnectToChain(p, b.PrevBlock, round-1)
 		if err != nil {
 			if err == errCanNotConnectToChain {
 				s.invalidBlockCache.Add(b.PrevBlock, struct{}{})
@@ -147,13 +147,18 @@ func (s *blockSyncer) syncBlockAndConnectToChain(hash Hash, round uint64) (State
 		return nil, errors.New("invalid state root")
 	}
 
-	state = trans.Commit()
-	s.chain.addBlock(b, bp, state, tr.T, 0)
-	return state, nil
-}
+	err = s.chain.addBP(bp, 0)
+	if err != nil && err != errChainDataAlreadyExists {
+		log.Error("syncer: add block proposal error", "err", err)
+	}
 
-func (s *blockSyncer) SyncBlockProposal(item ItemID) error {
-	return nil
+	state = trans.Commit()
+	err = s.chain.addBlock(b, bp, state, tr.T, 0)
+	if err != nil {
+		log.Error("syncer: add block error", "err", err)
+	}
+
+	return state, nil
 }
 
 /*
