@@ -43,54 +43,9 @@ func (m *MarketSymbol) Bytes() []byte {
 	return append(bufA, bufB...)
 }
 
-type state struct {
-	tokenCache    *TokenCache
-	tokens        *trie.Trie
-	accounts      *trie.Trie
-	pendingOrders *trie.Trie
-	reports       *trie.Trie
-}
-
 type PendingOrder struct {
 	Owner consensus.Addr
 	Order
-}
-
-func (s *state) Commit() {
-	s.accounts.Commit(nil)
-	s.tokens.Commit(nil)
-	s.pendingOrders.Commit(nil)
-	s.reports.Commit(nil)
-}
-
-func (s *state) UpdateAccount(acc *Account) {
-	addr := acc.PK.Addr()
-	b, err := rlp.EncodeToBytes(acc)
-	if err != nil {
-		panic(err)
-	}
-
-	s.accounts.Update(addr[:], b)
-}
-
-func (s *state) Account(addr consensus.Addr) *Account {
-	acc, err := s.accounts.TryGet(addr[:])
-	if err != nil || acc == nil {
-		if acc == nil {
-			err = fmt.Errorf("account %v does not exist", addr)
-		}
-		log.Warn("get account error", "err", err)
-		return nil
-	}
-
-	var account Account
-	err = rlp.DecodeBytes(acc, &account)
-	if err != nil {
-		log.Error("decode account error", "err", err, "b", acc)
-		return nil
-	}
-
-	return &account
 }
 
 func pendingOrdersToOrders(p []PendingOrder) []Order {
@@ -130,7 +85,93 @@ func decodeAddr(b []byte) []byte {
 	return r
 }
 
-func (s *state) MarketPendingOrders(market MarketSymbol) []PendingOrder {
+// State is the state of the DEX.
+type State struct {
+	tokenCache    *TokenCache
+	tokens        *trie.Trie
+	accounts      *trie.Trie
+	pendingOrders *trie.Trie
+	reports       *trie.Trie
+	db            *trie.Database
+}
+
+var BNBInfo = TokenInfo{
+	Symbol:      "BNB",
+	Decimals:    8,
+	TotalSupply: 200000000,
+}
+
+func NewState(db *trie.Database) *State {
+	tokens, err := trie.New(common.Hash{}, db)
+	if err != nil {
+		panic(err)
+	}
+
+	accounts, err := trie.New(common.Hash{}, db)
+	if err != nil {
+		panic(err)
+	}
+
+	pendingOrders, err := trie.New(common.Hash{}, db)
+	if err != nil {
+		panic(err)
+	}
+
+	reports, err := trie.New(common.Hash{}, db)
+	if err != nil {
+		panic(err)
+	}
+
+	s := &State{
+		db:            db,
+		tokenCache:    newTokenCache(),
+		tokens:        tokens,
+		accounts:      accounts,
+		pendingOrders: pendingOrders,
+		reports:       reports,
+	}
+
+	return s
+}
+
+func (s *State) Commit() {
+	s.accounts.Commit(nil)
+	s.tokens.Commit(nil)
+	s.pendingOrders.Commit(nil)
+	s.reports.Commit(nil)
+}
+
+func (s *State) UpdateAccount(acc *Account) {
+	addr := acc.PK.Addr()
+	b, err := rlp.EncodeToBytes(acc)
+	if err != nil {
+		panic(err)
+	}
+
+	s.accounts.Update(addr[:], b)
+}
+
+func (s *State) Account(addr consensus.Addr) *Account {
+	acc, err := s.accounts.TryGet(addr[:])
+	if err != nil || acc == nil {
+		if acc == nil {
+			err = fmt.Errorf("account %v does not exist", addr)
+		}
+		log.Warn("get account error", "err", err)
+		return nil
+	}
+
+	var account Account
+	err = rlp.DecodeBytes(acc, &account)
+	if err != nil {
+		log.Error("decode account error", "err", err, "b", acc)
+		return nil
+	}
+
+	return &account
+}
+
+func (s *State) MarketPendingOrders(market MarketSymbol) []PendingOrder {
 	prefix := market.Bytes()
 	prefix = encodePrefix(prefix)
 	emptyAddr := consensus.Addr{}
@@ -177,7 +218,7 @@ func (s *state) MarketPendingOrders(market MarketSymbol) []PendingOrder {
 	return p
 }
 
-func (s *state) AccountPendingOrders(market MarketSymbol, addr consensus.Addr) []PendingOrder {
+func (s *State) AccountPendingOrders(market MarketSymbol, addr consensus.Addr) []PendingOrder {
 	path := append(market.Bytes(), addr[:]...)
 	b, err := s.pendingOrders.TryGet(path)
 	if err != nil {
@@ -199,7 +240,7 @@ func (s *state) AccountPendingOrders(market MarketSymbol, addr consensus.Addr) [
 	return p
 }
 
-func (s *state) UpdatePendingOrder(market MarketSymbol, add, remove *PendingOrder) {
+func (s *State) UpdatePendingOrder(market MarketSymbol, add, remove *PendingOrder) {
 	if add == nil && remove == nil {
 		return
 	}
@@ -244,53 +285,6 @@ func (s *state) UpdatePendingOrder(market MarketSymbol, add, remove *PendingOrde
 
 	path := append(market.Bytes(), addr[:]...)
 	s.pendingOrders.Update(path, b)
-}
-
-// State is the state of the DEX.
-type State struct {
-	state
-	db *trie.Database
-}
-
-var BNBInfo = TokenInfo{
-	Symbol:      "BNB",
-	Decimals:    8,
-	TotalSupply: 200000000,
-}
-
-func NewState(db *trie.Database) *State {
-	tokens, err := trie.New(common.Hash{}, db)
-	if err != nil {
-		panic(err)
-	}
-
-	accounts, err := trie.New(common.Hash{}, db)
-	if err != nil {
-		panic(err)
-	}
-
-	pendingOrders, err := trie.New(common.Hash{}, db)
-	if err != nil {
-		panic(err)
-	}
-
-	reports, err := trie.New(common.Hash{}, db)
-	if err != nil {
-		panic(err)
-	}
-
-	s := &State{
-		db: db,
-		state: state{
-			tokenCache:    newTokenCache(),
-			tokens:        tokens,
-			accounts:      accounts,
-			pendingOrders: pendingOrders,
-			reports:       reports,
-		},
-	}
-
-	return s
 }
 
 func (s *State) GenesisDistribution(owner *consensus.PK, tokenInfo TokenInfo) consensus.State {
@@ -363,12 +357,13 @@ func (s *State) Transition() consensus.Transition {
 		panic(err)
 	}
 
-	state := state{
-		tokenCache:    s.tokenCache,
+	state := &State{
+		db:            s.db,
+		tokenCache:    s.tokenCache.Clone(),
 		tokens:        tokens,
 		accounts:      accounts,
 		pendingOrders: pendingOrders,
 		reports:       reports,
 	}
-	return newTransition(state, s.db)
+	return newTransition(state)
 }

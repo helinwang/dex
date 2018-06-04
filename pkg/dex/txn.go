@@ -30,7 +30,7 @@ type Txn struct {
 	Sig        []byte
 }
 
-func validateSigAndNonce(state *state, b []byte) (txn *Txn, acc *Account, ready, valid bool) {
+func validateSigAndNonce(state *State, b []byte) (txn *Txn, acc *Account, ready, valid bool) {
 	txn = &Txn{}
 	err := rlp.DecodeBytes(b, &txn)
 	if err != nil {

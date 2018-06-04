@@ -32,6 +32,23 @@ func newTokenCache() *TokenCache {
 	}
 }
 
+func (t *TokenCache) Clone() *TokenCache {
+	idToInfo := make(map[TokenID]*TokenInfo)
+	for k, v := range t.idToInfo {
+		// v is a TokenInfo, which is immutable
+		idToInfo[k] = v
+	}
+	exists := make(map[TokenSymbol]bool)
+	for k, v := range t.exists {
+		exists[k] = v
+	}
+
+	return &TokenCache{
+		idToInfo: idToInfo,
+		exists:   exists,
+	}
+}
+
 func (t *TokenCache) Exists(s TokenSymbol) bool {
 	return t.exists[s]
 }

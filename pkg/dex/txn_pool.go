@@ -28,7 +28,7 @@ func (t *TxnPool) Add(b []byte) (boardcast bool) {
 		return false
 	}
 
-	_, _, _, valid := validateSigAndNonce(&t.state.state, b)
+	_, _, _, valid := validateSigAndNonce(t.state, b)
 	if !valid {
 		return false
 	}

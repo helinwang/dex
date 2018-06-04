@@ -20,7 +20,7 @@ type RPCServer struct {
 	sender TxnSender
 
 	mu sync.Mutex
-	s  *state
+	s  *State
 }
 
 func NewRPCServer() *RPCServer {
@@ -34,7 +34,7 @@ func (r *RPCServer) SetSender(sender TxnSender) {
 func (r *RPCServer) Update(state consensus.State) {
 	s := state.(*State)
 	r.mu.Lock()
-	r.s = &s.state
+	r.s = s
 	r.mu.Unlock()
 }
 

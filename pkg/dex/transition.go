@@ -8,23 +8,18 @@ import (
 	"strings"
 
 	"github.com/ethereum/go-ethereum/rlp"
-	"github.com/ethereum/go-ethereum/trie"
 	"github.com/helinwang/dex/pkg/consensus"
 	log "github.com/helinwang/log15"
 )
 
 type Transition struct {
-	state
 	tokenCreations []Token
 	txns           [][]byte
-	db             *trie.Database
+	state          *State
 }
 
-func newTransition(state state, db *trie.Database) *Transition {
-	return &Transition{
-		state: state,
-		db:    db,
-	}
+func newTransition(s *State) *Transition {
+	return &Transition{state: s}
 }
 
 func (t *Transition) Account() consensus.Hash {
@@ -33,7 +28,7 @@ func (t *Transition) Account() consensus.Hash {
 
 // Record records a transition to the state transition.
 func (t *Transition) Record(b []byte) (valid, success bool) {
-	txn, acc, ready, valid := validateSigAndNonce(&t.state, b)
+	txn, acc, ready, valid := validateSigAndNonce(t.state, b)
 	if !valid {
 		return
 	}
@@ -94,13 +89,13 @@ func (t *Transition) Record(b []byte) (valid, success bool) {
 
 func (t *Transition) placeOrder(owner *Account, txn PlaceOrderTxn) bool {
 	// TODO: check if fee is sufficient
-	baseInfo := t.tokenCache.Info(txn.Market.Base)
+	baseInfo := t.state.tokenCache.Info(txn.Market.Base)
 	if baseInfo == nil {
 		log.Error("trying to place order on nonexistent token", "token", txn.Market.Base)
 		return false
 	}
 
-	quoteInfo := t.tokenCache.Info(txn.Market.Quote)
+	quoteInfo := t.state.tokenCache.Info(txn.Market.Quote)
 	if quoteInfo == nil {
 		log.Error("trying to place order on nonexistent token", "token", txn.Market.Quote)
 		return false
@@ -129,17 +124,17 @@ func (t *Transition) placeOrder(owner *Account, txn PlaceOrderTxn) bool {
 
 	owner.Balances[sell].Available -= sellQuant
 	owner.Balances[sell].Pending += sellQuant
-	t.UpdateAccount(owner)
+	t.state.UpdateAccount(owner)
 	add := PendingOrder{
 		Owner: owner.PK.Addr(),
 		Order: Order{},
 	}
-	t.UpdatePendingOrder(txn.Market, &add, nil)
+	t.state.UpdatePendingOrder(txn.Market, &add, nil)
 	return true
 }
 
 func (t *Transition) createToken(owner *Account, txn CreateTokenTxn) bool {
-	if t.tokenCache.Exists(txn.Info.Symbol) {
+	if t.state.tokenCache.Exists(txn.Info.Symbol) {
 		log.Warn("token symbol already exists", "symbol", txn.Info.Symbol)
 		return false
 	}
@@ -159,7 +154,7 @@ func (t *Transition) createToken(owner *Account, txn CreateTokenTxn) bool {
 		return false
 	}
 
-	id := TokenID(t.tokenCache.Size() + len(t.tokenCreations))
+	id := TokenID(t.state.tokenCache.Size() + len(t.tokenCreations))
 	token := Token{ID: id, TokenInfo: txn.Info}
 	t.tokenCreations = append(t.tokenCreations, token)
 
@@ -171,13 +166,13 @@ func (t *Transition) createToken(owner *Account, txn CreateTokenTxn) bool {
 
 	path := make([]byte, 64)
 	binary.LittleEndian.PutUint64(path, uint64(id))
-	t.tokens.Update(path, b)
+	t.state.tokens.Update(path, b)
 
 	if owner.Balances == nil {
 		owner.Balances = make(map[TokenID]*Balance)
 	}
 	owner.Balances[id] = &Balance{Available: totalQuant}
-	t.UpdateAccount(owner)
+	t.state.UpdateAccount(owner)
 	return true
 }
 
@@ -200,7 +195,7 @@ func (t *Transition) sendToken(owner *Account, txn SendTokenTxn) bool {
 	}
 
 	toAddr := txn.To.Addr()
-	to, err := t.accounts.TryGet(toAddr[:])
+	to, err := t.state.accounts.TryGet(toAddr[:])
 	var toAcc *Account
 	if err != nil || to == nil {
 		toAcc = &Account{PK: txn.To, Balances: make(map[TokenID]*Balance)}
@@ -220,8 +215,8 @@ func (t *Transition) sendToken(owner *Account, txn SendTokenTxn) bool {
 		toAcc.Balances[txn.TokenID] = &Balance{}
 	}
 	toAcc.Balances[txn.TokenID].Available += txn.Quant
-	t.UpdateAccount(toAcc)
-	t.UpdateAccount(owner)
+	t.state.UpdateAccount(toAcc)
+	t.state.UpdateAccount(owner)
 	return true
 }
 
@@ -232,10 +227,9 @@ func (t *Transition) Txns() [][]byte {
 // Commit commits the transition to the state root.
 func (t *Transition) Commit() consensus.State {
 	t.state.Commit()
-	s := &State{state: t.state, db: t.db}
 	for _, v := range t.tokenCreations {
-		s.tokenCache.Update(v.ID, &v.TokenInfo)
+		t.state.tokenCache.Update(v.ID, &v.TokenInfo)
 	}
 
-	return s
+	return t.state
 }
