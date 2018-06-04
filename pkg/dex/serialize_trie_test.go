@@ -10,8 +10,8 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func serializeAndDeserialize(t *trie.Trie, db *trie.Database, getter Getter) *trie.Trie {
-	b, err := SerializeTrie(t, db, getter)
+func serializeAndDeserialize(t *trie.Trie, db *trie.Database, getter getter) *trie.Trie {
+	b, err := serializeTrie(t, db, getter)
 	if err != nil {
 		panic(err)
 	}

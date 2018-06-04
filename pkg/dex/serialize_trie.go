@@ -5,21 +5,21 @@ import (
 	"github.com/ethereum/go-ethereum/trie"
 )
 
-type Getter interface {
+type getter interface {
 	Get(key []byte) ([]byte, error)
 }
 
-type Putter interface {
+type putter interface {
 	Put(key, val []byte) error
 }
 
-// Blob is a serizlied trie.
-type Blob struct {
+// trieBlob is a serizlied trie.
+type trieBlob struct {
 	Root common.Hash
 	Data map[common.Hash][]byte
 }
 
-func (b *Blob) Fill(p Putter) error {
+func (b *trieBlob) Fill(p putter) error {
 	for k, v := range b.Data {
 		err := p.Put(k[:], v)
 		if err != nil {
@@ -29,7 +29,7 @@ func (b *Blob) Fill(p Putter) error {
 	return nil
 }
 
-func SerializeTrie(t *trie.Trie, db *trie.Database, getter Getter) (blob *Blob, err error) {
+func serializeTrie(t *trie.Trie, db *trie.Database, getter getter) (blob *trieBlob, err error) {
 	root, err := t.Commit(nil)
 	if err != nil {
 		return
@@ -46,7 +46,7 @@ func SerializeTrie(t *trie.Trie, db *trie.Database, getter Getter) (blob *Blob, 
 		return
 	}
 
-	blob = &Blob{Data: make(map[common.Hash][]byte)}
+	blob = &trieBlob{Data: make(map[common.Hash][]byte)}
 	hasNext := true
 	for ; hasNext; hasNext = iter.Next(true) {
 		if iter.Error() != nil {
