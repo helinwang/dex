@@ -193,6 +193,39 @@ func sendToken(c *cli.Context) error {
 	return nil
 }
 
+func listToken(c *cli.Context) error {
+	client, err := rpc.DialHTTP("tcp", rpcAddr)
+	if err != nil {
+		return err
+	}
+
+	tokens, err := getTokens(client)
+	if err != nil {
+		return err
+	}
+
+	tw := tabwriter.NewWriter(os.Stdout, 0, 0, 1, ' ', tabwriter.AlignRight|tabwriter.Debug)
+	_, err = fmt.Fprintln(tw, "\tSymbol\tTotal Supply\tDecimals\t")
+	if err != nil {
+		return err
+	}
+
+	for _, t := range tokens {
+		decimals := int(t.Decimals)
+		supply := quantToStr(t.TotalUnits, decimals)
+		_, err = fmt.Fprintf(tw, "\t%s\t%s\t%d\t\n", string(t.Symbol), supply, decimals)
+		if err != nil {
+			return err
+		}
+	}
+	err = tw.Flush()
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func main() {
 	err := bls.Init(int(bls.CurveFp254BNb))
 	if err != nil {
@@ -218,6 +251,11 @@ func main() {
 	}
 
 	app.Commands = []cli.Command{
+		{
+			Name:   "token",
+			Usage:  "print token information",
+			Action: listToken,
+		},
 		{
 			Name:   "account",
 			Usage:  "print account information",

@@ -1,7 +1,6 @@
 package dex
 
 import (
-	"math"
 	"testing"
 
 	"github.com/dfinity/go-dfinity-crypto/bls"
@@ -98,9 +97,9 @@ func TestTransitionNotCommitToDB(t *testing.T) {
 }
 
 var btcInfo = TokenInfo{
-	Symbol:      "BTC",
-	Decimals:    8,
-	TotalSupply: 21000000,
+	Symbol:     "BTC",
+	Decimals:   8,
+	TotalUnits: 21000000,
 }
 
 func TestGenesisCoinDistribution(t *testing.T) {
@@ -114,7 +113,7 @@ func TestGenesisCoinDistribution(t *testing.T) {
 	assert.Equal(t, &BNBInfo, s.tokenCache.Info(0))
 
 	acc := s.Account(pk.Addr())
-	assert.Equal(t, uint64(BNBInfo.TotalSupply*uint64(math.Pow10(int(BNBInfo.Decimals)))), acc.Balances[0].Available)
+	assert.Equal(t, BNBInfo.TotalUnits, acc.Balances[0].Available)
 	assert.Equal(t, uint64(0), acc.Balances[0].Pending)
 }
 
@@ -132,7 +131,7 @@ func TestCreateToken(t *testing.T) {
 	assert.Equal(t, &btcInfo, s.tokenCache.Info(1))
 
 	acc := s.Account(addr)
-	assert.Equal(t, btcInfo.TotalSupply*uint64(math.Pow10(int(btcInfo.Decimals))), acc.Balances[1].Available)
+	assert.Equal(t, btcInfo.TotalUnits, acc.Balances[1].Available)
 	assert.Equal(t, uint64(0), acc.Balances[1].Pending)
 }
 

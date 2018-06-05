@@ -94,9 +94,9 @@ type State struct {
 // TODO: add receipt for create, send, freeze, burn token.
 
 var BNBInfo = TokenInfo{
-	Symbol:      "BNB",
-	Decimals:    8,
-	TotalSupply: 200000000,
+	Symbol:     "BNB",
+	Decimals:   8,
+	TotalUnits: 200000000 * 100000000,
 }
 
 func NewState(db *trie.Database) *State {

@@ -8,9 +8,9 @@ import (
 type TokenSymbol string
 
 type TokenInfo struct {
-	Symbol      TokenSymbol
-	Decimals    uint8
-	TotalSupply uint64
+	Symbol     TokenSymbol
+	Decimals   uint8
+	TotalUnits uint64 // TotalUnits = totalSupply * 10^Decimals
 }
 
 type TokenID uint64

@@ -3,7 +3,6 @@ package dex
 import (
 	"bytes"
 	"encoding/gob"
-	"math"
 	"strings"
 
 	"github.com/helinwang/dex/pkg/consensus"
@@ -141,13 +140,6 @@ func (t *Transition) createToken(owner *Account, txn CreateTokenTxn) bool {
 	}
 
 	// TODO: fiture out how to pay fee.
-
-	totalQuant := txn.Info.TotalSupply * uint64(math.Pow10(int(txn.Info.Decimals)))
-	if totalQuant < txn.Info.TotalSupply {
-		log.Warn("token total quant overflow", "total quant", totalQuant, "total supply", txn.Info.TotalSupply, "decimals", txn.Info.Decimals)
-		return false
-	}
-
 	id := TokenID(t.state.tokenCache.Size() + len(t.tokenCreations))
 	token := Token{ID: id, TokenInfo: txn.Info}
 	t.tokenCreations = append(t.tokenCreations, token)
@@ -156,7 +148,7 @@ func (t *Transition) createToken(owner *Account, txn CreateTokenTxn) bool {
 	if owner.Balances == nil {
 		owner.Balances = make(map[TokenID]*Balance)
 	}
-	owner.Balances[id] = &Balance{Available: totalQuant}
+	owner.Balances[id] = &Balance{Available: txn.Info.TotalUnits}
 	t.state.UpdateAccount(owner)
 	return true
 }
