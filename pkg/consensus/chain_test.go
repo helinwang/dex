@@ -34,10 +34,10 @@ func TestGraphviz(t *testing.T) {
 	assert.Equal(t, `digraph chain {
 rankdir=LR;
 size="8,5"
-node [shape = rect, style=filled, color = chartreuse2]; block_26df block_0100 block_0200 block_0300 block_0400
+node [shape = rect, style=filled, color = chartreuse2]; block_3ba7 block_0100 block_0200 block_0300 block_0400
 node [shape = rect, style=filled, color = aquamarine]; block_0700 block_0800 block_0900 block_0c00 block_0d00
 node [shape = octagon, style=filled, color = aliceblue]; proposal_0500 proposal_0600 proposal_0a00 proposal_0b00
-block_26df -> block_0100 -> block_0200 -> block_0300 -> block_0400
+block_3ba7 -> block_0100 -> block_0200 -> block_0300 -> block_0400
 block_0400 -> proposal_0500
 block_0400 -> proposal_0600
 block_0400 -> block_0700
