@@ -103,7 +103,7 @@ func (n *Notary) notarize(bp *BlockProposal) (*NtShare, *TrieBlob) {
 		panic("TODO")
 	}
 
-	trans, err := getTransition(state, bp.Data)
+	trans, err := getTransition(state, bp.Data, bp.Round)
 	if err != nil {
 		panic("TODO: " + err.Error())
 	}

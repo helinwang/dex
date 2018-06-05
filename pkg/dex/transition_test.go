@@ -39,7 +39,7 @@ func TestSendToken(t *testing.T) {
 	to := consensus.PK(skRecv.GetPublicKey().Serialize())
 	txn := MakeSendTokenTxn(sk, to, 0, 20, 0, 0)
 	trans := s.Transition()
-	valid, success := trans.Record(txn)
+	valid, success := trans.Record(txn, 1)
 	assert.True(t, valid)
 	assert.True(t, success)
 
@@ -81,7 +81,7 @@ func TestTransitionNotCommitToDB(t *testing.T) {
 
 		to := consensus.PK(skRecv.GetPublicKey().Serialize())
 		txn := MakeSendTokenTxn(sk, to, 0, 1, uint8(i), 0)
-		valid, success := trans.Record(txn)
+		valid, success := trans.Record(txn, 1)
 		assert.True(t, valid)
 		assert.True(t, success)
 	}
@@ -123,7 +123,7 @@ func TestIssueToken(t *testing.T) {
 	sk, addr := createAccount(s, 100)
 	trans := s.Transition()
 	txn := MakeIssueTokenTxn(sk, btcInfo, 0, 0)
-	trans.Record(txn)
+	trans.Record(txn, 1)
 	s = trans.Commit().(*State)
 
 	assert.Equal(t, 2, s.tokenCache.Size())
@@ -150,7 +150,7 @@ func TestPlaceOrder(t *testing.T) {
 		ExpireHeight: 0,
 	}
 	trans := s.Transition()
-	trans.Record(MakePlaceOrderTxn(sk, addr, order))
+	trans.Record(MakePlaceOrderTxn(sk, addr, order), 1)
 	s = trans.Commit().(*State)
 
 	acc := s.Account(addr)

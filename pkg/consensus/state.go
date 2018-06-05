@@ -3,7 +3,7 @@ package consensus
 // Transition is the transition from one State to another State.
 type Transition interface {
 	// Record records a transition to the state transition.
-	Record(txn []byte) (valid, success bool)
+	Record(txn []byte, round uint64) (valid, success bool)
 
 	// Txns returns the recorded transactions.
 	Txns() [][]byte

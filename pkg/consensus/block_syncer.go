@@ -132,7 +132,7 @@ func (s *blockSyncer) syncBlockAndConnectToChain(p Peer, hash Hash, round uint64
 	}
 
 	bp := bpr.BP
-	trans, err := getTransition(state, bp.Data)
+	trans, err := getTransition(state, bp.Data, bp.Round)
 	if err != nil {
 		return nil, err
 	}

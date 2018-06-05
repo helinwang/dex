@@ -20,7 +20,7 @@ func newTransition(s *State) *Transition {
 }
 
 // Record records a transition to the state transition.
-func (t *Transition) Record(b []byte) (valid, success bool) {
+func (t *Transition) Record(b []byte, round uint64) (valid, success bool) {
 	txn, acc, ready, valid := validateSigAndNonce(t.state, b)
 	if !valid {
 		return

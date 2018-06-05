@@ -103,10 +103,11 @@ func (c *Chain) Genesis() Hash {
 func (c *Chain) ProposeBlock(sk SK) *BlockProposal {
 	txns := c.TxnPool.Txns()
 	block, state, _ := c.Leader()
+	round := block.Round + 1
 
 	trans := state.Transition()
 	for _, txn := range txns {
-		valid, _ := trans.Record(txn)
+		valid, _ := trans.Record(txn, round)
 		if !valid {
 			// TODO: handle "lost" txn due to reorg.
 			c.TxnPool.Remove(SHA3(txn))
@@ -121,7 +122,7 @@ func (c *Chain) ProposeBlock(sk SK) *BlockProposal {
 
 	var bp BlockProposal
 	bp.PrevBlock = SHA3(block.Encode(true))
-	bp.Round = block.Round + 1
+	bp.Round = round
 	pk, err := sk.PK()
 	if err != nil {
 		panic(err)
@@ -391,7 +392,7 @@ func (c *Chain) addNtShare(n *NtShare, groupID int) (*Block, bool) {
 			panic("TODO")
 		}
 
-		trans, err := getTransition(state, bp.Data)
+		trans, err := getTransition(state, bp.Data, bp.Round)
 		if err != nil {
 			panic("TODO")
 		}
@@ -428,7 +429,7 @@ func (c *Chain) addNtShare(n *NtShare, groupID int) (*Block, bool) {
 	return nil, true
 }
 
-func getTransition(state State, txnData []byte) (trans Transition, err error) {
+func getTransition(state State, txnData []byte, round uint64) (trans Transition, err error) {
 	trans = state.Transition()
 
 	if len(txnData) == 0 {
@@ -443,7 +444,7 @@ func getTransition(state State, txnData []byte) (trans Transition, err error) {
 	}
 
 	for _, t := range txns {
-		valid, success := trans.Record(t)
+		valid, success := trans.Record(t, round)
 		if !valid || !success {
 			err = errors.New("failed to apply transactions")
 			return

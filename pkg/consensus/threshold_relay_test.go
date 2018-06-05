@@ -204,7 +204,7 @@ func (e *emptyState) Transition() Transition {
 type emptyTransition struct {
 }
 
-func (e *emptyTransition) Record(txn []byte) (valid, future bool) {
+func (e *emptyTransition) Record(txn []byte, round uint64) (valid, future bool) {
 	return true, false
 }
 
