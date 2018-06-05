@@ -50,14 +50,14 @@ func (t *Transition) Record(b []byte) (valid, success bool) {
 		}
 	case CancelOrder:
 		panic("not implemented")
-	case CreateToken:
-		var txn CreateTokenTxn
+	case IssueToken:
+		var txn IssueTokenTxn
 		err := dec.Decode(&txn)
 		if err != nil {
-			log.Warn("CreateTokenTxn decode failed", "err", err)
+			log.Warn("IssueTokenTxn decode failed", "err", err)
 			return
 		}
-		if !t.createToken(acc, txn) {
+		if !t.issueToken(acc, txn) {
 			log.Warn("CreateTokenTxn failed")
 			return
 		}
@@ -126,7 +126,7 @@ func (t *Transition) placeOrder(owner *Account, txn PlaceOrderTxn) bool {
 	return true
 }
 
-func (t *Transition) createToken(owner *Account, txn CreateTokenTxn) bool {
+func (t *Transition) issueToken(owner *Account, txn IssueTokenTxn) bool {
 	if t.state.tokenCache.Exists(txn.Info.Symbol) {
 		log.Warn("token symbol already exists", "symbol", txn.Info.Symbol)
 		return false

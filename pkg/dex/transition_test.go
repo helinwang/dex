@@ -99,15 +99,15 @@ func TestTransitionNotCommitToDB(t *testing.T) {
 var btcInfo = TokenInfo{
 	Symbol:     "BTC",
 	Decimals:   8,
-	TotalUnits: 21000000,
+	TotalUnits: 21000000 * 100000000,
 }
 
-func TestGenesisCoinDistribution(t *testing.T) {
+func TestIssueNativeToken(t *testing.T) {
 	var sk bls.SecretKey
 	sk.SetByCSPRNG()
 	pk := consensus.PK(sk.GetPublicKey().Serialize())
 	s := NewState(trie.NewDatabase(ethdb.NewMemDatabase()))
-	s = s.GenesisDistribution(&pk).(*State)
+	s = s.IssueNativeToken(&pk).(*State)
 
 	assert.True(t, s.tokenCache.Exists(BNBInfo.Symbol))
 	assert.Equal(t, &BNBInfo, s.tokenCache.Info(0))
@@ -117,12 +117,12 @@ func TestGenesisCoinDistribution(t *testing.T) {
 	assert.Equal(t, uint64(0), acc.Balances[0].Pending)
 }
 
-func TestCreateToken(t *testing.T) {
+func TestIssueToken(t *testing.T) {
 	s := NewState(trie.NewDatabase(ethdb.NewMemDatabase()))
 	s.tokenCache.Update(0, &BNBInfo)
 	sk, addr := createAccount(s, 100)
 	trans := s.Transition()
-	txn := MakeCreateTokenTxn(sk, btcInfo, 0, 0)
+	txn := MakeIssueTokenTxn(sk, btcInfo, 0, 0)
 	trans.Record(txn)
 	s = trans.Commit().(*State)
 

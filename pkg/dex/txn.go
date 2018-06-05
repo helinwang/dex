@@ -17,7 +17,7 @@ type TxnType uint8
 const (
 	PlaceOrder TxnType = iota
 	CancelOrder
-	CreateToken
+	IssueToken
 	SendToken
 )
 
@@ -164,15 +164,15 @@ func MakePlaceOrderTxn(sk consensus.SK, addr consensus.Addr, t PlaceOrderTxn) []
 	return txn.Encode(true)
 }
 
-func MakeCreateTokenTxn(sk consensus.SK, info TokenInfo, nonceIdx uint8, nonceValue uint64) []byte {
-	t := CreateTokenTxn{Info: info}
+func MakeIssueTokenTxn(sk consensus.SK, info TokenInfo, nonceIdx uint8, nonceValue uint64) []byte {
+	t := IssueTokenTxn{Info: info}
 	owner, err := sk.PK()
 	if err != nil {
 		panic(err)
 	}
 
 	txn := Txn{
-		T:          CreateToken,
+		T:          IssueToken,
 		Data:       gobEncode(t),
 		NonceIdx:   nonceIdx,
 		NonceValue: nonceValue,
@@ -188,7 +188,7 @@ func MakeCreateTokenTxn(sk consensus.SK, info TokenInfo, nonceIdx uint8, nonceVa
 	return txn.Encode(true)
 }
 
-type CreateTokenTxn struct {
+type IssueTokenTxn struct {
 	Info TokenInfo
 }
 

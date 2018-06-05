@@ -134,6 +134,10 @@ func quantToStr(quant uint64, decimals int) string {
 
 func sendToken(c *cli.Context) error {
 	args := c.Args()
+	if len(args) < 3 {
+		return fmt.Errorf("send needs 3 arguments (received: %d), please check usage", len(args))
+	}
+
 	credential, err := consensus.LoadCredential(credentialPath)
 	if err != nil {
 		return err
@@ -226,6 +230,15 @@ func listToken(c *cli.Context) error {
 	return nil
 }
 
+func issueToken(c *cli.Context) error {
+	args := c.Args()
+	if len(args) < 3 {
+		return fmt.Errorf("send needs 3 arguments (received: %d), please check usage", len(args))
+	}
+
+	return nil
+}
+
 func main() {
 	err := bls.Init(int(bls.CurveFp254BNb))
 	if err != nil {
@@ -255,6 +268,11 @@ func main() {
 			Name:   "token",
 			Usage:  "print token information",
 			Action: listToken,
+		},
+		{
+			Name:   "issue_token",
+			Usage:  "issue new token",
+			Action: issueToken,
 		},
 		{
 			Name:   "account",

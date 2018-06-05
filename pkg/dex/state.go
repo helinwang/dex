@@ -292,13 +292,13 @@ func (s *State) UpdatePendingOrder(market MarketSymbol, add, remove *PendingOrde
 	s.state.Update(pendingOrderPath(path), b)
 }
 
-func (s *State) GenesisDistribution(owner *consensus.PK) consensus.State {
-	createTokenTxn := CreateTokenTxn{Info: BNBInfo}
+func (s *State) IssueNativeToken(owner *consensus.PK) consensus.State {
+	issueTokenTxn := IssueTokenTxn{Info: BNBInfo}
 	trans := s.Transition().(*Transition)
 	o := &Account{
 		PK: *owner,
 	}
-	trans.createToken(o, createTokenTxn)
+	trans.issueToken(o, issueTokenTxn)
 	return trans.Commit()
 }
 
