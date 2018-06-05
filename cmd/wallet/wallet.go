@@ -236,6 +236,59 @@ func issueToken(c *cli.Context) error {
 		return fmt.Errorf("send needs 3 arguments (received: %d), please check usage", len(args))
 	}
 
+	symbol := args[0]
+	supply, err := strconv.ParseUint(args[1], 10, 64)
+	if err != nil {
+		return err
+	}
+
+	decimals, err := strconv.ParseUint(args[2], 10, 8)
+	if err != nil {
+		return err
+	}
+
+	units := supply * uint64(math.Pow10(int(decimals)))
+
+	client, err := rpc.DialHTTP("tcp", rpcAddr)
+	if err != nil {
+		return err
+	}
+
+	tokens, err := getTokens(client)
+	if err != nil {
+		return err
+	}
+
+	for _, t := range tokens {
+		// do client side check to provide a better error
+		// message (block chain still checks).
+		if strings.ToLower(symbol) == strings.ToLower(string(t.Symbol)) {
+			return fmt.Errorf("token symbol %s already exists", symbol)
+		}
+	}
+
+	credential, err := consensus.LoadCredential(credentialPath)
+	if err != nil {
+		return err
+	}
+
+	idx, val, err := nonce(client, credential.SK.MustPK().Addr())
+	if err != nil {
+		return err
+	}
+
+	tokenInfo := dex.TokenInfo{
+		Symbol:     dex.TokenSymbol(symbol),
+		Decimals:   uint8(decimals),
+		TotalUnits: units,
+	}
+
+	txn := dex.MakeIssueTokenTxn(credential.SK, tokenInfo, idx, val)
+	err = client.Call("WalletService.SendTxn", txn, nil)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 

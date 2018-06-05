@@ -504,28 +504,22 @@ func (n *Networking) recvInventory(p Peer, ids []ItemID) {
 			panic("not implemented")
 		case BlockItem:
 			// TODO: improve logic of what to get, e.g., using id.Ref
-			if b := n.chain.Block(id.Hash); b == nil {
-				log.Info("request BlockItem", "item", id)
-				err := p.GetData(n.myself, []ItemID{id})
-				if err != nil {
-					log.Error("get data from peer error", "err", err)
-					n.removePeer(p)
-				}
-			}
-		case BlockProposalItem:
-			if id.ItemRound != round {
-				if id.ItemRound > round {
-					log.Warn("received block proposal for a bigger round", "round", id.ItemRound, "expecting", round)
-				}
+			if b := n.chain.Block(id.Hash); b != nil {
 				continue
 			}
 
+			log.Info("request BlockItem", "item", id)
+			err := p.GetData(n.myself, []ItemID{id})
+			if err != nil {
+				log.Error("get data from peer error", "err", err)
+				n.removePeer(p)
+			}
+		case BlockProposalItem:
 			if bp := n.chain.BlockProposal(id.Hash); bp != nil {
 				continue
 			}
 
 			log.Info("request BlockProposalItem", "item", id)
-
 			err := p.GetData(n.myself, []ItemID{id})
 			if err != nil {
 				log.Error("get data from peer error", "err", err)

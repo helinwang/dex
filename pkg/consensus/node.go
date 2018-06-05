@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/gob"
+	"fmt"
 	"io/ioutil"
 	"sync"
 	"time"
@@ -187,13 +188,13 @@ func LoadCredential(path string) (NodeCredentials, error) {
 	var c NodeCredentials
 	b, err := ioutil.ReadFile(path)
 	if err != nil {
-		return c, err
+		return c, fmt.Errorf("open credential file failed: %v", err)
 	}
 
 	dec := gob.NewDecoder(bytes.NewReader(b))
 	err = dec.Decode(&c)
 	if err != nil {
-		return c, err
+		return c, fmt.Errorf("decode credential file failed: %v", err)
 	}
 
 	return c, nil
