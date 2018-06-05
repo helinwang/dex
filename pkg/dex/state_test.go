@@ -54,13 +54,13 @@ func TestOrders(t *testing.T) {
 	s.AddOrder(&owner, m2, 1, add)
 	s.AddOrder(&owner, m3, 1, add)
 	s.AddOrder(&owner, m4, 1, add)
-	assert.Equal(t, 1, len(s.GetOrders(m1, 1)))
-	assert.Equal(t, 1, len(s.GetOrders(m2, 1)))
-	assert.Equal(t, 1, len(s.GetOrders(m3, 1)))
-	assert.Equal(t, 1, len(s.GetOrders(m4, 1)))
+	assert.Equal(t, 1, len(s.Orders(m1, 1)))
+	assert.Equal(t, 1, len(s.Orders(m2, 1)))
+	assert.Equal(t, 1, len(s.Orders(m3, 1)))
+	assert.Equal(t, 1, len(s.Orders(m4, 1)))
 
 	m := MarketSymbol{Quote: 0, Base: 1}
-	assert.Equal(t, 0, len(s.GetOrders(m, 1)))
+	assert.Equal(t, 0, len(s.Orders(m, 1)))
 	add = Order{
 		Owner:     addr,
 		SellSide:  true,
@@ -75,11 +75,9 @@ func TestOrders(t *testing.T) {
 		PriceUnit: 0,
 	}
 	s.AddOrder(&owner, m, 1, add1)
-	assert.Equal(t, 2, len(s.GetOrders(m, 1)))
+	assert.Equal(t, 2, len(s.Orders(m, 1)))
 
-	p0 := s.AccountOrders(&owner)
-	assert.Equal(t, 6, len(p0))
-	p1 := s.AccountMarketOrders(&owner, m)
+	p1 := s.AccountOrders(&owner, m)
 	assert.Equal(t, 2, len(p1))
 }
 

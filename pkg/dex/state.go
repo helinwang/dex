@@ -149,27 +149,7 @@ func (s *State) Account(addr consensus.Addr) *Account {
 	return &account
 }
 
-func (s *State) AccountOrders(acc *Account) []Order {
-	m := make(map[MarketSymbol]map[uint8]struct{})
-	for i, market := range acc.OrderMarkets {
-		if m[market] == nil {
-			m[market] = make(map[uint8]struct{})
-		}
-		m[market][acc.OrderShards[i]] = struct{}{}
-	}
-
-	var r []Order
-	for market, shards := range m {
-		for shard := range shards {
-			orders := s.GetOrders(market, shard)
-			r = append(r, orders...)
-		}
-	}
-
-	return r
-}
-
-func (s *State) AccountMarketOrders(acc *Account, market MarketSymbol) []Order {
+func (s *State) AccountOrders(acc *Account, market MarketSymbol) []Order {
 	m := make(map[MarketSymbol]map[uint8]struct{})
 	for i, market := range acc.OrderMarkets {
 		if m[market] == nil {
@@ -184,14 +164,14 @@ func (s *State) AccountMarketOrders(acc *Account, market MarketSymbol) []Order {
 
 	var r []Order
 	for shard := range m[market] {
-		orders := s.GetOrders(market, shard)
+		orders := s.Orders(market, shard)
 		r = append(r, orders...)
 	}
 
 	return r
 }
 
-func (s *State) GetOrders(market MarketSymbol, shard uint8) []Order {
+func (s *State) Orders(market MarketSymbol, shard uint8) []Order {
 	prefix := orderPath(append(market.Bytes(), shard))
 	prefix = encodePrefix(prefix)
 	iter := s.state.NodeIterator(prefix)

@@ -100,13 +100,19 @@ func (r *RPCServer) walletState(addr consensus.Addr, w *WalletState) error {
 		i++
 	}
 
-	var pos []UserOrder
-	for range acc.OrderMarkets {
-		// TODO
+	markets := make(map[MarketSymbol]struct{})
+	for _, market := range acc.OrderMarkets {
+		markets[market] = struct{}{}
+	}
+
+	for market := range markets {
+		orders := r.s.AccountOrders(acc, market)
+		for _, o := range orders {
+			w.Orders = append(w.Orders, UserOrder{Market: market, Order: o})
+		}
 	}
 
 	w.Balances = bs
-	w.Orders = pos
 	return nil
 }
 
