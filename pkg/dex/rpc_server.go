@@ -75,8 +75,8 @@ type UserBalance struct {
 }
 
 type WalletState struct {
-	Balances      []UserBalance
-	PendingOrders []UserOrder
+	Balances []UserBalance
+	Orders   []UserOrder
 }
 
 func (r *RPCServer) walletState(addr consensus.Addr, w *WalletState) error {
@@ -101,20 +101,12 @@ func (r *RPCServer) walletState(addr consensus.Addr, w *WalletState) error {
 	}
 
 	var pos []UserOrder
-	for _, m := range acc.PendingOrderMarkets {
-		po := r.s.AccountPendingOrders(m, addr)
-		if len(po) == 0 {
-			log.Error("failed to get pending order for wallet in given market", "account", addr, "market", m)
-			continue
-		}
-
-		for _, o := range po {
-			pos = append(pos, UserOrder{Market: m, Order: o.Order})
-		}
+	for range acc.OrderMarkets {
+		// TODO
 	}
 
 	w.Balances = bs
-	w.PendingOrders = pos
+	w.Orders = pos
 	return nil
 }
 

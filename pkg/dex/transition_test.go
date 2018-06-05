@@ -1,6 +1,7 @@
 package dex
 
 import (
+	"math"
 	"testing"
 
 	"github.com/dfinity/go-dfinity-crypto/bls"
@@ -142,12 +143,12 @@ func TestPlaceOrder(t *testing.T) {
 	sk, addr := createAccount(s, 100)
 	order := PlaceOrderTxn{
 		Order: Order{
-			SellSide: false,
-			Quant:    40,
-			Price:    1,
+			SellSide:     false,
+			QuantUnit:    40,
+			PriceUnit:    100000000,
+			ExpireHeight: 0,
 		},
-		Market:       MarketSymbol{Quote: 0, Base: 1},
-		ExpireHeight: 0,
+		Market: MarketSymbol{Quote: 0, Base: 1},
 	}
 	trans := s.Transition()
 	trans.Record(MakePlaceOrderTxn(sk, addr, order), 1)
@@ -164,4 +165,17 @@ func TestPlaceOrderAlreadyExpire(t *testing.T) {
 func TestPlaceOrderExpireLater(t *testing.T) {
 	// TODO
 	// TODO: also handle height reduced due to reorg.
+}
+
+func TestCalcBaseSellQuant(t *testing.T) {
+	baseDecimals := uint8(8)
+	baseDiv := uint64(math.Pow10(int(baseDecimals)))
+	quoteDecimals := uint8(6)
+	quoteDiv := uint64(math.Pow10(int(quoteDecimals)))
+	quoteQuant := quoteDiv * 100
+	priceDiv := uint64(math.Pow10(int(orderPriceDecimals)))
+	priceQuantUnit := uint64(0.1 * float64(priceDiv))
+	baseQuant := calcBaseSellQuant(quoteQuant, quoteDecimals, priceQuantUnit, orderPriceDecimals, baseDecimals)
+	assert.Equal(t, uint64(10), baseQuant/baseDiv)
+	assert.Equal(t, 40, int(calcBaseSellQuant(40, 8, 100000000, 8, 8)))
 }

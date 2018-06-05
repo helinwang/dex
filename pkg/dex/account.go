@@ -17,13 +17,13 @@ type Balance struct {
 	Pending   uint64
 }
 
-// TODO: record account has pending orders on which markets.
 type Account struct {
 	PK consensus.PK
 	// a vector of nonce that enables concurrent transactions.
-	NonceVec            []uint64
-	Balances            map[TokenID]*Balance
-	PendingOrderMarkets []MarketSymbol
+	NonceVec     []uint64
+	Balances     map[TokenID]*Balance
+	OrderMarkets []MarketSymbol
+	OrderShards  []uint8
 }
 
 func (a *Account) EncodeRLP(w io.Writer) error {
@@ -32,7 +32,12 @@ func (a *Account) EncodeRLP(w io.Writer) error {
 		return err
 	}
 
-	err = rlp.Encode(w, a.PendingOrderMarkets)
+	err = rlp.Encode(w, a.OrderMarkets)
+	if err != nil {
+		return err
+	}
+
+	err = rlp.Encode(w, a.OrderShards)
 	if err != nil {
 		return err
 	}
@@ -50,7 +55,8 @@ func (a *Account) EncodeRLP(w io.Writer) error {
 		i++
 	}
 
-	// sort keys so the encoded bytes are deterministic
+	// sort keys, the encoded bytes is deterministic given that
+	// the keys are sorted and unique.
 	sort.Slice(keys, func(i, j int) bool {
 		return keys[i] < keys[j]
 	})
@@ -105,12 +111,24 @@ func (a *Account) DecodeRLP(s *rlp.Stream) error {
 
 		ps[i] = p
 	}
-	b.PendingOrderMarkets = ps
+	b.OrderMarkets = ps
 
 	err = s.ListEnd()
 	if err != nil {
 		return err
 	}
+
+	// rlp encodes []uint8 as bytes rather than list
+	bs, err := s.Bytes()
+	if err != nil {
+		return err
+	}
+
+	shards := make([]uint8, len(bs))
+	for i := range shards {
+		shards[i] = bs[i]
+	}
+	b.OrderShards = shards
 
 	l, err = s.List()
 	if err != nil {

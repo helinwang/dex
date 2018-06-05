@@ -3,12 +3,17 @@ package dex
 import (
 	"bytes"
 	"encoding/binary"
+	"sort"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
 	"github.com/helinwang/dex/pkg/consensus"
 	log "github.com/helinwang/log15"
+)
+
+const (
+	numOrderShardPerMarket = 16
 )
 
 // MarketSymbol is the symbol of a trading pair.
@@ -42,29 +47,6 @@ func (m *MarketSymbol) Bytes() []byte {
 	return append(bufA, bufB...)
 }
 
-type PendingOrder struct {
-	Owner consensus.Addr
-	Order
-}
-
-func pendingOrdersToOrders(p []PendingOrder) []Order {
-	o := make([]Order, len(p))
-	for i := range o {
-		o[i] = p[i].Order
-	}
-	return o
-}
-
-func ordersToPendingOrders(owner consensus.Addr, o []Order) []PendingOrder {
-	p := make([]PendingOrder, len(o))
-	for i := range p {
-		p[i].Owner = owner
-		p[i].Order = o[i]
-	}
-
-	return p
-}
-
 func encodePrefix(str []byte) []byte {
 	l := len(str) * 2
 	var nibbles = make([]byte, l)
@@ -73,15 +55,6 @@ func encodePrefix(str []byte) []byte {
 		nibbles[i*2+1] = b % 16
 	}
 	return nibbles
-}
-
-func decodeAddr(b []byte) []byte {
-	n := len(b) / 2
-	r := make([]byte, n)
-	for i := 0; i < 2*n; i += 2 {
-		r[i/2] = b[i]*16 + b[i+1]
-	}
-	return r
 }
 
 // State is the state of the DEX.
@@ -119,17 +92,17 @@ func (s *State) Commit() {
 }
 
 var (
-	accountPrefix      = []byte("a")
-	pendingOrderPrefix = []byte("p")
-	tokenPrefix        = []byte("t")
+	accountPrefix = []byte("a")
+	orderPrefix   = []byte("p")
+	tokenPrefix   = []byte("t")
 )
 
 func accountAddrToPath(addr consensus.Addr) []byte {
 	return append(accountPrefix, addr[:]...)
 }
 
-func pendingOrderPath(path []byte) []byte {
-	return append(pendingOrderPrefix, path...)
+func orderPath(path []byte) []byte {
+	return append(orderPrefix, path...)
 }
 
 func tokenPath(tokenID TokenID) []byte {
@@ -161,13 +134,13 @@ func (s *State) UpdateAccount(acc *Account) {
 }
 
 func (s *State) Account(addr consensus.Addr) *Account {
-	acc, err := s.state.TryGet(accountAddrToPath(addr))
-	if err != nil || acc == nil {
+	acc := s.state.Get(accountAddrToPath(addr))
+	if acc == nil {
 		return nil
 	}
 
 	var account Account
-	err = rlp.DecodeBytes(acc, &account)
+	err := rlp.DecodeBytes(acc, &account)
 	if err != nil {
 		log.Error("decode account error", "err", err, "b", acc)
 		return nil
@@ -176,13 +149,53 @@ func (s *State) Account(addr consensus.Addr) *Account {
 	return &account
 }
 
-func (s *State) MarketPendingOrders(market MarketSymbol) []PendingOrder {
-	prefix := pendingOrderPath(market.Bytes())
+func (s *State) AccountOrders(acc *Account) []Order {
+	m := make(map[MarketSymbol]map[uint8]struct{})
+	for i, market := range acc.OrderMarkets {
+		if m[market] == nil {
+			m[market] = make(map[uint8]struct{})
+		}
+		m[market][acc.OrderShards[i]] = struct{}{}
+	}
+
+	var r []Order
+	for market, shards := range m {
+		for shard := range shards {
+			orders := s.GetOrders(market, shard)
+			r = append(r, orders...)
+		}
+	}
+
+	return r
+}
+
+func (s *State) AccountMarketOrders(acc *Account, market MarketSymbol) []Order {
+	m := make(map[MarketSymbol]map[uint8]struct{})
+	for i, market := range acc.OrderMarkets {
+		if m[market] == nil {
+			m[market] = make(map[uint8]struct{})
+		}
+		m[market][acc.OrderShards[i]] = struct{}{}
+	}
+
+	if len(m[market]) == 0 {
+		return nil
+	}
+
+	var r []Order
+	for shard := range m[market] {
+		orders := s.GetOrders(market, shard)
+		r = append(r, orders...)
+	}
+
+	return r
+}
+
+func (s *State) GetOrders(market MarketSymbol, shard uint8) []Order {
+	prefix := orderPath(append(market.Bytes(), shard))
 	prefix = encodePrefix(prefix)
-	emptyAddr := consensus.Addr{}
-	start := append(prefix, encodePrefix(emptyAddr[:])...)
-	iter := s.state.NodeIterator(start)
-	var p []PendingOrder
+	iter := s.state.NodeIterator(prefix)
+	var p []Order
 
 	hasNext := true
 	foundPrefix := false
@@ -214,82 +227,65 @@ func (s *State) MarketPendingOrders(market MarketSymbol) []PendingOrder {
 			continue
 		}
 
-		var owner consensus.Addr
-		copy(owner[:], decodeAddr(path[len(prefix):]))
-		po := ordersToPendingOrders(owner, o)
-		p = append(p, po...)
+		p = append(p, o...)
 	}
 
 	return p
 }
 
-func (s *State) AccountPendingOrders(market MarketSymbol, addr consensus.Addr) []PendingOrder {
-	path := append(market.Bytes(), addr[:]...)
-	b, err := s.state.TryGet(pendingOrderPath(path))
-	if err != nil {
-		return nil
-	}
-
-	if b == nil {
-		return nil
-	}
-
-	var o []Order
-	err = rlp.DecodeBytes(b, &o)
-	if err != nil {
-		log.Error("error decode pending orders", "err", err, "market", market)
-		return nil
-	}
-
-	p := ordersToPendingOrders(addr, o)
-	return p
-}
-
-func (s *State) UpdatePendingOrder(market MarketSymbol, add, remove *PendingOrder) {
-	if add == nil && remove == nil {
-		return
-	}
-
-	var addr consensus.Addr
-	if add != nil {
-		addr = add.Owner
-		if remove != nil && addr != remove.Owner {
-			panic("the pending order must be updated for the same addr")
-		}
-	} else {
-		addr = remove.Owner
-	}
-
-	p := s.AccountPendingOrders(market, addr)
-
-	if remove != nil {
-		removeIdx := -1
-		for i := range p {
-			if p[i] == *remove {
-				removeIdx = i
-				break
+func sortOrders(orders []Order) {
+	sort.Slice(orders, func(i, j int) bool {
+		if orders[i].SellSide != orders[j].SellSide {
+			// buy always smaller than sell
+			if !orders[i].SellSide {
+				return true
 			}
+
+			return false
 		}
 
-		if removeIdx < 0 {
-			log.Error("can not find the pending order to be removed", "remove", *remove)
-		} else {
-			p = append(p[:removeIdx], p[removeIdx+1:]...)
+		if orders[i].PriceUnit < orders[j].PriceUnit {
+			return true
+		} else if orders[i].PriceUnit > orders[j].PriceUnit {
+			return false
+		}
+
+		if orders[i].SellSide {
+			// i sell, j sell. Treat ealier order lower
+			// in the sell side of the order book (higher
+			// priority)
+			return orders[i].PlacedHeight < orders[j].PlacedHeight
+		}
+
+		// i buy, j buy. Treat earlier order higher in the buy
+		// side of the order book (higher priority).
+		return orders[i].PlacedHeight > orders[j].PlacedHeight
+
+	})
+}
+
+func (s *State) AddOrder(acc *Account, market MarketSymbol, shard uint8, order Order) {
+	order.Owner = acc.PK.Addr()
+	var orders []Order
+	path := append(market.Bytes(), shard)
+	b := s.state.Get(orderPath(path))
+	if b != nil {
+		err := rlp.DecodeBytes(b, &orders)
+		if err != nil {
+			panic(err)
 		}
 	}
 
-	if add != nil {
-		p = append(p, *add)
-	}
-
-	o := pendingOrdersToOrders(p)
-	b, err := rlp.EncodeToBytes(o)
+	orders = append(orders, order)
+	sortOrders(orders)
+	b, err := rlp.EncodeToBytes(orders)
 	if err != nil {
 		panic(err)
 	}
 
-	path := append(market.Bytes(), addr[:]...)
-	s.state.Update(pendingOrderPath(path), b)
+	acc.OrderMarkets = append(acc.OrderMarkets, market)
+	acc.OrderShards = append(acc.OrderShards, shard)
+	s.state.Update(orderPath(path), b)
 }
 
 func (s *State) IssueNativeToken(owner *consensus.PK) consensus.State {

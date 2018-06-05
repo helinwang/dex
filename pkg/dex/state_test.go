@@ -6,7 +6,6 @@ import (
 
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/trie"
-	"github.com/helinwang/dex/pkg/consensus"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -33,7 +32,9 @@ func TestMarketSymbolBytes(t *testing.T) {
 	assert.NotEqual(t, p0, p1)
 }
 
-func TestPendingOrders(t *testing.T) {
+func TestOrders(t *testing.T) {
+	var owner Account
+	addr := owner.PK.Addr()
 	s := NewState(trie.NewDatabase(ethdb.NewMemDatabase()))
 
 	// Add orders to some irrelevant markets to make sure the
@@ -43,38 +44,71 @@ func TestPendingOrders(t *testing.T) {
 	m2 := MarketSymbol{Quote: 0, Base: 2}
 	m3 := MarketSymbol{Quote: 1, Base: 1}
 	m4 := MarketSymbol{Quote: 1, Base: 0}
-	add := PendingOrder{
-		Owner: consensus.Addr{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20},
-		Order: Order{SellSide: true, Quant: 100, Price: 1},
+	add := Order{
+		Owner:     addr,
+		SellSide:  true,
+		QuantUnit: 100,
+		PriceUnit: 1,
 	}
-	s.UpdatePendingOrder(m1, &add, nil)
-	s.UpdatePendingOrder(m2, &add, nil)
-	s.UpdatePendingOrder(m3, &add, nil)
-	s.UpdatePendingOrder(m4, &add, nil)
-	assert.Equal(t, 1, len(s.MarketPendingOrders(m1)))
-	assert.Equal(t, 1, len(s.MarketPendingOrders(m2)))
-	assert.Equal(t, 1, len(s.MarketPendingOrders(m3)))
-	assert.Equal(t, 1, len(s.MarketPendingOrders(m4)))
+	s.AddOrder(&owner, m1, 1, add)
+	s.AddOrder(&owner, m2, 1, add)
+	s.AddOrder(&owner, m3, 1, add)
+	s.AddOrder(&owner, m4, 1, add)
+	assert.Equal(t, 1, len(s.GetOrders(m1, 1)))
+	assert.Equal(t, 1, len(s.GetOrders(m2, 1)))
+	assert.Equal(t, 1, len(s.GetOrders(m3, 1)))
+	assert.Equal(t, 1, len(s.GetOrders(m4, 1)))
 
 	m := MarketSymbol{Quote: 0, Base: 1}
-	assert.Equal(t, 0, len(s.MarketPendingOrders(m)))
-	add = PendingOrder{
-		Owner: consensus.Addr{1},
-		Order: Order{SellSide: true, Quant: 100, Price: 1},
+	assert.Equal(t, 0, len(s.GetOrders(m, 1)))
+	add = Order{
+		Owner:     addr,
+		SellSide:  true,
+		QuantUnit: 100,
+		PriceUnit: 1,
 	}
-	s.UpdatePendingOrder(m, &add, nil)
-	add1 := PendingOrder{
-		Owner: consensus.Addr{2},
-		Order: Order{SellSide: false, Quant: 50, Price: 1},
+	s.AddOrder(&owner, m, 1, add)
+	add1 := Order{
+		Owner:     addr,
+		SellSide:  false,
+		QuantUnit: 50,
+		PriceUnit: 0,
 	}
-	s.UpdatePendingOrder(m, &add1, nil)
-	assert.Equal(t, 2, len(s.MarketPendingOrders(m)))
+	s.AddOrder(&owner, m, 1, add1)
+	assert.Equal(t, 2, len(s.GetOrders(m, 1)))
 
-	p0 := s.AccountPendingOrders(m, add.Owner)
-	assert.Equal(t, 1, len(p0))
-	assert.Equal(t, add, p0[0])
+	p0 := s.AccountOrders(&owner)
+	assert.Equal(t, 6, len(p0))
+	p1 := s.AccountMarketOrders(&owner, m)
+	assert.Equal(t, 2, len(p1))
+}
 
-	p1 := s.AccountPendingOrders(m, add1.Owner)
-	assert.Equal(t, 1, len(p1))
-	assert.Equal(t, add1, p1[0])
+func TestSortOrders(t *testing.T) {
+	orders := []Order{
+		{PriceUnit: 300, PlacedHeight: 1},
+		{PriceUnit: 200},
+		{PriceUnit: 300},
+		{PriceUnit: 100},
+		{PriceUnit: 600},
+		{PriceUnit: 200, SellSide: true},
+		{PriceUnit: 400, SellSide: true},
+		{PriceUnit: 300, SellSide: true},
+		{PriceUnit: 500, SellSide: true},
+		{PriceUnit: 300, PlacedHeight: 1, SellSide: true},
+	}
+
+	sortOrders(orders)
+
+	assert.Equal(t, []Order{
+		{PriceUnit: 100},
+		{PriceUnit: 200},
+		{PriceUnit: 300, PlacedHeight: 1},
+		{PriceUnit: 300},
+		{PriceUnit: 600},
+		{PriceUnit: 200, SellSide: true},
+		{PriceUnit: 300, SellSide: true},
+		{PriceUnit: 300, PlacedHeight: 1, SellSide: true},
+		{PriceUnit: 400, SellSide: true},
+		{PriceUnit: 500, SellSide: true},
+	}, orders)
 }

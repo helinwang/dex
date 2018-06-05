@@ -3,6 +3,8 @@ package dex
 import (
 	"bytes"
 	"encoding/gob"
+	"math"
+	"math/big"
 	"strings"
 
 	"github.com/helinwang/dex/pkg/consensus"
@@ -44,7 +46,7 @@ func (t *Transition) Record(b []byte, round uint64) (valid, success bool) {
 			log.Warn("PlaceOrderTxn decode failed", "err", err)
 			return
 		}
-		if !t.placeOrder(acc, txn) {
+		if !t.placeOrder(acc, txn, round) {
 			log.Warn("PlaceOrderTxn failed")
 			return
 		}
@@ -80,7 +82,26 @@ func (t *Transition) Record(b []byte, round uint64) (valid, success bool) {
 	return true, true
 }
 
-func (t *Transition) placeOrder(owner *Account, txn PlaceOrderTxn) bool {
+func calcBaseSellQuant(quoteQuantUnit uint64, quoteDecimals uint8, priceQuantUnit uint64, priceDecimals, baseDecimals uint8) uint64 {
+	var quantUnit big.Int
+	var quantDenominator big.Int
+	var priceU big.Int
+	var priceDenominator big.Int
+	var baseDenominator big.Int
+	quantUnit.SetUint64(quoteQuantUnit)
+	quantDenominator.SetUint64(uint64(math.Pow10(int(quoteDecimals))))
+	priceU.SetUint64(priceQuantUnit)
+	priceDenominator.SetUint64(uint64(math.Pow10(int(orderPriceDecimals))))
+	baseDenominator.SetUint64(uint64(math.Pow10(int(baseDecimals))))
+	var result big.Int
+	result.Mul(&quantUnit, &priceU)
+	result.Mul(&result, &baseDenominator)
+	result.Div(&result, &quantDenominator)
+	result.Div(&result, &priceDenominator)
+	return result.Uint64()
+}
+
+func (t *Transition) placeOrder(owner *Account, txn PlaceOrderTxn, round uint64) bool {
 	// TODO: check if fee is sufficient
 	baseInfo := t.state.tokenCache.Info(txn.Market.Base)
 	if baseInfo == nil {
@@ -94,13 +115,13 @@ func (t *Transition) placeOrder(owner *Account, txn PlaceOrderTxn) bool {
 		return false
 	}
 
-	var sellQuant uint64
+	var sellQuantUnit uint64
 	var sell TokenID
 	if txn.SellSide {
-		sellQuant = txn.Quant
+		sellQuantUnit = txn.QuantUnit
 		sell = txn.Market.Base
 	} else {
-		sellQuant = uint64(float64(txn.Quant) * txn.Price)
+		sellQuantUnit = calcBaseSellQuant(txn.QuantUnit, quoteInfo.Decimals, txn.PriceUnit, orderPriceDecimals, baseInfo.Decimals)
 		sell = txn.Market.Quote
 	}
 
@@ -110,19 +131,19 @@ func (t *Transition) placeOrder(owner *Account, txn PlaceOrderTxn) bool {
 		return false
 	}
 
-	if sb.Available <= sellQuant {
-		log.Warn("insufficient quant to sell", "token", sell, "quant", sellQuant)
+	if sellQuantUnit == 0 {
+		log.Warn("sell quant too small")
+	}
+
+	if sb.Available <= sellQuantUnit {
+		log.Warn("insufficient quant to sell", "token", sell, "quant unit", sellQuantUnit)
 		return false
 	}
 
-	owner.Balances[sell].Available -= sellQuant
-	owner.Balances[sell].Pending += sellQuant
+	owner.Balances[sell].Available -= sellQuantUnit
+	owner.Balances[sell].Pending += sellQuantUnit
+	t.state.AddOrder(owner, txn.Market, uint8(round%numOrderShardPerMarket), txn.Order)
 	t.state.UpdateAccount(owner)
-	add := PendingOrder{
-		Owner: owner.PK.Addr(),
-		Order: Order{},
-	}
-	t.state.UpdatePendingOrder(txn.Market, &add, nil)
 	return true
 }
 

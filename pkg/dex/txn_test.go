@@ -4,14 +4,18 @@ import (
 	"testing"
 
 	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/helinwang/dex/pkg/consensus"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestOrderEncodeDecode(t *testing.T) {
 	o := Order{
-		SellSide: true,
-		Price:    2,
-		Quant:    1000,
+		Owner:        consensus.Addr{1, 2, 3},
+		SellSide:     true,
+		QuantUnit:    1000000000,
+		PriceUnit:    20000000,
+		PlacedHeight: 1000,
+		ExpireHeight: 1001,
 	}
 	b, err := rlp.EncodeToBytes(&o)
 	if err != nil {

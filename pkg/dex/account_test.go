@@ -16,12 +16,13 @@ func TestAccountEncodeDecode(t *testing.T) {
 			0: &Balance{Available: 100, Pending: 20},
 			5: &Balance{Available: 1<<64 - 1, Pending: 1},
 		},
-		PendingOrderMarkets: []MarketSymbol{
+		OrderMarkets: []MarketSymbol{
 			{Quote: 0, Base: 1},
 			{Quote: 1, Base: 2},
 			{Quote: 2, Base: 3},
 			{Quote: 4, Base: 5},
 		},
+		OrderShards: []uint8{0, 1, 2, 3},
 	}
 
 	b, err := rlp.EncodeToBytes(&a)
