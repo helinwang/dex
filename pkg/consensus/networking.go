@@ -192,10 +192,14 @@ func (n *Networking) RequestBlockProposal(ctx context.Context, p Peer, hash Hash
 	}
 }
 
-func (n *Networking) RequestTrades(ctx context.Context, p Peer, hash Hash) ([]byte, error) {
+func (n *Networking) RequestTrades(ctx context.Context, p Peer, hash Hash) (*TrieBlob, error) {
+	if hash == ZeroHash {
+		return &TrieBlob{}, nil
+	}
+
 	v, ok := n.tradesCache.Get(hash)
 	if ok {
-		return v.([]byte), nil
+		return v.(*TrieBlob), nil
 	}
 
 	return nil, nil
@@ -432,6 +436,10 @@ func (n *Networking) recvBlockProposal(p Peer, bp *BlockProposal) {
 	}
 
 	go n.BroadcastItem(ItemID{T: BlockProposalItem, Hash: bp.Hash(), ItemRound: bp.Round, Ref: bp.PrevBlock})
+}
+
+func (n *Networking) recvTrades(blob *TrieBlob) {
+	log.Info("recv trades", "root", blob.Root)
 }
 
 func (n *Networking) recvNtShare(s *NtShare) {

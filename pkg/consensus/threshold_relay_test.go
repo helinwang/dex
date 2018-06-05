@@ -220,6 +220,10 @@ func (e *emptyTransition) StateHash() Hash {
 	return Hash{}
 }
 
-func (e *emptyTransition) ApplyTrades([]byte) error {
+func (e *emptyTransition) MatchOrders() *TrieBlob {
+	return nil
+}
+
+func (e *emptyTransition) ApplyTrades(t *TrieBlob) error {
 	return nil
 }

@@ -15,13 +15,14 @@ type Transition interface {
 	// applying the transition.
 	StateHash() Hash
 
-	ApplyTrades([]byte) error
+	MatchOrders() *TrieBlob
+
+	ApplyTrades(*TrieBlob) error
 }
 
 // State is the blockchain state.
 type State interface {
 	Hash() Hash
-	MatchOrders() Hash
 	Transition() Transition
 }
 

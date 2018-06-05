@@ -306,10 +306,6 @@ func (s *State) Hash() consensus.Hash {
 	return consensus.Hash(s.state.Hash())
 }
 
-func (s *State) MatchOrders() consensus.Hash {
-	return consensus.Hash{}
-}
-
 func (s *State) Transition() consensus.Transition {
 	root, err := s.state.Commit(nil)
 	if err != nil {

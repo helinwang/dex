@@ -45,7 +45,7 @@ func newBlockSyncer(v *validator, chain *Chain, requester requester) *blockSynce
 type requester interface {
 	RequestBlock(ctx context.Context, p Peer, hash Hash) (*Block, error)
 	RequestBlockProposal(ctx context.Context, p Peer, hash Hash) (*BlockProposal, error)
-	RequestTrades(ctx context.Context, p Peer, hash Hash) ([]byte, error)
+	RequestTrades(ctx context.Context, p Peer, hash Hash) (*TrieBlob, error)
 }
 
 var errCanNotConnectToChain = errors.New("can not connect to chain")
@@ -59,7 +59,7 @@ func (s *blockSyncer) SyncBlock(p Peer, hash Hash, round uint64) error {
 }
 
 type tradesResult struct {
-	T []byte
+	T *TrieBlob
 	E error
 }
 

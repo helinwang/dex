@@ -468,7 +468,7 @@ func (c *Chain) blockToState(h Hash) State {
 	return c.unFinalizedState[h]
 }
 
-func (c *Chain) addBlock(b *Block, bp *BlockProposal, s State, trades []byte, weight float64) error {
+func (c *Chain) addBlock(b *Block, bp *BlockProposal, s State, trades *TrieBlob, weight float64) error {
 	// TODO: remove txn from the txn pool
 	log.Info("addBlock called", "hash", b.Hash(), "weight", weight)
 	c.mu.Lock()

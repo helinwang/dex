@@ -10,7 +10,7 @@ const (
 	hashBytes = 32
 )
 
-// TODO: change []byte to PK type for PKs
+var ZeroHash = Hash{}
 
 // Hash is the hash of a piece of data.
 type Hash [hashBytes]byte

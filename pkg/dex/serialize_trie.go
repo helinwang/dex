@@ -1,35 +1,15 @@
 package dex
 
 import (
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/trie"
+	"github.com/helinwang/dex/pkg/consensus"
 )
 
 type getter interface {
 	Get(key []byte) ([]byte, error)
 }
 
-type putter interface {
-	Put(key, val []byte) error
-}
-
-// trieBlob is a serizlied trie.
-type trieBlob struct {
-	Root common.Hash
-	Data map[common.Hash][]byte
-}
-
-func (b *trieBlob) Fill(p putter) error {
-	for k, v := range b.Data {
-		err := p.Put(k[:], v)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func serializeTrie(t *trie.Trie, db *trie.Database, getter getter) (blob *trieBlob, err error) {
+func serializeTrie(t *trie.Trie, db *trie.Database, getter getter) (blob *consensus.TrieBlob, err error) {
 	root, err := t.Commit(nil)
 	if err != nil {
 		return
@@ -46,7 +26,7 @@ func serializeTrie(t *trie.Trie, db *trie.Database, getter getter) (blob *trieBl
 		return
 	}
 
-	blob = &trieBlob{Data: make(map[common.Hash][]byte)}
+	blob = &consensus.TrieBlob{Data: make(map[consensus.Hash][]byte)}
 	hasNext := true
 	for ; hasNext; hasNext = iter.Next(true) {
 		if iter.Error() != nil {
@@ -54,7 +34,7 @@ func serializeTrie(t *trie.Trie, db *trie.Database, getter getter) (blob *trieBl
 			return
 		}
 
-		h := iter.Hash()
+		h := consensus.Hash(iter.Hash())
 		var d []byte
 		d, err := getter.Get(h[:])
 		if err != nil {
@@ -64,6 +44,6 @@ func serializeTrie(t *trie.Trie, db *trie.Database, getter getter) (blob *trieBl
 		blob.Data[h] = d
 	}
 
-	blob.Root = root
+	blob.Root = consensus.Hash(root)
 	return
 }

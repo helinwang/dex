@@ -20,10 +20,6 @@ func newTransition(s *State) *Transition {
 	return &Transition{state: s}
 }
 
-func (t *Transition) ApplyTrades(b []byte) error {
-	return nil
-}
-
 // Record records a transition to the state transition.
 func (t *Transition) Record(b []byte) (valid, success bool) {
 	txn, acc, ready, valid := validateSigAndNonce(t.state, b)
@@ -205,6 +201,17 @@ func (t *Transition) Txns() [][]byte {
 
 func (t *Transition) StateHash() consensus.Hash {
 	return t.state.Hash()
+}
+
+func (s *Transition) MatchOrders() *consensus.TrieBlob {
+	return &consensus.TrieBlob{}
+}
+
+func (t *Transition) ApplyTrades(blob *consensus.TrieBlob) error {
+	if blob.Root == consensus.ZeroHash {
+		return nil
+	}
+	return nil
 }
 
 // Commit commits the transition to the state root.

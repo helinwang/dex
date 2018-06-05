@@ -28,7 +28,7 @@ func NewNotary(owner Addr, sk, share bls.SecretKey, chain *Chain) *Notary {
 // notarized block of the current round is received.
 // TODO: fix lint
 // nolint: gocyclo
-func (n *Notary) Notarize(ctx, cancel context.Context, bCh chan *BlockProposal, onNotarize func(*NtShare)) {
+func (n *Notary) Notarize(ctx, cancel context.Context, bCh chan *BlockProposal, onNotarize func(*NtShare, *TrieBlob)) {
 	var bestRankBPs []*BlockProposal
 	var bestRank int
 	for {
@@ -36,9 +36,9 @@ func (n *Notary) Notarize(ctx, cancel context.Context, bCh chan *BlockProposal, 
 		case <-ctx.Done():
 
 			for _, bp := range bestRankBPs {
-				s := n.notarize(bp)
+				s, t := n.notarize(bp)
 				if s != nil {
-					onNotarize(s)
+					onNotarize(s, t)
 				}
 			}
 
@@ -55,9 +55,9 @@ func (n *Notary) Notarize(ctx, cancel context.Context, bCh chan *BlockProposal, 
 
 					if rank <= bestRank {
 						bestRank = rank
-						s := n.notarize(bp)
+						s, t := n.notarize(bp)
 						if s != nil {
-							onNotarize(s)
+							onNotarize(s, t)
 						}
 					}
 				}
@@ -87,7 +87,7 @@ func (n *Notary) Notarize(ctx, cancel context.Context, bCh chan *BlockProposal, 
 	}
 }
 
-func (n *Notary) notarize(bp *BlockProposal) *NtShare {
+func (n *Notary) notarize(bp *BlockProposal) (*NtShare, *TrieBlob) {
 	nts := &NtShare{
 		Round: bp.Round,
 		BP:    bp.Hash(),
@@ -108,8 +108,7 @@ func (n *Notary) notarize(bp *BlockProposal) *NtShare {
 		panic("TODO: " + err.Error())
 	}
 
-	state = trans.Commit()
-	trades := state.MatchOrders()
+	trades := trans.MatchOrders()
 
 	blk := &Block{
 		Owner:         bp.Owner,
@@ -118,12 +117,12 @@ func (n *Notary) notarize(bp *BlockProposal) *NtShare {
 		PrevBlock:     bp.PrevBlock,
 		SysTxns:       bp.SysTxns,
 		StateRoot:     trans.StateHash(),
-		Trades:        trades,
+		Trades:        trades.Root,
 	}
 
-	nts.Trades = trades
+	nts.Trades = trades.Root
 	nts.SigShare = n.share.Sign(string(blk.Encode(false))).Serialize()
 	nts.Owner = n.owner
 	nts.OwnerSig = n.sk.Sign(string(nts.Encode(false))).Serialize()
-	return nts
+	return nts, trades
 }

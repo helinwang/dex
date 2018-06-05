@@ -22,7 +22,7 @@ func serializeAndDeserialize(t *trie.Trie, db *trie.Database, getter getter) *tr
 		panic(err)
 	}
 
-	trie1, err := trie.New(b.Root, trie.NewDatabase(memDB))
+	trie1, err := trie.New(common.Hash(b.Root), trie.NewDatabase(memDB))
 	if err != nil {
 		panic(err)
 	}
