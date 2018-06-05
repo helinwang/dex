@@ -11,11 +11,17 @@ const (
 	addrBytes = 20
 )
 
+var ZeroAddr = Addr{}
+
 // Addr is the address of an account.
 type Addr [addrBytes]byte
 
 func (a Addr) String() string {
 	return fmt.Sprintf("%x", a[:2])
+}
+
+func (a Addr) Hex() string {
+	return fmt.Sprintf("%x", a[:])
 }
 
 // ID returns the ID associated with this address.

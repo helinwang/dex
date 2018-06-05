@@ -68,9 +68,19 @@ func printAccount(c *cli.Context) error {
 		addr = pk.Addr()
 	} else {
 		var err error
-		addr, err = parseAddr(accountAddr)
-		if err != nil {
-			return err
+		if len(accountAddr) == len(consensus.ZeroAddr.Hex()) {
+			addr, err = parseAddr(accountAddr)
+			if err != nil {
+				return err
+			}
+		} else {
+			pkStr, err := base64.StdEncoding.DecodeString(accountAddr)
+			if err != nil {
+				return err
+			}
+
+			pk := consensus.PK(pkStr)
+			addr = pk.Addr()
 		}
 	}
 
@@ -319,24 +329,23 @@ func main() {
 	app.Commands = []cli.Command{
 		{
 			Name:   "token",
-			Usage:  "print token information",
+			Usage:  "Print the information of every token: ./wallet token",
 			Action: listToken,
 		},
 		{
 			Name:   "issue_token",
-			Usage:  "issue new token",
+			Usage:  "Issue new token: ./wallet issue_token SYMBOL TOTAL_SUPPLY DECIMALS",
 			Action: issueToken,
 		},
 		{
-			Name:   "account",
-			Usage:  "print account information",
-			Action: printAccount,
+			Name:   "send",
+			Usage:  "Send native coin or token to recipient's public key: ./wallet send PUB_KEY SYMBOL AMOUNT (BNB is the native token symbol, PUB_KEY is the recipient's base64 encoded public key)",
+			Action: sendToken,
 		},
 		{
-			Name:        "send",
-			Usage:       "send PUB_KEY SYMBOL AMOUNT (BNB is the native token symbol, PUB_KEY is the recipient's base64 encoded public key)",
-			Description: "send native coin or token to recipient",
-			Action:      sendToken,
+			Name:   "account",
+			Usage:  "Print account information: ./wallet account PUB_KEY (or ADDRESS), or, ./wallet -c NODE_CREDENTIAL_FILE_PATH account",
+			Action: printAccount,
 		},
 	}
 
