@@ -149,7 +149,7 @@ func TestPlaceOrder(t *testing.T) {
 		Market:       MarketSymbol{Quote: 0, Base: 1},
 	}
 	trans := s.Transition()
-	trans.Record(MakePlaceOrderTxn(sk, order), 1)
+	trans.Record(MakePlaceOrderTxn(sk, order, 0, 0), 1)
 	s = trans.Commit().(*State)
 
 	acc := s.Account(addr)

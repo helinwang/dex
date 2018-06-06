@@ -14,6 +14,7 @@ import (
 	"github.com/helinwang/dex/pkg/consensus"
 	"github.com/helinwang/dex/pkg/dex"
 	"github.com/helinwang/dex/pkg/network"
+	"github.com/helinwang/log15"
 )
 
 func decodeFromFile(path string, v interface{}) {
@@ -43,6 +44,7 @@ func createNode(c consensus.NodeCredentials, genesis *consensus.Block, nativeCoi
 }
 
 func main() {
+	log15.Root().SetHandler(log15.LvlFilterHandler(log15.LvlWarn, log15.StdoutHandler))
 	err := bls.Init(int(bls.CurveFp254BNb))
 	if err != nil {
 		panic(err)

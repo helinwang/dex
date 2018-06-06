@@ -105,8 +105,8 @@ func printAccount(c *cli.Context) error {
 		return err
 	}
 
-	fmt.Printf("Addr: %x\n", addr[:])
-	fmt.Println("Balances:")
+	fmt.Printf("Addr:\n%x\n", addr[:])
+	fmt.Println("\nBalances:")
 	tw := tabwriter.NewWriter(os.Stdout, 0, 0, 1, ' ', tabwriter.AlignRight|tabwriter.Debug)
 	_, err = fmt.Fprintln(tw, "\tSymbol\tAvailable\tPending\t")
 	if err != nil {
@@ -119,6 +119,31 @@ func printAccount(c *cli.Context) error {
 		available := quantToStr(b.Available, decimals)
 		pending := quantToStr(b.Pending, decimals)
 		_, err = fmt.Fprintf(tw, "\t%s\t%s\t%s\t\n", symbol, available, pending)
+		if err != nil {
+			return err
+		}
+	}
+	err = tw.Flush()
+	if err != nil {
+		return err
+	}
+
+	fmt.Println("\nOrders:")
+	tw = tabwriter.NewWriter(os.Stdout, 0, 0, 1, ' ', tabwriter.AlignRight|tabwriter.Debug)
+	_, err = fmt.Fprintln(tw, "\tID\tSymbol\tSide\tPrice\tAmount\tExpiry Block Height\t")
+	if err != nil {
+		return err
+	}
+	for _, order := range w.Orders {
+		side := "buy"
+		if order.SellSide {
+			side = "sell"
+		}
+
+		market := idToToken[order.Market.Base].Symbol + "_" + idToToken[order.Market.Quote].Symbol
+		price := quantToStr(order.PriceUnit, dex.OrderPriceDecimals)
+		quant := quantToStr(order.QuantUnit, int(idToToken[order.Market.Base].Decimals))
+		_, err = fmt.Fprintf(tw, "\t%x\t%s\t%s\t%s\t%s\t%d\n", []byte{1, 2, 3}, market, side, price, quant, order.ExpireHeight)
 		if err != nil {
 			return err
 		}
@@ -400,25 +425,33 @@ func placeOrder(c *cli.Context) error {
 		return err
 	}
 
-	var baseToken, quoteToken *dex.Token
+	var baseFound, quoteFound bool
+	var baseToken, quoteToken dex.Token
 	for _, t := range tokens {
 		switch strings.ToLower(string(t.Symbol)) {
 		case base:
-			baseToken = &t
+			baseFound = true
+			baseToken = t
 		case quote:
-			quoteToken = &t
+			quoteFound = true
+			quoteToken = t
 		}
 	}
 
-	if baseToken == nil {
+	if !baseFound {
 		return fmt.Errorf("token %s in the market symbol %s is not found in the chain", base, symbol)
-	} else if quoteToken == nil {
+	} else if !quoteFound {
 		return fmt.Errorf("token %s in the market symbol %s is not found in the chain", quote, symbol)
 	}
 
 	market := dex.MarketSymbol{Base: baseToken.ID, Quote: quoteToken.ID}
 	quantUnit := uint64(amount * math.Pow10(int(baseToken.Decimals)))
 	priceUnit := uint64(price * math.Pow10(int(dex.OrderPriceDecimals)))
+
+	idx, val, err := nonce(client, credential.SK.MustPK().Addr())
+	if err != nil {
+		return err
+	}
 
 	state, err := chainStatus(client)
 	if err != nil {
@@ -434,7 +467,7 @@ func placeOrder(c *cli.Context) error {
 		ExpireHeight: expireRound,
 		Market:       market,
 	}
-	txn := dex.MakePlaceOrderTxn(credential.SK, placeOrderTxn)
+	txn := dex.MakePlaceOrderTxn(credential.SK, placeOrderTxn, idx, val)
 
 	err = client.Call("WalletService.SendTxn", txn, nil)
 	if err != nil {

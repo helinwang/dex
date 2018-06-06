@@ -16,7 +16,7 @@ type TxnSender interface {
 	SendTxn([]byte)
 }
 
-type ChainInfo interface {
+type ChainStater interface {
 	ChainStatus() consensus.ChainStatus
 	Graphviz(int) string
 }
@@ -25,7 +25,7 @@ type RPCServer struct {
 	sender TxnSender
 
 	mu    sync.Mutex
-	chain ChainInfo
+	chain ChainStater
 	s     *State
 }
 
@@ -40,7 +40,7 @@ func (r *RPCServer) SetSender(sender TxnSender) {
 }
 
 // SetStater sets the chain stater, it must be called before Start.
-func (r *RPCServer) SetStater(c ChainInfo) {
+func (r *RPCServer) SetStater(c ChainStater) {
 	r.chain = c
 }
 

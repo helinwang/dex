@@ -149,26 +149,21 @@ func MakeSendTokenTxn(from consensus.SK, to consensus.PK, tokenID TokenID, quant
 		Data:       gobEncode(send),
 	}
 
-	sk, err := from.Get()
-	if err != nil {
-		panic(err)
-	}
-
-	txn.Sig = sk.Sign(string(txn.Encode(false))).Serialize()
+	key := from.MustGet()
+	txn.Sig = key.Sign(string(txn.Encode(false))).Serialize()
 	return txn.Encode(true)
 }
 
-func MakePlaceOrderTxn(sk consensus.SK, t PlaceOrderTxn) []byte {
+func MakePlaceOrderTxn(sk consensus.SK, t PlaceOrderTxn, nonceIdx uint8, nonceValue uint64) []byte {
 	txn := Txn{
-		T:     PlaceOrder,
-		Owner: sk.MustPK().Addr(),
-		Data:  gobEncode(t),
-	}
-	key, err := sk.Get()
-	if err != nil {
-		panic(err)
+		T:          PlaceOrder,
+		Owner:      sk.MustPK().Addr(),
+		NonceIdx:   nonceIdx,
+		NonceValue: nonceValue,
+		Data:       gobEncode(t),
 	}
 
+	key := sk.MustGet()
 	txn.Sig = key.Sign(string(txn.Encode(false))).Serialize()
 	return txn.Encode(true)
 }
