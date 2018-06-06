@@ -28,13 +28,13 @@ type notarized struct {
 	BP Hash
 }
 
-// ChainState is the chain consensus state.
-type ChainState struct {
+// ChainStatus is the chain consensus state.
+type ChainStatus struct {
 	Round           uint64
 	RandBeaconDepth uint64
 }
 
-func (s *ChainState) InSync() bool {
+func (s *ChainStatus) InSync() bool {
 	return s.RandBeaconDepth >= s.Round && s.RandBeaconDepth <= s.Round+1
 }
 
@@ -110,11 +110,11 @@ func (c *Chain) Genesis() Hash {
 	return c.Finalized[0]
 }
 
-func (c *Chain) ChainState() ChainState {
+func (c *Chain) ChainStatus() ChainStatus {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	s := ChainState{}
+	s := ChainStatus{}
 	s.Round = c.round()
 	s.RandBeaconDepth = c.RandomBeacon.Depth()
 	return s

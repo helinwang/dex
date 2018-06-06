@@ -17,7 +17,7 @@ type TxnSender interface {
 }
 
 type ChainStater interface {
-	ChainState() consensus.ChainState
+	ChainStatus() consensus.ChainStatus
 	Graphviz(int) string
 }
 
@@ -142,7 +142,7 @@ func (r *RPCServer) tokens(_ int, t *TokenState) error {
 }
 
 func (r *RPCServer) sendTxn(t []byte, _ *int) error {
-	state := r.chain.ChainState()
+	state := r.chain.ChainStatus()
 	if !state.InSync() {
 		return fmt.Errorf("for your safety, please wait until the chain is synchronized before making any transaction. Current round: %d, random beacon depth: %d", state.Round, state.RandBeaconDepth)
 	}
@@ -156,7 +156,7 @@ type NonceSlot struct {
 }
 
 func (r *RPCServer) round(round *uint64) error {
-	state := r.chain.ChainState()
+	state := r.chain.ChainStatus()
 	*round = state.Round
 	return nil
 }
@@ -167,8 +167,8 @@ func (r *RPCServer) graphviz(str *string) error {
 	return nil
 }
 
-func (r *RPCServer) chainState(state *consensus.ChainState) error {
-	*state = r.chain.ChainState()
+func (r *RPCServer) chainState(state *consensus.ChainStatus) error {
+	*state = r.chain.ChainStatus()
 	return nil
 }
 
@@ -220,7 +220,7 @@ func (s *WalletService) Round(_ int, r *uint64) error {
 	return s.s.round(r)
 }
 
-func (s *WalletService) ChainState(_ int, state *consensus.ChainState) error {
+func (s *WalletService) ChainStatus(_ int, state *consensus.ChainStatus) error {
 	return s.s.chainState(state)
 }
 

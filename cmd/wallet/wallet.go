@@ -240,13 +240,13 @@ func listToken(c *cli.Context) error {
 	return nil
 }
 
-func printState(c *cli.Context) error {
+func printStatus(c *cli.Context) error {
 	client, err := rpc.DialHTTP("tcp", rpcAddr)
 	if err != nil {
 		return err
 	}
 
-	state, err := chainState(client)
+	state, err := chainStatus(client)
 	if err != nil {
 		return err
 	}
@@ -324,9 +324,9 @@ func issueToken(c *cli.Context) error {
 	return nil
 }
 
-func chainState(client *rpc.Client) (consensus.ChainState, error) {
-	var state consensus.ChainState
-	err := client.Call("WalletService.ChainState", 0, &state)
+func chainStatus(client *rpc.Client) (consensus.ChainStatus, error) {
+	var state consensus.ChainStatus
+	err := client.Call("WalletService.ChainStatus", 0, &state)
 	if err != nil {
 		return state, err
 	}
@@ -420,7 +420,7 @@ func placeOrder(c *cli.Context) error {
 	quantUnit := uint64(amount * math.Pow10(int(baseToken.Decimals)))
 	priceUnit := uint64(price * math.Pow10(int(dex.OrderPriceDecimals)))
 
-	state, err := chainState(client)
+	state, err := chainStatus(client)
 	if err != nil {
 		return err
 	}
@@ -470,9 +470,9 @@ func main() {
 
 	app.Commands = []cli.Command{
 		{
-			Name:   "state",
-			Usage:  "Print the chain state: ./wallet state",
-			Action: printState,
+			Name:   "status",
+			Usage:  "Print the chain status: ./wallet status",
+			Action: printStatus,
 		},
 		{
 			Name:   "graphviz",
