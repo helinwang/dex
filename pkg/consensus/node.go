@@ -70,6 +70,12 @@ func NewNode(chain *Chain, sk SK, net *Networking, cfg Config) *Node {
 	return n
 }
 
+// Chain returns node's block chain.
+func (n *Node) Chain() *Chain {
+	return n.chain
+}
+
+// Start starts the p2p network service.
 func (n *Node) Start(myAddr, seedAddr string) {
 	n.net.Start(myAddr, seedAddr)
 }

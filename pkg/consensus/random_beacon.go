@@ -160,10 +160,13 @@ func (r *RandomBeacon) depth() uint64 {
 
 // Depth returns the depth of the random beacon.
 //
-// This round will be always greater or equal to Chain.Round():
-// - greater: when the node is synchronizing. It will synchronize the
-// random beacon first, and then synchronize the chain's blocks.
-// - equal: when the node is synchronized.
+// Comparison of depth with Chain.Round():
+// - depth >= Chain.Round() + 2: when the node is synchronizing. It
+// will synchronize the random beacon first, and then synchronize the
+// chain's blocks.
+// - depth >= Chain.Round() && depth <= Chain.Round() + 1: when the
+// node is synchronized.
+// - depth < Chain.Round(): random beacon is synchronizing.
 func (r *RandomBeacon) Depth() uint64 {
 	r.mu.Lock()
 	defer r.mu.Unlock()

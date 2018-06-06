@@ -9,17 +9,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestMarketSymbolValid(t *testing.T) {
-	m := MarketSymbol{Quote: 0, Base: 1}
-	assert.True(t, m.Valid())
-
-	m = MarketSymbol{Quote: 0, Base: 0}
-	assert.False(t, m.Valid())
-
-	m = MarketSymbol{Quote: 1, Base: 0}
-	assert.False(t, m.Valid())
-}
-
 func TestMarketSymbolBytes(t *testing.T) {
 	m0 := MarketSymbol{Quote: (1 << 64) - 2, Base: (1 << 64) - 1}
 	m1 := MarketSymbol{Quote: (1 << 64) - 2, Base: (1 << 64) - 3}

@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	orderPriceDecimals = 8
+	OrderPriceDecimals = 8
 )
 
 type TxnType uint8
@@ -112,8 +112,17 @@ func (b *Txn) Hash() consensus.Hash {
 }
 
 type PlaceOrderTxn struct {
-	Order
-	Market MarketSymbol
+	SellSide bool
+	// quant step size is the decimals of the token, specific when
+	// the token is issued, e.g., quant = QuantUnit * 10^-(decimals)
+	QuantUnit uint64
+	// price tick size is 10^-8, e.g,. price = PriceUnit * 10^-8
+	PriceUnit uint64
+	// the height that the order is placed
+	PlacedHeight uint64
+	// the order is expired when ExpireHeight >= block height
+	ExpireHeight uint64
+	Market       MarketSymbol
 }
 
 type CancelOrderTxn struct {
@@ -149,10 +158,10 @@ func MakeSendTokenTxn(from consensus.SK, to consensus.PK, tokenID TokenID, quant
 	return txn.Encode(true)
 }
 
-func MakePlaceOrderTxn(sk consensus.SK, addr consensus.Addr, t PlaceOrderTxn) []byte {
+func MakePlaceOrderTxn(sk consensus.SK, t PlaceOrderTxn) []byte {
 	txn := Txn{
 		T:     PlaceOrder,
-		Owner: addr,
+		Owner: sk.MustPK().Addr(),
 		Data:  gobEncode(t),
 	}
 	key, err := sk.Get()

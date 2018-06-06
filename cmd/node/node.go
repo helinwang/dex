@@ -83,6 +83,7 @@ func main() {
 	server := dex.NewRPCServer()
 	n := createNode(credentials, &genesis, consensus.PK(pk), server)
 	server.SetSender(n)
+	server.SetStater(n.Chain())
 	server.Start(*rpcAddr)
 	n.Start(*addr, *seedNode)
 	n.StartRound(1)

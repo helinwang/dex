@@ -23,16 +23,6 @@ type MarketSymbol struct {
 	Base  TokenID // the unit of the order's quantity
 }
 
-// Valid returns true if the market symbol is valid.
-//
-// Quote must be < Base for the symbol to be valid. This is to ensure
-// there is only one market symbol per tranding pair. E.g.,
-// MarketSymbol{Quote:1, Base: 2} is valid, MarketSymbol{Quote: 2,
-// Base: 1} is invalid.
-func (m *MarketSymbol) Valid() bool {
-	return m.Quote < m.Base
-}
-
 // Bytes returns the bytes representation of the market symbol.
 //
 // The bytes is used as a prefix of a path of a patricia tree, It will

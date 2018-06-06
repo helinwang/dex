@@ -91,7 +91,7 @@ func calcBaseSellQuant(quoteQuantUnit uint64, quoteDecimals uint8, priceQuantUni
 	quantUnit.SetUint64(quoteQuantUnit)
 	quantDenominator.SetUint64(uint64(math.Pow10(int(quoteDecimals))))
 	priceU.SetUint64(priceQuantUnit)
-	priceDenominator.SetUint64(uint64(math.Pow10(int(orderPriceDecimals))))
+	priceDenominator.SetUint64(uint64(math.Pow10(int(OrderPriceDecimals))))
 	baseDenominator.SetUint64(uint64(math.Pow10(int(baseDecimals))))
 	var result big.Int
 	result.Mul(&quantUnit, &priceU)
@@ -121,7 +121,7 @@ func (t *Transition) placeOrder(owner *Account, txn PlaceOrderTxn, round uint64)
 		sellQuantUnit = txn.QuantUnit
 		sell = txn.Market.Base
 	} else {
-		sellQuantUnit = calcBaseSellQuant(txn.QuantUnit, quoteInfo.Decimals, txn.PriceUnit, orderPriceDecimals, baseInfo.Decimals)
+		sellQuantUnit = calcBaseSellQuant(txn.QuantUnit, quoteInfo.Decimals, txn.PriceUnit, OrderPriceDecimals, baseInfo.Decimals)
 		sell = txn.Market.Quote
 	}
 
@@ -142,7 +142,15 @@ func (t *Transition) placeOrder(owner *Account, txn PlaceOrderTxn, round uint64)
 
 	owner.Balances[sell].Available -= sellQuantUnit
 	owner.Balances[sell].Pending += sellQuantUnit
-	t.state.AddOrder(owner, txn.Market, uint8(round%numOrderShardPerMarket), txn.Order)
+	order := Order{
+		Owner:        owner.PK.Addr(),
+		SellSide:     txn.SellSide,
+		QuantUnit:    txn.QuantUnit,
+		PriceUnit:    txn.PriceUnit,
+		PlacedHeight: txn.PlacedHeight,
+		ExpireHeight: txn.ExpireHeight,
+	}
+	t.state.AddOrder(owner, txn.Market, uint8(round%numOrderShardPerMarket), order)
 	t.state.UpdateAccount(owner)
 	return true
 }

@@ -145,7 +145,7 @@ func quantToStr(quant uint64, decimals int) string {
 func sendToken(c *cli.Context) error {
 	args := c.Args()
 	if len(args) < 3 {
-		return fmt.Errorf("send needs 3 arguments (received: %d), please check usage", len(args))
+		return fmt.Errorf("send needs 3 arguments (received: %d), please check usage using ./wallet -h", len(args))
 	}
 
 	credential, err := consensus.LoadCredential(credentialPath)
@@ -240,10 +240,32 @@ func listToken(c *cli.Context) error {
 	return nil
 }
 
+func printState(c *cli.Context) error {
+	client, err := rpc.DialHTTP("tcp", rpcAddr)
+	if err != nil {
+		return err
+	}
+
+	state, err := chainState(client)
+	if err != nil {
+		return err
+	}
+
+	var str string
+	if state.InSync() {
+		str = "In sync"
+	} else {
+		str = "Out of sync"
+	}
+
+	fmt.Printf("%s, round: %d\n", str, state.Round)
+	return nil
+}
+
 func issueToken(c *cli.Context) error {
 	args := c.Args()
 	if len(args) < 3 {
-		return fmt.Errorf("send needs 3 arguments (received: %d), please check usage", len(args))
+		return fmt.Errorf("send needs 3 arguments (received: %d), please check usage using ./wallet -h", len(args))
 	}
 
 	symbol := args[0]
@@ -302,6 +324,126 @@ func issueToken(c *cli.Context) error {
 	return nil
 }
 
+func chainState(client *rpc.Client) (consensus.ChainState, error) {
+	var state consensus.ChainState
+	err := client.Call("WalletService.ChainState", 0, &state)
+	if err != nil {
+		return state, err
+	}
+
+	return state, nil
+}
+
+func printGraphviz(c *cli.Context) error {
+	client, err := rpc.DialHTTP("tcp", rpcAddr)
+	if err != nil {
+		return err
+	}
+
+	var graph string
+	err = client.Call("WalletService.Graphviz", 0, &graph)
+	if err != nil {
+		return err
+	}
+
+	fmt.Println(graph)
+	return nil
+}
+
+func placeOrder(c *cli.Context) error {
+	args := c.Args()
+	if len(args) < 5 {
+		return fmt.Errorf("send needs 5 arguments (received: %d), please check usage using ./wallet -h", len(args))
+	}
+
+	credential, err := consensus.LoadCredential(credentialPath)
+	if err != nil {
+		return err
+	}
+
+	symbol := args[0]
+	pair := strings.Split(symbol, "_")
+	if len(pair) != 2 {
+		return fmt.Errorf("symbol not in correct format, expecting BASE_QUOTE (e.g., ETH_BTC), received: %s", symbol)
+	}
+	base := strings.ToLower(pair[0])
+	quote := strings.ToLower(pair[1])
+
+	side := strings.ToLower(args[1])
+	if side != "buy" && side != "sell" {
+		return fmt.Errorf("side must be buy or sell, received: %s", side)
+	}
+
+	sellSide := side == "sell"
+	price, err := strconv.ParseFloat(args[2], 64)
+	if err != nil {
+		return fmt.Errorf("parse price error: %v", err)
+	}
+
+	amount, err := strconv.ParseFloat(args[3], 64)
+	if err != nil {
+		return fmt.Errorf("parse amount error: %v", err)
+	}
+
+	expire, err := strconv.Atoi(args[4])
+	if err != nil {
+		return fmt.Errorf("parse expiry time error: %v", err)
+	}
+
+	client, err := rpc.DialHTTP("tcp", rpcAddr)
+	if err != nil {
+		return err
+	}
+
+	tokens, err := getTokens(client)
+	if err != nil {
+		return err
+	}
+
+	var baseToken, quoteToken *dex.Token
+	for _, t := range tokens {
+		switch strings.ToLower(string(t.Symbol)) {
+		case base:
+			baseToken = &t
+		case quote:
+			quoteToken = &t
+		}
+	}
+
+	if baseToken == nil {
+		return fmt.Errorf("token %s in the market symbol %s is not found in the chain", base, symbol)
+	} else if quoteToken == nil {
+		return fmt.Errorf("token %s in the market symbol %s is not found in the chain", quote, symbol)
+	}
+
+	market := dex.MarketSymbol{Base: baseToken.ID, Quote: quoteToken.ID}
+	quantUnit := uint64(amount * math.Pow10(int(baseToken.Decimals)))
+	priceUnit := uint64(price * math.Pow10(int(dex.OrderPriceDecimals)))
+
+	state, err := chainState(client)
+	if err != nil {
+		return err
+	}
+
+	expireRound := state.Round + uint64(expire)
+	placeOrderTxn := dex.PlaceOrderTxn{
+		SellSide:     sellSide,
+		QuantUnit:    quantUnit,
+		PriceUnit:    priceUnit,
+		PlacedHeight: state.Round,
+		ExpireHeight: expireRound,
+		Market:       market,
+	}
+	txn := dex.MakePlaceOrderTxn(credential.SK, placeOrderTxn)
+
+	err = client.Call("WalletService.SendTxn", txn, nil)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func main() {
 	err := bls.Init(int(bls.CurveFp254BNb))
 	if err != nil {
@@ -328,6 +470,16 @@ func main() {
 
 	app.Commands = []cli.Command{
 		{
+			Name:   "state",
+			Usage:  "Print the chain state: ./wallet state",
+			Action: printState,
+		},
+		{
+			Name:   "graphviz",
+			Usage:  "Print the chain visualization in graphviz format, please go to http://www.webgraphviz.com/ for visualization",
+			Action: printGraphviz,
+		},
+		{
 			Name:   "token",
 			Usage:  "Print the information of every token: ./wallet token",
 			Action: listToken,
@@ -346,6 +498,11 @@ func main() {
 			Name:   "account",
 			Usage:  "Print account information: ./wallet account PUB_KEY (or ADDRESS), or, ./wallet -c NODE_CREDENTIAL_FILE_PATH account",
 			Action: printAccount,
+		},
+		{
+			Name:   "order",
+			Usage:  "Place an order: ./wallet -c NODE_CREDENTIAL_FILE_PATH order MARKET_SYMBOL (e.g,. ETH_BTC, ETH is the base asset, BTC is the quote asset) SIDE (buy or sell) PRICE (price=base_asset_value/quote_asset_value) AMOUNT (quantity of base asset) EXPIRY_TIME (in blocks: 0 means won't expire, 1 means expires at the next block, effectively an IOC order)",
+			Action: placeOrder,
 		},
 	}
 

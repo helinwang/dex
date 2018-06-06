@@ -142,16 +142,14 @@ func TestPlaceOrder(t *testing.T) {
 	s.tokenCache.Update(1, &btcInfo)
 	sk, addr := createAccount(s, 100)
 	order := PlaceOrderTxn{
-		Order: Order{
-			SellSide:     false,
-			QuantUnit:    40,
-			PriceUnit:    100000000,
-			ExpireHeight: 0,
-		},
-		Market: MarketSymbol{Quote: 0, Base: 1},
+		SellSide:     false,
+		QuantUnit:    40,
+		PriceUnit:    100000000,
+		ExpireHeight: 0,
+		Market:       MarketSymbol{Quote: 0, Base: 1},
 	}
 	trans := s.Transition()
-	trans.Record(MakePlaceOrderTxn(sk, addr, order), 1)
+	trans.Record(MakePlaceOrderTxn(sk, order), 1)
 	s = trans.Commit().(*State)
 
 	acc := s.Account(addr)
@@ -173,9 +171,9 @@ func TestCalcBaseSellQuant(t *testing.T) {
 	quoteDecimals := uint8(6)
 	quoteDiv := uint64(math.Pow10(int(quoteDecimals)))
 	quoteQuant := quoteDiv * 100
-	priceDiv := uint64(math.Pow10(int(orderPriceDecimals)))
+	priceDiv := uint64(math.Pow10(int(OrderPriceDecimals)))
 	priceQuantUnit := uint64(0.1 * float64(priceDiv))
-	baseQuant := calcBaseSellQuant(quoteQuant, quoteDecimals, priceQuantUnit, orderPriceDecimals, baseDecimals)
+	baseQuant := calcBaseSellQuant(quoteQuant, quoteDecimals, priceQuantUnit, OrderPriceDecimals, baseDecimals)
 	assert.Equal(t, uint64(10), baseQuant/baseDiv)
 	assert.Equal(t, 40, int(calcBaseSellQuant(40, 8, 100000000, 8, 8)))
 }
