@@ -203,6 +203,7 @@ type SendTokenTxn struct {
 }
 
 type Order struct {
+	ID       consensus.Hash
 	Owner    consensus.Addr
 	SellSide bool
 	// quant step size is the decimals of the token, specific when

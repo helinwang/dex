@@ -107,7 +107,7 @@ func printAccount(c *cli.Context) error {
 
 	fmt.Printf("Addr:\n%x\n", addr[:])
 	fmt.Println("\nBalances:")
-	tw := tabwriter.NewWriter(os.Stdout, 0, 0, 1, ' ', tabwriter.AlignRight|tabwriter.Debug)
+	tw := tabwriter.NewWriter(os.Stdout, 0, 0, 1, ' ', tabwriter.Debug)
 	_, err = fmt.Fprintln(tw, "\tSymbol\tAvailable\tPending\t")
 	if err != nil {
 		return err
@@ -129,7 +129,7 @@ func printAccount(c *cli.Context) error {
 	}
 
 	fmt.Println("\nOrders:")
-	tw = tabwriter.NewWriter(os.Stdout, 0, 0, 1, ' ', tabwriter.AlignRight|tabwriter.Debug)
+	tw = tabwriter.NewWriter(os.Stdout, 0, 0, 1, ' ', tabwriter.Debug)
 	_, err = fmt.Fprintln(tw, "\tID\tSymbol\tSide\tPrice\tAmount\tExpiry Block Height\t")
 	if err != nil {
 		return err
@@ -143,7 +143,7 @@ func printAccount(c *cli.Context) error {
 		market := idToToken[order.Market.Base].Symbol + "_" + idToToken[order.Market.Quote].Symbol
 		price := quantToStr(order.PriceUnit, dex.OrderPriceDecimals)
 		quant := quantToStr(order.QuantUnit, int(idToToken[order.Market.Base].Decimals))
-		_, err = fmt.Fprintf(tw, "\t%x\t%s\t%s\t%s\t%s\t%d\n", []byte{1, 2, 3}, market, side, price, quant, order.ExpireHeight)
+		_, err = fmt.Fprintf(tw, "\t%s\t%s\t%s\t%s\t%s\t%d\t\n", order.ID.Hex(), market, side, price, quant, order.ExpireHeight)
 		if err != nil {
 			return err
 		}
@@ -474,6 +474,7 @@ func placeOrder(c *cli.Context) error {
 		return err
 	}
 
+	fmt.Println(consensus.SHA3(txn).Hex())
 	return nil
 }
 

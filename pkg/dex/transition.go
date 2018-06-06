@@ -46,7 +46,7 @@ func (t *Transition) Record(b []byte, round uint64) (valid, success bool) {
 			log.Warn("PlaceOrderTxn decode failed", "err", err)
 			return
 		}
-		if !t.placeOrder(acc, txn, round) {
+		if !t.placeOrder(acc, txn, consensus.SHA3(b), round) {
 			log.Warn("PlaceOrderTxn failed")
 			return
 		}
@@ -101,7 +101,7 @@ func calcBaseSellQuant(quoteQuantUnit uint64, quoteDecimals uint8, priceQuantUni
 	return result.Uint64()
 }
 
-func (t *Transition) placeOrder(owner *Account, txn PlaceOrderTxn, round uint64) bool {
+func (t *Transition) placeOrder(owner *Account, txn PlaceOrderTxn, hash consensus.Hash, round uint64) bool {
 	// TODO: check if fee is sufficient
 	baseInfo := t.state.tokenCache.Info(txn.Market.Base)
 	if baseInfo == nil {
@@ -143,6 +143,7 @@ func (t *Transition) placeOrder(owner *Account, txn PlaceOrderTxn, round uint64)
 	owner.Balances[sell].Available -= sellQuantUnit
 	owner.Balances[sell].Pending += sellQuantUnit
 	order := Order{
+		ID:           hash,
 		Owner:        owner.PK.Addr(),
 		SellSide:     txn.SellSide,
 		QuantUnit:    txn.QuantUnit,
