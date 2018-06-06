@@ -49,5 +49,5 @@ block_0400 -> block_0c00
 block_0c00 -> block_0d00
 
 }
-`, chain.Graphviz())
+`, chain.Graphviz(0))
 }

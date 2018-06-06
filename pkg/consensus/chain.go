@@ -623,7 +623,7 @@ func (c *Chain) finalize(round uint64) {
 
 // Graphviz returns the Graphviz dot formate encoded chain
 // visualization.
-func (c *Chain) Graphviz() string {
+func (c *Chain) Graphviz(maxFinalized int) string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -646,7 +646,15 @@ size="8,5"`
 	var start string
 	var graph string
 
-	for i, f := range c.Finalized {
+	dotIdx := 0
+	finalizedSlice := c.Finalized
+	omitted := len(finalizedSlice) - maxFinalized
+	if maxFinalized > 0 && len(finalizedSlice) > maxFinalized {
+		dotIdx = maxFinalized / 2
+		finalizedSlice = append(finalizedSlice[:dotIdx], finalizedSlice[len(finalizedSlice)-(maxFinalized-dotIdx):]...)
+	}
+
+	for i, f := range finalizedSlice {
 		str := fmt.Sprintf("block_%x", f[:2])
 		start = str
 		finalized += " " + str
@@ -655,6 +663,12 @@ size="8,5"`
 			graph += arrow + str
 		} else {
 			graph = str
+		}
+
+		if dotIdx > 0 && i == dotIdx-1 {
+			omitBlockName := fmt.Sprintf("num_blocks_omitted_to_save_space_%d", omitted)
+			graph += arrow + omitBlockName
+			finalized += " " + omitBlockName
 		}
 	}
 

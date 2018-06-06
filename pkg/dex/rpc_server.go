@@ -18,7 +18,7 @@ type TxnSender interface {
 
 type ChainStater interface {
 	ChainState() consensus.ChainState
-	Graphviz() string
+	Graphviz(int) string
 }
 
 type RPCServer struct {
@@ -162,7 +162,8 @@ func (r *RPCServer) round(round *uint64) error {
 }
 
 func (r *RPCServer) graphviz(str *string) error {
-	*str = r.chain.Graphviz()
+	const maxFinalizeBlockPrint = 6
+	*str = r.chain.Graphviz(maxFinalizeBlockPrint)
 	return nil
 }
 

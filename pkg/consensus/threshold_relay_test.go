@@ -135,9 +135,9 @@ func TestThresholdRelay(t *testing.T) {
 		assert.Equal(t, uint64(5), n.chain.RandomBeacon.Depth())
 	}
 
-	fmt.Println(nodes[0].chain.Graphviz())
-	fmt.Println(nodes[1].chain.Graphviz())
-	fmt.Println(nodes[2].chain.Graphviz())
+	fmt.Println(nodes[0].chain.Graphviz(0))
+	fmt.Println(nodes[1].chain.Graphviz(0))
+	fmt.Println(nodes[2].chain.Graphviz(0))
 }
 
 // LocalNet is a local network implementation
