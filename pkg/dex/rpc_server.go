@@ -16,7 +16,7 @@ type TxnSender interface {
 	SendTxn([]byte)
 }
 
-type ChainStater interface {
+type ChainInfo interface {
 	ChainStatus() consensus.ChainStatus
 	Graphviz(int) string
 }
@@ -25,7 +25,7 @@ type RPCServer struct {
 	sender TxnSender
 
 	mu    sync.Mutex
-	chain ChainStater
+	chain ChainInfo
 	s     *State
 }
 
@@ -40,7 +40,7 @@ func (r *RPCServer) SetSender(sender TxnSender) {
 }
 
 // SetStater sets the chain stater, it must be called before Start.
-func (r *RPCServer) SetStater(c ChainStater) {
+func (r *RPCServer) SetStater(c ChainInfo) {
 	r.chain = c
 }
 
@@ -167,7 +167,7 @@ func (r *RPCServer) graphviz(str *string) error {
 	return nil
 }
 
-func (r *RPCServer) chainState(state *consensus.ChainStatus) error {
+func (r *RPCServer) chainStatus(state *consensus.ChainStatus) error {
 	*state = r.chain.ChainStatus()
 	return nil
 }
@@ -221,7 +221,7 @@ func (s *WalletService) Round(_ int, r *uint64) error {
 }
 
 func (s *WalletService) ChainStatus(_ int, state *consensus.ChainStatus) error {
-	return s.s.chainState(state)
+	return s.s.chainStatus(state)
 }
 
 func (s *WalletService) Graphviz(_ int, str *string) error {
