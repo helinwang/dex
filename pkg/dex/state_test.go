@@ -16,8 +16,8 @@ func TestMarketSymbolBytes(t *testing.T) {
 	assert.Equal(t, 64, int(unsafe.Sizeof(m0.Quote))*8, "PathPrefix assumes PathPrefix.Quote being 64 bits.")
 	assert.Equal(t, 64, int(unsafe.Sizeof(m0.Base))*8, "PathPrefix assumes PathPrefix.Base being 64 bits.")
 
-	p0 := m0.Bytes()
-	p1 := m1.Bytes()
+	p0 := m0.Encode()
+	p1 := m1.Encode()
 	assert.NotEqual(t, p0, p1)
 }
 
@@ -98,4 +98,35 @@ func TestSortOrders(t *testing.T) {
 		{PriceUnit: 400, SellSide: true},
 		{PriceUnit: 500, SellSide: true},
 	}, orders)
+}
+
+func TestMarkets(t *testing.T) {
+	var owner Account
+	addr := owner.PK.Addr()
+	s := NewState(trie.NewDatabase(ethdb.NewMemDatabase()))
+	m1 := MarketSymbol{Quote: 0, Base: 5}
+	m2 := MarketSymbol{Quote: 0, Base: 2}
+	add := Order{
+		Owner:     addr,
+		SellSide:  true,
+		QuantUnit: 100,
+		PriceUnit: 1,
+	}
+	s.AddOrder(&owner, m1, 1, add)
+	s.AddOrder(&owner, m2, 1, add)
+	markets := s.Markets()
+	assert.Equal(t, 2, len(markets))
+	assert.Equal(t, m2, markets[0])
+	assert.Equal(t, m1, markets[1])
+}
+
+func TestMarketEncodeDecode(t *testing.T) {
+	m := MarketSymbol{Base: 1<<64 - 1, Quote: 1}
+	var m1 MarketSymbol
+	err := m1.Decode(m.Encode())
+	if err != nil {
+		panic(err)
+	}
+
+	assert.Equal(t, m, m1)
 }

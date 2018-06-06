@@ -51,6 +51,7 @@ func parseAddr(accountAddr string) (consensus.Addr, error) {
 	return addr, nil
 }
 
+// TODO: print trade report
 func printAccount(c *cli.Context) error {
 	var addr consensus.Addr
 	accountAddr := c.Args().First()

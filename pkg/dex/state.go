@@ -3,6 +3,7 @@ package dex
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"sort"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -23,13 +24,13 @@ type MarketSymbol struct {
 	Base  TokenID // the unit of the order's quantity
 }
 
-// Bytes returns the bytes representation of the market symbol.
+// Encode returns the bytes representation of the market symbol.
 //
 // The bytes is used as a prefix of a path of a patricia tree, It will
 // be concatinated with the account addr path postfix to get the tree
 // path. The path lead to the pending orders of an account in the
 // market.
-func (m *MarketSymbol) Bytes() []byte {
+func (m *MarketSymbol) Encode() []byte {
 	bufA := make([]byte, 64)
 	bufB := make([]byte, 64)
 	binary.LittleEndian.PutUint64(bufA, uint64(m.Quote))
@@ -37,14 +38,14 @@ func (m *MarketSymbol) Bytes() []byte {
 	return append(bufA, bufB...)
 }
 
-func encodePrefix(str []byte) []byte {
-	l := len(str) * 2
-	var nibbles = make([]byte, l)
-	for i, b := range str {
-		nibbles[i*2] = b / 16
-		nibbles[i*2+1] = b % 16
+func (m *MarketSymbol) Decode(b []byte) error {
+	if len(b) != 128 {
+		return fmt.Errorf("bytes len not correct, expected 128, received %d", len(b))
 	}
-	return nibbles
+
+	m.Quote = TokenID(binary.LittleEndian.Uint64(b[:64]))
+	m.Base = TokenID(binary.LittleEndian.Uint64(b[64:]))
+	return nil
 }
 
 // State is the state of the DEX.
@@ -99,6 +100,25 @@ func tokenPath(tokenID TokenID) []byte {
 	path := make([]byte, 64)
 	binary.LittleEndian.PutUint64(path, uint64(tokenID))
 	return append(tokenPrefix, path...)
+}
+
+func encodePath(str []byte) []byte {
+	l := len(str) * 2
+	var nibbles = make([]byte, l)
+	for i, b := range str {
+		nibbles[i*2] = b / 16
+		nibbles[i*2+1] = b % 16
+	}
+	return nibbles
+}
+
+func decodePath(b []byte) []byte {
+	n := len(b) / 2
+	r := make([]byte, n)
+	for i := 0; i < 2*n; i += 2 {
+		r[i/2] = b[i]*16 + b[i+1]
+	}
+	return r
 }
 
 func (s *State) UpdateToken(token Token) {
@@ -162,8 +182,8 @@ func (s *State) AccountOrders(acc *Account, market MarketSymbol) []Order {
 }
 
 func (s *State) Orders(market MarketSymbol, shard uint8) []Order {
-	prefix := orderPath(append(market.Bytes(), shard))
-	prefix = encodePrefix(prefix)
+	prefix := orderPath(append(market.Encode(), shard))
+	prefix = encodePath(prefix)
 	iter := s.state.NodeIterator(prefix)
 	var p []Order
 
@@ -234,10 +254,56 @@ func sortOrders(orders []Order) {
 	})
 }
 
+// Markets returns the trading markets.
+func (s *State) Markets() []MarketSymbol {
+	prefix := orderPath(nil)
+	prefix = encodePath(prefix)
+	iter := s.state.NodeIterator(prefix)
+
+	var r []MarketSymbol
+	hasNext := true
+	foundPrefix := false
+	for ; hasNext; hasNext = iter.Next(true) {
+		if err := iter.Error(); err != nil {
+			log.Error("error iterating pending orders trie", "err", err)
+			break
+		}
+
+		if !iter.Leaf() {
+			continue
+		}
+
+		path := iter.Path()
+		if !bytes.HasPrefix(path, prefix) {
+			if foundPrefix {
+				break
+			}
+
+			continue
+		}
+		foundPrefix = true
+
+		// extract the encodedMarket from the trie path
+		marketBytes := decodePath(path[len(prefix):])
+		// last byte is the shard index, remove
+		marketBytes = marketBytes[:len(marketBytes)-1]
+		var m MarketSymbol
+		err := m.Decode(marketBytes)
+		if err != nil {
+			panic(err)
+		}
+		r = append(r, m)
+	}
+	return r
+}
+
+// AddOrder adds one order into its trading market.
 func (s *State) AddOrder(acc *Account, market MarketSymbol, shard uint8, order Order) {
+	// orders were saved into the trie with the path as:
+	// orderPrefix - encodedMarket - shard - encodedOrders.
 	order.Owner = acc.PK.Addr()
 	var orders []Order
-	path := append(market.Bytes(), shard)
+	path := append(market.Encode(), shard)
 	b := s.state.Get(orderPath(path))
 	if b != nil {
 		err := rlp.DecodeBytes(b, &orders)
@@ -258,6 +324,8 @@ func (s *State) AddOrder(acc *Account, market MarketSymbol, shard uint8, order O
 	s.state.Update(orderPath(path), b)
 }
 
+// IssueNativeToken issues the native token, it is only called in
+// during the chain creation.
 func (s *State) IssueNativeToken(owner *consensus.PK) consensus.State {
 	issueTokenTxn := IssueTokenTxn{Info: BNBInfo}
 	trans := s.Transition().(*Transition)
@@ -268,10 +336,12 @@ func (s *State) IssueNativeToken(owner *consensus.PK) consensus.State {
 	return trans.Commit()
 }
 
+// Hash returns the state root hash of the state trie.
 func (s *State) Hash() consensus.Hash {
 	return consensus.Hash(s.state.Hash())
 }
 
+// Transition returns the state change transition.
 func (s *State) Transition() consensus.Transition {
 	root, err := s.state.Commit(nil)
 	if err != nil {
