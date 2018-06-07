@@ -12,8 +12,8 @@ func TestOrderEncodeDecode(t *testing.T) {
 	o := Order{
 		Owner:        consensus.Addr{1, 2, 3},
 		SellSide:     true,
-		QuantUnit:    1000000000,
-		PriceUnit:    20000000,
+		Quant:        1000000000,
+		Price:        20000000,
 		PlacedHeight: 1000,
 		ExpireHeight: 1001,
 	}

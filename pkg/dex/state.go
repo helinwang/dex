@@ -233,8 +233,7 @@ func (s *State) MarketOrders(market MarketSymbol) []Order {
 
 	// each shard is sorted, merge them with k-way merge
 	r := merge(shards)
-	matchOrders(r)
-	return nil
+	return r
 }
 
 // Markets returns the trading markets.

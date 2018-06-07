@@ -6,6 +6,7 @@ import (
 	"math"
 	"math/big"
 	"strings"
+	"sync"
 
 	"github.com/helinwang/dex/pkg/consensus"
 	log "github.com/helinwang/log15"
@@ -15,6 +16,7 @@ type Transition struct {
 	tokenCreations []Token
 	txns           [][]byte
 	state          *State
+	newOrders      map[MarketSymbol][]Order
 }
 
 func newTransition(s *State) *Transition {
@@ -118,10 +120,10 @@ func (t *Transition) placeOrder(owner *Account, txn PlaceOrderTxn, hash consensu
 	var sellQuantUnit uint64
 	var sell TokenID
 	if txn.SellSide {
-		sellQuantUnit = txn.QuantUnit
+		sellQuantUnit = txn.Quant
 		sell = txn.Market.Base
 	} else {
-		sellQuantUnit = calcBaseSellQuant(txn.QuantUnit, quoteInfo.Decimals, txn.PriceUnit, OrderPriceDecimals, baseInfo.Decimals)
+		sellQuantUnit = calcBaseSellQuant(txn.Quant, quoteInfo.Decimals, txn.Price, OrderPriceDecimals, baseInfo.Decimals)
 		sell = txn.Market.Quote
 	}
 
@@ -146,8 +148,8 @@ func (t *Transition) placeOrder(owner *Account, txn PlaceOrderTxn, hash consensu
 		ID:           hash,
 		Owner:        owner.PK.Addr(),
 		SellSide:     txn.SellSide,
-		QuantUnit:    txn.QuantUnit,
-		PriceUnit:    txn.PriceUnit,
+		Quant:        txn.Quant,
+		Price:        txn.Price,
 		PlacedHeight: txn.PlacedHeight,
 		ExpireHeight: txn.ExpireHeight,
 	}
@@ -222,15 +224,35 @@ func (t *Transition) Txns() [][]byte {
 }
 
 func (t *Transition) StateHash() consensus.Hash {
+	t.MatchOrders()
 	return t.state.Hash()
 }
 
+func (t *Transition) matchMarket(m MarketSymbol, newOrders []Order) {
+	orders := t.state.MarketOrders(m)
+}
+
 func (t *Transition) MatchOrders() *consensus.TrieBlob {
-	// markets := t.state.Markets()
+	if len(t.newOrders) == 0 {
+		return &consensus.TrieBlob{}
+	}
+
+	var wg sync.WaitGroup
+	for market, newOrders := range t.newOrders {
+		wg.Add(1)
+		go func() {
+			t.matchMarket(market, newOrders)
+			wg.Done()
+		}()
+	}
+	wg.Wait()
+
+	t.newOrders = nil
 	return &consensus.TrieBlob{}
 }
 
 func (t *Transition) ApplyTrades(blob *consensus.TrieBlob) error {
+	// TODO: this is not used, figure out if needed or not.
 	if blob.Root == consensus.ZeroHash {
 		return nil
 	}
@@ -239,6 +261,7 @@ func (t *Transition) ApplyTrades(blob *consensus.TrieBlob) error {
 
 // Commit commits the transition to the state root.
 func (t *Transition) Commit() consensus.State {
+	t.MatchOrders()
 	t.state.Commit()
 	for _, v := range t.tokenCreations {
 		t.state.tokenCache.Update(v.ID, &v.TokenInfo)

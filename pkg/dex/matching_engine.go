@@ -1,5 +1,7 @@
 package dex
 
+import "github.com/helinwang/dex/pkg/consensus"
+
 // ExecutionEvent is either a trade event, an order cancellation event
 // or an order expiry event.
 //
@@ -14,9 +16,40 @@ type ExecutionEvent struct {
 	Buy  *Order
 }
 
-// matchOrders returns matched trades, in the form of execution event.
-func matchOrders(prev []Order) []ExecutionEvent {
-	return nil
+type pricePoint struct {
+	Price     uint64
+	ListHead  *orderBookEntry
+	ListTail  *orderBookEntry
+	NextPoint *pricePoint
+	PrevPoint *pricePoint
+}
+
+// TODO: does the user care about order txn id when submitting it?
+// probably not. We can generate an order txn id after it being
+// matched, by SHA3(market||orderCounter).
+
+type orderBookEntry struct {
+	Owner     consensus.Addr
+	QuantUnit uint64
+	Next      *orderBookEntry
+}
+
+// orderBook is the order book which performs the order matching.
+//
+// Inspired by voyager who wrote "QuantCup 1: Price-Time Matching
+// Engine":
+// https://gist.github.com/helinwang/935ab9558195a6ea8c16567caef5911b
+type orderBook struct {
+	bidMax *orderBookEntry
+	askMin *orderBookEntry
+}
+
+// Limit processes a incoming limit order.
+func (o *orderBook) Limit(order Order) {
+	if !order.SellSide {
+		//		if order.PriceUnit
+	} else {
+	}
 }
 
 // TODO: clean up and move the following notes to wiki.

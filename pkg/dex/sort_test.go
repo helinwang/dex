@@ -8,30 +8,30 @@ import (
 
 func TestSortOrders(t *testing.T) {
 	orders := []Order{
-		{PriceUnit: 300, PlacedHeight: 1},
-		{PriceUnit: 200},
-		{PriceUnit: 300},
-		{PriceUnit: 100},
-		{PriceUnit: 600},
-		{PriceUnit: 200, SellSide: true},
-		{PriceUnit: 400, SellSide: true},
-		{PriceUnit: 300, SellSide: true},
-		{PriceUnit: 500, SellSide: true},
-		{PriceUnit: 300, PlacedHeight: 1, SellSide: true},
+		{Price: 300, PlacedHeight: 1},
+		{Price: 200},
+		{Price: 300},
+		{Price: 100},
+		{Price: 600},
+		{Price: 200, SellSide: true},
+		{Price: 400, SellSide: true},
+		{Price: 300, SellSide: true},
+		{Price: 500, SellSide: true},
+		{Price: 300, PlacedHeight: 1, SellSide: true},
 	}
 
 	sortOrders(orders)
 
 	assert.Equal(t, []Order{
-		{PriceUnit: 100},
-		{PriceUnit: 200},
-		{PriceUnit: 300, PlacedHeight: 1},
-		{PriceUnit: 300},
-		{PriceUnit: 600},
-		{PriceUnit: 200, SellSide: true},
-		{PriceUnit: 300, SellSide: true},
-		{PriceUnit: 300, PlacedHeight: 1, SellSide: true},
-		{PriceUnit: 400, SellSide: true},
-		{PriceUnit: 500, SellSide: true},
+		{Price: 100},
+		{Price: 200},
+		{Price: 300, PlacedHeight: 1},
+		{Price: 300},
+		{Price: 600},
+		{Price: 200, SellSide: true},
+		{Price: 300, SellSide: true},
+		{Price: 300, PlacedHeight: 1, SellSide: true},
+		{Price: 400, SellSide: true},
+		{Price: 500, SellSide: true},
 	}, orders)
 }

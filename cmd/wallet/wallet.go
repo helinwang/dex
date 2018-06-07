@@ -142,8 +142,8 @@ func printAccount(c *cli.Context) error {
 		}
 
 		market := idToToken[order.Market.Base].Symbol + "_" + idToToken[order.Market.Quote].Symbol
-		price := quantToStr(order.PriceUnit, dex.OrderPriceDecimals)
-		quant := quantToStr(order.QuantUnit, int(idToToken[order.Market.Base].Decimals))
+		price := quantToStr(order.Price, dex.OrderPriceDecimals)
+		quant := quantToStr(order.Quant, int(idToToken[order.Market.Base].Decimals))
 		_, err = fmt.Fprintf(tw, "\t%s\t%s\t%s\t%s\t%s\t%d\t\n", order.ID.Hex(), market, side, price, quant, order.ExpireHeight)
 		if err != nil {
 			return err
@@ -462,8 +462,8 @@ func placeOrder(c *cli.Context) error {
 	expireRound := state.Round + uint64(expire)
 	placeOrderTxn := dex.PlaceOrderTxn{
 		SellSide:     sellSide,
-		QuantUnit:    quantUnit,
-		PriceUnit:    priceUnit,
+		Quant:        quantUnit,
+		Price:        priceUnit,
 		PlacedHeight: state.Round,
 		ExpireHeight: expireRound,
 		Market:       market,

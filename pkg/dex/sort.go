@@ -12,9 +12,9 @@ func orderLess(i, j Order) bool {
 		return false
 	}
 
-	if i.PriceUnit < j.PriceUnit {
+	if i.Price < j.Price {
 		return true
-	} else if i.PriceUnit > j.PriceUnit {
+	} else if i.Price > j.Price {
 		return false
 	}
 

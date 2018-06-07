@@ -34,10 +34,10 @@ func TestOrders(t *testing.T) {
 	m3 := MarketSymbol{Quote: 1, Base: 1}
 	m4 := MarketSymbol{Quote: 1, Base: 0}
 	add := Order{
-		Owner:     addr,
-		SellSide:  true,
-		QuantUnit: 100,
-		PriceUnit: 1,
+		Owner:    addr,
+		SellSide: true,
+		Quant:    100,
+		Price:    1,
 	}
 	s.AddOrder(&owner, m1, 1, add)
 	s.AddOrder(&owner, m2, 1, add)
@@ -51,17 +51,17 @@ func TestOrders(t *testing.T) {
 	m := MarketSymbol{Quote: 0, Base: 1}
 	assert.Equal(t, 0, len(s.Orders(m, 1)))
 	add = Order{
-		Owner:     addr,
-		SellSide:  true,
-		QuantUnit: 100,
-		PriceUnit: 1,
+		Owner:    addr,
+		SellSide: true,
+		Quant:    100,
+		Price:    1,
 	}
 	s.AddOrder(&owner, m, 1, add)
 	add1 := Order{
-		Owner:     addr,
-		SellSide:  false,
-		QuantUnit: 50,
-		PriceUnit: 0,
+		Owner:    addr,
+		SellSide: false,
+		Quant:    50,
+		Price:    0,
 	}
 	s.AddOrder(&owner, m, 1, add1)
 	assert.Equal(t, 2, len(s.Orders(m, 1)))
@@ -77,10 +77,10 @@ func TestMarkets(t *testing.T) {
 	m1 := MarketSymbol{Quote: 0, Base: 5}
 	m2 := MarketSymbol{Quote: 0, Base: 2}
 	add := Order{
-		Owner:     addr,
-		SellSide:  true,
-		QuantUnit: 100,
-		PriceUnit: 1,
+		Owner:    addr,
+		SellSide: true,
+		Quant:    100,
+		Price:    1,
 	}
 	s.AddOrder(&owner, m1, 1, add)
 	s.AddOrder(&owner, m2, 1, add)

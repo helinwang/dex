@@ -143,8 +143,8 @@ func TestPlaceOrder(t *testing.T) {
 	sk, addr := createAccount(s, 100)
 	order := PlaceOrderTxn{
 		SellSide:     false,
-		QuantUnit:    40,
-		PriceUnit:    100000000,
+		Quant:        40,
+		Price:        100000000,
 		ExpireHeight: 0,
 		Market:       MarketSymbol{Quote: 0, Base: 1},
 	}

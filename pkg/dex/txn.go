@@ -114,10 +114,10 @@ func (b *Txn) Hash() consensus.Hash {
 type PlaceOrderTxn struct {
 	SellSide bool
 	// quant step size is the decimals of the token, specific when
-	// the token is issued, e.g., quant = QuantUnit * 10^-(decimals)
-	QuantUnit uint64
-	// price tick size is 10^-8, e.g,. price = PriceUnit * 10^-8
-	PriceUnit uint64
+	// the token is issued, e.g., quant = Quant * 10^-(decimals)
+	Quant uint64
+	// price tick size is 10^-8, e.g,. price = Price * 10^-8
+	Price uint64
 	// the height that the order is placed
 	PlacedHeight uint64
 	// the order is expired when ExpireHeight >= block height
@@ -207,10 +207,10 @@ type Order struct {
 	Owner    consensus.Addr
 	SellSide bool
 	// quant step size is the decimals of the token, specific when
-	// the token is issued, e.g., quant = QuantUnit * 10^-(decimals)
-	QuantUnit uint64
-	// price tick size is 10^-8, e.g,. price = PriceUnit * 10^-8
-	PriceUnit uint64
+	// the token is issued, e.g., quant = Quant * 10^-(decimals)
+	Quant uint64
+	// price tick size is 10^-8, e.g,. price = Price * 10^-8
+	Price uint64
 
 	// TODO: the order with higher height has advantage, needs
 	// proof of the placed height
