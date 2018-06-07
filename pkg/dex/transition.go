@@ -151,7 +151,7 @@ func (t *Transition) placeOrder(owner *Account, txn PlaceOrderTxn, hash consensu
 		PlacedHeight: txn.PlacedHeight,
 		ExpireHeight: txn.ExpireHeight,
 	}
-	t.state.AddOrder(owner, txn.Market, uint8(round%numOrderShardPerMarket), order)
+	t.state.AddOrder(owner, txn.Market, uint8(round%numShardPerMarket), order)
 	t.state.UpdateAccount(owner)
 	return true
 }
@@ -225,7 +225,8 @@ func (t *Transition) StateHash() consensus.Hash {
 	return t.state.Hash()
 }
 
-func (s *Transition) MatchOrders() *consensus.TrieBlob {
+func (t *Transition) MatchOrders() *consensus.TrieBlob {
+	// markets := t.state.Markets()
 	return &consensus.TrieBlob{}
 }
 

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"sort"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/rlp"
@@ -14,7 +13,7 @@ import (
 )
 
 const (
-	numOrderShardPerMarket = 16
+	numShardPerMarket = 16
 )
 
 // MarketSymbol is the symbol of a trading pair.
@@ -223,35 +222,19 @@ func (s *State) Orders(market MarketSymbol, shard uint8) []Order {
 	return p
 }
 
-func sortOrders(orders []Order) {
-	sort.Slice(orders, func(i, j int) bool {
-		if orders[i].SellSide != orders[j].SellSide {
-			// buy always smaller than sell
-			if !orders[i].SellSide {
-				return true
-			}
+// MarketOrders returns the sorted orders of the given market.
+func (s *State) MarketOrders(market MarketSymbol) []Order {
+	var shards [numShardPerMarket][]Order
+	total := 0
+	for i := range shards {
+		shards[i] = s.Orders(market, uint8(i))
+		total += len(shards[i])
+	}
 
-			return false
-		}
-
-		if orders[i].PriceUnit < orders[j].PriceUnit {
-			return true
-		} else if orders[i].PriceUnit > orders[j].PriceUnit {
-			return false
-		}
-
-		if orders[i].SellSide {
-			// i sell, j sell. Treat ealier order lower
-			// in the sell side of the order book (higher
-			// priority)
-			return orders[i].PlacedHeight < orders[j].PlacedHeight
-		}
-
-		// i buy, j buy. Treat earlier order higher in the buy
-		// side of the order book (higher priority).
-		return orders[i].PlacedHeight > orders[j].PlacedHeight
-
-	})
+	// each shard is sorted, merge them with k-way merge
+	r := merge(shards)
+	matchOrders(r)
+	return nil
 }
 
 // Markets returns the trading markets.

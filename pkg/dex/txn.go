@@ -211,6 +211,10 @@ type Order struct {
 	QuantUnit uint64
 	// price tick size is 10^-8, e.g,. price = PriceUnit * 10^-8
 	PriceUnit uint64
+
+	// TODO: the order with higher height has advantage, needs
+	// proof of the placed height
+
 	// the height that the order is placed
 	PlacedHeight uint64
 	// the order is expired when ExpireHeight >= block height
