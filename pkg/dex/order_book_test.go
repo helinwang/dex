@@ -40,11 +40,48 @@ func TestOrderBook(t *testing.T) {
 	assert.Nil(t, book.bidMax)
 	assert.Equal(t, 1, int(book.askMin.Price))
 	assert.Equal(t, 90, int(book.askMin.ListHead.Quant))
+}
 
-	book.Limit(Order{
-		Quant: 100,
-		Price: 0,
-	})
+func TestOrderBookEncodeDecode(t *testing.T) {
+	orders := []Order{
+		{
+			Quant: 10,
+			Price: 1,
+		},
+		{
+			Quant: 100,
+			Price: 0,
+		},
+		{
+			Quant: 1,
+			Price: 3,
+		},
+		{
+			SellSide: true,
+			Quant:    2,
+			Price:    2,
+		},
+		{
+			SellSide: true,
+			Quant:    2,
+			Price:    3,
+		},
+		{
+			SellSide: true,
+			Quant:    2,
+			Price:    5,
+		},
+		{
+			SellSide: true,
+			Quant:    2,
+			Price:    60,
+		},
+	}
+
+	book := &orderBook{}
+	for _, o := range orders {
+		book.Limit(o)
+	}
 
 	b, err := rlp.EncodeToBytes(book)
 	if err != nil {
