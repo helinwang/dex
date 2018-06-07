@@ -1,6 +1,11 @@
 package dex
 
-import "github.com/helinwang/dex/pkg/consensus"
+import (
+	"io"
+
+	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/helinwang/dex/pkg/consensus"
+)
 
 // ExecutionEvent is either a trade event, an order cancellation event
 // or an order expiry event.
@@ -28,11 +33,15 @@ type pricePoint struct {
 // matched, by SHA3(market||orderCounter). The user can cancel the
 // order using it then.
 
-type orderBookEntry struct {
+type orderBookEntryData struct {
 	Owner        consensus.Addr
 	Quant        uint64
 	ExpireHeight uint64
-	Next         *orderBookEntry
+}
+
+type orderBookEntry struct {
+	orderBookEntryData
+	Next *orderBookEntry
 }
 
 // orderBook is the order book which performs the order matching.
@@ -79,9 +88,11 @@ func (o *orderBook) Limit(order Order) {
 		// TODO: if a IOC order, do not need to insert
 		// no more matching orders, add to the order book
 		entry := &orderBookEntry{
-			Owner:        order.Owner,
-			Quant:        order.Quant,
-			ExpireHeight: order.ExpireHeight,
+			orderBookEntryData: orderBookEntryData{
+				Owner:        order.Owner,
+				Quant:        order.Quant,
+				ExpireHeight: order.ExpireHeight,
+			},
 		}
 
 		if o.bidMax == nil || order.Price > o.bidMax.Price {
@@ -142,9 +153,11 @@ func (o *orderBook) Limit(order Order) {
 
 		// TODO: if a IOC order, do not need to insert
 		entry := &orderBookEntry{
-			Owner:        order.Owner,
-			Quant:        order.Quant,
-			ExpireHeight: order.ExpireHeight,
+			orderBookEntryData: orderBookEntryData{
+				Owner:        order.Owner,
+				Quant:        order.Quant,
+				ExpireHeight: order.ExpireHeight,
+			},
 		}
 
 		if o.askMin == nil || order.Price < o.askMin.Price {
@@ -180,9 +193,131 @@ func (o *orderBook) Limit(order Order) {
 	}
 }
 
+type orderBookPointToMarshal struct {
+	Price   uint64
+	Entries []orderBookEntryData
+}
+
+func flatten(p *pricePoint) []orderBookPointToMarshal {
+	var r []orderBookPointToMarshal
+	for ; p != nil; p = p.NextPoint {
+		var entries []orderBookEntryData
+		e := p.ListHead
+		for ; e != nil; e = e.Next {
+			if e.Quant == 0 {
+				continue
+			}
+
+			entries = append(entries, e.orderBookEntryData)
+		}
+		r = append(r, orderBookPointToMarshal{
+			Price:   p.Price,
+			Entries: entries,
+		})
+	}
+
+	return r
+}
+
+func unflattenPoint(point orderBookPointToMarshal) *pricePoint {
+	if len(point.Entries) == 0 {
+		return nil
+	}
+
+	p := &pricePoint{
+		Price: point.Price,
+	}
+
+	entries := make([]*orderBookEntry, len(point.Entries))
+	var last *orderBookEntry
+	for i := len(entries) - 1; i >= 0; i-- {
+		entries[i] = &orderBookEntry{
+			orderBookEntryData: point.Entries[i],
+			Next:               last,
+		}
+		last = entries[i]
+	}
+
+	p.ListHead = entries[0]
+	p.ListTail = entries[len(entries)-1]
+	return p
+}
+
+func unflatten(points []orderBookPointToMarshal) *pricePoint {
+	var root *pricePoint
+	var prev *pricePoint
+	for _, p := range points {
+		cur := unflattenPoint(p)
+		if cur == nil {
+			continue
+		}
+
+		if root == nil {
+			root = cur
+		} else {
+			prev.NextPoint = cur
+		}
+		prev = cur
+	}
+	return root
+}
+
+func (o *orderBook) EncodeRLP(w io.Writer) error {
+	askPoints := flatten(o.askMin)
+	bidPoints := flatten(o.bidMax)
+	err := rlp.Encode(w, askPoints)
+	if err != nil {
+		return err
+	}
+
+	err = rlp.Encode(w, bidPoints)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (o *orderBook) DecodeRLP(s *rlp.Stream) error {
+	b, err := s.Raw()
+	if err != nil {
+		return err
+	}
+
+	var askPoints []orderBookPointToMarshal
+	err = rlp.DecodeBytes(b, &askPoints)
+	if err != nil {
+		return err
+	}
+
+	b, err = s.Raw()
+	if err != nil {
+		return err
+	}
+
+	var bidPoints []orderBookPointToMarshal
+	err = rlp.DecodeBytes(b, &bidPoints)
+	if err != nil {
+		return err
+	}
+
+	o.askMin = unflatten(askPoints)
+	o.bidMax = unflatten(bidPoints)
+	return nil
+}
+
 // TODO: clean up and move the following notes to wiki.
 
 /*
+
+order related events (saved in the receipt trie):
+
+- order placed
+- order (partially) matched
+- order expired
+- order cancelled
+
+------
 
 nodes should not need to do the CPU work to process every order of
 every market during chain sync.

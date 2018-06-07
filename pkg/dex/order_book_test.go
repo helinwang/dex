@@ -3,6 +3,7 @@ package dex
 import (
 	"testing"
 
+	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -33,10 +34,28 @@ func TestOrderBook(t *testing.T) {
 
 	book.Limit(Order{
 		Quant:    100,
-		Price:    0,
+		Price:    1,
 		SellSide: true,
 	})
 	assert.Nil(t, book.bidMax)
-	assert.Equal(t, 0, int(book.askMin.Price))
+	assert.Equal(t, 1, int(book.askMin.Price))
 	assert.Equal(t, 90, int(book.askMin.ListHead.Quant))
+
+	book.Limit(Order{
+		Quant: 100,
+		Price: 0,
+	})
+
+	b, err := rlp.EncodeToBytes(book)
+	if err != nil {
+		panic(err)
+	}
+
+	var book1 orderBook
+	err = rlp.DecodeBytes(b, &book1)
+	if err != nil {
+		panic(err)
+	}
+
+	assert.Equal(t, book, &book1)
 }
