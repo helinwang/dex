@@ -28,7 +28,7 @@ func NewNotary(owner Addr, sk, share bls.SecretKey, chain *Chain) *Notary {
 // notarized block of the current round is received.
 // TODO: fix lint
 // nolint: gocyclo
-func (n *Notary) Notarize(ctx, cancel context.Context, bCh chan *BlockProposal, onNotarize func(*NtShare, *TrieBlob)) {
+func (n *Notary) Notarize(ctx, cancel context.Context, bCh chan *BlockProposal, onNotarize func(*NtShare)) {
 	var bestRankBPs []*BlockProposal
 	var bestRank int
 	for {
@@ -36,9 +36,9 @@ func (n *Notary) Notarize(ctx, cancel context.Context, bCh chan *BlockProposal, 
 		case <-ctx.Done():
 
 			for _, bp := range bestRankBPs {
-				s, t := n.notarize(bp)
+				s := n.notarize(bp)
 				if s != nil {
-					onNotarize(s, t)
+					onNotarize(s)
 				}
 			}
 
@@ -55,9 +55,9 @@ func (n *Notary) Notarize(ctx, cancel context.Context, bCh chan *BlockProposal, 
 
 					if rank <= bestRank {
 						bestRank = rank
-						s, t := n.notarize(bp)
+						s := n.notarize(bp)
 						if s != nil {
-							onNotarize(s, t)
+							onNotarize(s)
 						}
 					}
 				}
@@ -87,7 +87,7 @@ func (n *Notary) Notarize(ctx, cancel context.Context, bCh chan *BlockProposal, 
 	}
 }
 
-func (n *Notary) notarize(bp *BlockProposal) (*NtShare, *TrieBlob) {
+func (n *Notary) notarize(bp *BlockProposal) *NtShare {
 	nts := &NtShare{
 		Round: bp.Round,
 		BP:    bp.Hash(),
@@ -108,8 +108,6 @@ func (n *Notary) notarize(bp *BlockProposal) (*NtShare, *TrieBlob) {
 		panic("TODO: " + err.Error())
 	}
 
-	trades := trans.MatchOrders()
-
 	blk := &Block{
 		Owner:         bp.Owner,
 		Round:         bp.Round,
@@ -117,12 +115,10 @@ func (n *Notary) notarize(bp *BlockProposal) (*NtShare, *TrieBlob) {
 		PrevBlock:     bp.PrevBlock,
 		SysTxns:       bp.SysTxns,
 		StateRoot:     trans.StateHash(),
-		Trades:        trades.Root,
 	}
 
-	nts.Trades = trades.Root
 	nts.SigShare = n.share.Sign(string(blk.Encode(false))).Serialize()
 	nts.Owner = n.owner
 	nts.OwnerSig = n.sk.Sign(string(nts.Encode(false))).Serialize()
-	return nts, trades
+	return nts
 }

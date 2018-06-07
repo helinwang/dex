@@ -45,7 +45,6 @@ func newBlockSyncer(v *validator, chain *Chain, requester requester) *blockSynce
 type requester interface {
 	RequestBlock(ctx context.Context, p Peer, hash Hash) (*Block, error)
 	RequestBlockProposal(ctx context.Context, p Peer, hash Hash) (*BlockProposal, error)
-	RequestTrades(ctx context.Context, p Peer, hash Hash) (*TrieBlob, error)
 }
 
 var errCanNotConnectToChain = errors.New("can not connect to chain")
@@ -90,12 +89,6 @@ func (s *blockSyncer) syncBlockAndConnectToChain(p Peer, hash Hash, round uint64
 		return nil, err
 	}
 
-	tCh := make(chan tradesResult, 1)
-	go func() {
-		t, err := s.requester.RequestTrades(ctx, p, b.Trades)
-		tCh <- tradesResult{T: t, E: err}
-	}()
-
 	bpCh := make(chan bpResult, 1)
 	go func() {
 		bp, err := s.requester.RequestBlockProposal(ctx, p, b.BlockProposal)
@@ -121,11 +114,6 @@ func (s *blockSyncer) syncBlockAndConnectToChain(p Peer, hash Hash, round uint64
 		}
 	}
 
-	tr := <-tCh
-	if tr.E != nil {
-		return nil, tr.E
-	}
-
 	bpr := <-bpCh
 	if bpr.E != nil {
 		return nil, bpr.E
@@ -133,11 +121,6 @@ func (s *blockSyncer) syncBlockAndConnectToChain(p Peer, hash Hash, round uint64
 
 	bp := bpr.BP
 	trans, err := getTransition(state, bp.Data, bp.Round)
-	if err != nil {
-		return nil, err
-	}
-
-	err = trans.ApplyTrades(tr.T)
 	if err != nil {
 		return nil, err
 	}
@@ -153,7 +136,7 @@ func (s *blockSyncer) syncBlockAndConnectToChain(p Peer, hash Hash, round uint64
 	}
 
 	state = trans.Commit()
-	err = s.chain.addBlock(b, bp, state, tr.T, 0)
+	err = s.chain.addBlock(b, bp, state, 0)
 	if err != nil {
 		log.Error("syncer: add block error", "err", err)
 	}

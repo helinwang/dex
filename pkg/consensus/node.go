@@ -143,9 +143,8 @@ func (n *Node) StartRound(round uint64) {
 			n.notarizeChs = append(n.notarizeChs, inCh)
 			ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(n.cfg.BlockTime))
 			go func() {
-				onNotarize := func(s *NtShare, t *TrieBlob) {
+				onNotarize := func(s *NtShare) {
 					go n.net.recvNtShare(s)
-					go n.net.recvTrades(t)
 				}
 
 				notary.Notarize(ctx, ntCancelCtx, inCh, onNotarize)

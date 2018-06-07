@@ -106,7 +106,6 @@ func TestNtShareEncodeDecode(t *testing.T) {
 	nt := NtShare{
 		Round:    1,
 		BP:       Hash{2},
-		Trades:   Hash{3},
 		SigShare: []byte{4},
 		Owner:    Addr{5},
 		OwnerSig: []byte{6},

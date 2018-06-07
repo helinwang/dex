@@ -110,7 +110,7 @@ func (r *RandBeaconSigShare) Hash() Hash {
 type NtShare struct {
 	Round    uint64
 	BP       Hash
-	Trades   Hash
+	Receipts Hash
 	SigShare []byte
 	Owner    Addr
 	OwnerSig []byte
@@ -181,7 +181,7 @@ type Block struct {
 	// The signature of the gob serialized block with
 	// NotarizationSig set to nil.
 	NotarizationSig []byte
-	Trades          Hash
+	Receipts        Hash
 }
 
 // Encode encodes the block.

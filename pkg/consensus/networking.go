@@ -438,10 +438,6 @@ func (n *Networking) recvBlockProposal(p Peer, bp *BlockProposal) {
 	go n.BroadcastItem(ItemID{T: BlockProposalItem, Hash: bp.Hash(), ItemRound: bp.Round, Ref: bp.PrevBlock})
 }
 
-func (n *Networking) recvTrades(blob *TrieBlob) {
-	log.Info("recv trades", "root", blob.Root)
-}
-
 func (n *Networking) recvNtShare(s *NtShare) {
 	log.Info("recv nt share", "hash", s.Hash())
 	groupID, valid := n.v.ValidateNtShare(s)
