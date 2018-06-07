@@ -21,17 +21,18 @@ type pricePoint struct {
 	ListHead  *orderBookEntry
 	ListTail  *orderBookEntry
 	NextPoint *pricePoint
-	PrevPoint *pricePoint
 }
 
 // TODO: does the user care about order txn id when submitting it?
 // probably not. We can generate an order txn id after it being
-// matched, by SHA3(market||orderCounter).
+// matched, by SHA3(market||orderCounter). The user can cancel the
+// order using it then.
 
 type orderBookEntry struct {
-	Owner     consensus.Addr
-	QuantUnit uint64
-	Next      *orderBookEntry
+	Owner        consensus.Addr
+	Quant        uint64
+	ExpireHeight uint64
+	Next         *orderBookEntry
 }
 
 // orderBook is the order book which performs the order matching.
@@ -40,15 +41,142 @@ type orderBookEntry struct {
 // Engine":
 // https://gist.github.com/helinwang/935ab9558195a6ea8c16567caef5911b
 type orderBook struct {
-	bidMax *orderBookEntry
-	askMin *orderBookEntry
+	bidMax *pricePoint
+	askMin *pricePoint
 }
 
 // Limit processes a incoming limit order.
 func (o *orderBook) Limit(order Order) {
 	if !order.SellSide {
-		//		if order.PriceUnit
+		// match the incoming buy order
+		for o.askMin != nil && order.Price >= o.askMin.Price {
+			entry := o.askMin.ListHead
+			for entry != nil {
+				if entry.Quant < order.Quant {
+					// TODO: trade event
+					order.Quant -= entry.Quant
+				} else {
+					// order is filled
+					if entry.Quant > order.Quant {
+						entry.Quant -= order.Quant
+					} else {
+						entry = entry.Next
+					}
+
+					// TODO: trade event
+					o.askMin.ListHead = entry
+					return
+				}
+				entry = entry.Next
+			}
+
+			// all the orders in the current price point
+			// is filled, move to next price point.
+			o.askMin = o.askMin.NextPoint
+		}
+
+		// TODO: handle order expire
+		// TODO: if a IOC order, do not need to insert
+		// no more matching orders, add to the order book
+		entry := &orderBookEntry{
+			Owner:        order.Owner,
+			Quant:        order.Quant,
+			ExpireHeight: order.ExpireHeight,
+		}
+
+		if o.bidMax == nil || order.Price > o.bidMax.Price {
+			o.bidMax = &pricePoint{
+				Price:     order.Price,
+				NextPoint: o.bidMax,
+				ListHead:  entry,
+				ListTail:  entry,
+			}
+		} else if order.Price == o.bidMax.Price {
+			o.bidMax.ListTail.Next = entry
+			o.bidMax.ListHead = entry
+		} else {
+			prev := o.bidMax
+			cur := o.bidMax.NextPoint
+			for ; ; prev, cur = cur, cur.NextPoint {
+				if cur == nil || cur.Price < order.Price {
+					point := &pricePoint{
+						Price:     order.Price,
+						NextPoint: cur,
+						ListHead:  entry,
+						ListTail:  entry,
+					}
+					prev.NextPoint = point
+					break
+				} else if cur.Price == order.Price {
+					cur.ListTail.Next = entry
+					cur.ListTail = entry
+					break
+				}
+			}
+		}
 	} else {
+		// match the incoming sell order
+		for o.bidMax != nil && order.Price <= o.bidMax.Price {
+			entry := o.bidMax.ListHead
+			for entry != nil {
+				if entry.Quant < order.Quant {
+					// TODO: trade event
+					order.Quant -= entry.Quant
+				} else {
+					// order is filled
+					if entry.Quant > order.Quant {
+						entry.Quant -= order.Quant
+					} else {
+						entry = entry.Next
+					}
+
+					// TODO: trade event
+					o.bidMax.ListHead = entry
+					return
+				}
+				entry = entry.Next
+			}
+
+			o.bidMax = o.bidMax.NextPoint
+		}
+
+		// TODO: if a IOC order, do not need to insert
+		entry := &orderBookEntry{
+			Owner:        order.Owner,
+			Quant:        order.Quant,
+			ExpireHeight: order.ExpireHeight,
+		}
+
+		if o.askMin == nil || order.Price < o.askMin.Price {
+			o.askMin = &pricePoint{
+				Price:     order.Price,
+				NextPoint: o.askMin,
+				ListHead:  entry,
+				ListTail:  entry,
+			}
+		} else if order.Price == o.askMin.Price {
+			o.askMin.ListTail.Next = entry
+			o.askMin.ListTail = entry
+		} else {
+			prev := o.askMin
+			cur := o.askMin.NextPoint
+			for ; ; prev, cur = cur, cur.NextPoint {
+				if cur == nil || cur.Price > order.Price {
+					point := &pricePoint{
+						Price:     order.Price,
+						NextPoint: cur,
+						ListHead:  entry,
+						ListTail:  entry,
+					}
+					prev.NextPoint = point
+					break
+				} else if cur.Price == order.Price {
+					cur.ListTail.Next = entry
+					cur.ListTail = entry
+					break
+				}
+			}
+		}
 	}
 }
 

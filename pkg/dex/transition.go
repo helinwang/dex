@@ -230,6 +230,15 @@ func (t *Transition) StateHash() consensus.Hash {
 
 func (t *Transition) matchMarket(m MarketSymbol, newOrders []Order) {
 	orders := t.state.MarketOrders(m)
+	// TODO: Improve with "order book relay"
+	orderBook := &orderBook{}
+	for _, o := range orders {
+		orderBook.Limit(o)
+	}
+
+	for _, o := range newOrders {
+		orderBook.Limit(o)
+	}
 }
 
 func (t *Transition) MatchOrders() *consensus.TrieBlob {
@@ -239,6 +248,8 @@ func (t *Transition) MatchOrders() *consensus.TrieBlob {
 
 	var wg sync.WaitGroup
 	for market, newOrders := range t.newOrders {
+		market := market
+		newOrders := newOrders
 		wg.Add(1)
 		go func() {
 			t.matchMarket(market, newOrders)
