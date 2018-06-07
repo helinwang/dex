@@ -6,7 +6,6 @@ import (
 	"math"
 	"math/big"
 	"strings"
-	"sync"
 
 	"github.com/helinwang/dex/pkg/consensus"
 	log "github.com/helinwang/log15"
@@ -224,55 +223,11 @@ func (t *Transition) Txns() [][]byte {
 }
 
 func (t *Transition) StateHash() consensus.Hash {
-	t.MatchOrders()
 	return t.state.Hash()
-}
-
-func (t *Transition) matchMarket(m MarketSymbol, newOrders []Order) {
-	orders := t.state.MarketOrders(m)
-	// TODO: Improve with "order book relay"
-	orderBook := &orderBook{}
-	for _, o := range orders {
-		orderBook.Limit(o)
-	}
-
-	for _, o := range newOrders {
-		orderBook.Limit(o)
-	}
-}
-
-func (t *Transition) MatchOrders() *consensus.TrieBlob {
-	if len(t.newOrders) == 0 {
-		return &consensus.TrieBlob{}
-	}
-
-	var wg sync.WaitGroup
-	for market, newOrders := range t.newOrders {
-		market := market
-		newOrders := newOrders
-		wg.Add(1)
-		go func() {
-			t.matchMarket(market, newOrders)
-			wg.Done()
-		}()
-	}
-	wg.Wait()
-
-	t.newOrders = nil
-	return &consensus.TrieBlob{}
-}
-
-func (t *Transition) ApplyTrades(blob *consensus.TrieBlob) error {
-	// TODO: this is not used, figure out if needed or not.
-	if blob.Root == consensus.ZeroHash {
-		return nil
-	}
-	return nil
 }
 
 // Commit commits the transition to the state root.
 func (t *Transition) Commit() consensus.State {
-	t.MatchOrders()
 	t.state.Commit()
 	for _, v := range t.tokenCreations {
 		t.state.tokenCache.Update(v.ID, &v.TokenInfo)
