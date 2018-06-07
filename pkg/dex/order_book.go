@@ -104,7 +104,7 @@ func (o *orderBook) Limit(order Order) {
 			}
 		} else if order.Price == o.bidMax.Price {
 			o.bidMax.ListTail.Next = entry
-			o.bidMax.ListHead = entry
+			o.bidMax.ListTail = entry
 		} else {
 			prev := o.bidMax
 			cur := o.bidMax.NextPoint

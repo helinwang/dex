@@ -7,7 +7,77 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestOrderBook(t *testing.T) {
+func TestOrderBookBid(t *testing.T) {
+	book := &orderBook{}
+	book.Limit(Order{
+		Quant: 10,
+		Price: 1,
+	})
+	e := &orderBookEntry{
+		orderBookEntryData: orderBookEntryData{
+			Quant: 10,
+		},
+	}
+	assert.Equal(t, book.bidMax, &pricePoint{
+		Price:    1,
+		ListHead: e,
+		ListTail: e,
+	})
+
+	book.Limit(Order{
+		Quant: 12,
+		Price: 1,
+	})
+	e1 := &orderBookEntry{
+		orderBookEntryData: orderBookEntryData{
+			Quant: 12,
+		},
+	}
+	e.Next = e1
+	assert.Equal(t, book.bidMax, &pricePoint{
+		Price:    1,
+		ListHead: e,
+		ListTail: e1,
+	})
+}
+
+func TestOrderBookSell(t *testing.T) {
+	book := &orderBook{}
+	book.Limit(Order{
+		Quant:    10,
+		Price:    1,
+		SellSide: true,
+	})
+	e := &orderBookEntry{
+		orderBookEntryData: orderBookEntryData{
+			Quant: 10,
+		},
+	}
+	assert.Equal(t, book.askMin, &pricePoint{
+		Price:    1,
+		ListHead: e,
+		ListTail: e,
+	})
+
+	book.Limit(Order{
+		Quant:    12,
+		Price:    1,
+		SellSide: true,
+	})
+	e1 := &orderBookEntry{
+		orderBookEntryData: orderBookEntryData{
+			Quant: 12,
+		},
+	}
+	e.Next = e1
+	assert.Equal(t, book.askMin, &pricePoint{
+		Price:    1,
+		ListHead: e,
+		ListTail: e1,
+	})
+}
+
+func TestOrderBookMatching(t *testing.T) {
 	orders := []Order{
 		{
 			Quant: 10,
@@ -49,6 +119,14 @@ func TestOrderBookEncodeDecode(t *testing.T) {
 			Price: 1,
 		},
 		{
+			Quant: 101,
+			Price: 0,
+		},
+		{
+			Quant: 12,
+			Price: 1,
+		},
+		{
 			Quant: 100,
 			Price: 0,
 		},
@@ -59,17 +137,27 @@ func TestOrderBookEncodeDecode(t *testing.T) {
 		{
 			SellSide: true,
 			Quant:    2,
-			Price:    2,
+			Price:    21,
 		},
 		{
 			SellSide: true,
 			Quant:    2,
-			Price:    3,
+			Price:    31,
 		},
 		{
 			SellSide: true,
 			Quant:    2,
-			Price:    5,
+			Price:    31,
+		},
+		{
+			SellSide: true,
+			Quant:    2,
+			Price:    51,
+		},
+		{
+			SellSide: true,
+			Quant:    2,
+			Price:    60,
 		},
 		{
 			SellSide: true,
@@ -94,5 +182,5 @@ func TestOrderBookEncodeDecode(t *testing.T) {
 		panic(err)
 	}
 
-	assert.Equal(t, book, &book1)
+	assert.Equal(t, book.bidMax, book1.bidMax)
 }
