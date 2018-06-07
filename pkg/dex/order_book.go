@@ -7,20 +7,6 @@ import (
 	"github.com/helinwang/dex/pkg/consensus"
 )
 
-// ExecutionEvent is either a trade event, an order cancellation event
-// or an order expiry event.
-//
-// - trade event: both buy and sell is not nil.
-// - order expiry event: only one of the buy and sell is not nil,
-// order.ExpireHeight is same as the round which the event is
-// recorded.
-// - order cancellation event: only one of the buy and sell is not nil,
-// and not a cancellation event.
-type ExecutionEvent struct {
-	Sell *Order
-	Buy  *Order
-}
-
 type pricePoint struct {
 	Price     uint64
 	ListHead  *orderBookEntry
@@ -28,12 +14,8 @@ type pricePoint struct {
 	NextPoint *pricePoint
 }
 
-// TODO: does the user care about order txn id when submitting it?
-// probably not. We can generate an order txn id after it being
-// matched, by SHA3(market||orderCounter). The user can cancel the
-// order using it then.
-
 type orderBookEntryData struct {
+	ID           uint64
 	Owner        consensus.Addr
 	Quant        uint64
 	ExpireHeight uint64
@@ -50,30 +32,118 @@ type orderBookEntry struct {
 // Engine":
 // https://gist.github.com/helinwang/935ab9558195a6ea8c16567caef5911b
 type orderBook struct {
-	bidMax *pricePoint
-	askMin *pricePoint
+	nextOrderID uint64
+	bidMax      *pricePoint
+	askMin      *pricePoint
+	idToEntry   map[uint64]*orderBookEntry
+}
+
+type orderExecution struct {
+	Owner    consensus.Addr
+	ID       uint64
+	SellSide bool
+	Quant    uint64
+	Price    uint64
+}
+
+type Order struct {
+	Owner    consensus.Addr
+	SellSide bool
+	// quant step size is the decimals of the token, specific when
+	// the token is issued, e.g., quant = Quant * 10^-(decimals)
+	Quant uint64
+	// price tick size is 10^-8, e.g,. price = Price * 10^-8
+	Price uint64
+
+	// TODO: the order with higher height has advantage, needs
+	// proof of the placed height
+
+	// the height that the order is placed
+	PlacedHeight uint64
+	// the order is expired when ExpireHeight >= block height
+	ExpireHeight uint64
+}
+
+func newOrderBook() *orderBook {
+	return &orderBook{
+		// don't need to actively remove the entries that are
+		// cancelled or matched, they will be "garbage
+		// collected" each block, during the order book
+		// serialization.
+		idToEntry: make(map[uint64]*orderBookEntry),
+	}
+}
+
+func (o *orderBook) Cancel(id uint64) {
+	entry := o.idToEntry[id]
+	if entry != nil {
+		entry.Quant = 0
+	}
+}
+
+func (o *orderBook) getEntry(data orderBookEntryData) *orderBookEntry {
+	e := &orderBookEntry{orderBookEntryData: data}
+	o.idToEntry[data.ID] = e
+	return e
 }
 
 // Limit processes a incoming limit order.
-func (o *orderBook) Limit(order Order) {
+func (o *orderBook) Limit(order Order) (id uint64, executions []orderExecution) {
+	id = o.nextOrderID
+	o.nextOrderID++
+
 	if !order.SellSide {
 		// match the incoming buy order
 		for o.askMin != nil && order.Price >= o.askMin.Price {
 			entry := o.askMin.ListHead
 			for entry != nil {
 				if entry.Quant < order.Quant {
-					// TODO: trade event
-					order.Quant -= entry.Quant
+					if entry.Quant > 0 {
+						order.Quant -= entry.Quant
+						execA := orderExecution{
+							Owner:    order.Owner,
+							ID:       id,
+							SellSide: false,
+							Quant:    entry.Quant,
+							Price:    o.askMin.Price,
+						}
+
+						execB := orderExecution{
+							Owner:    entry.Owner,
+							ID:       entry.ID,
+							SellSide: true,
+							Quant:    entry.Quant,
+							Price:    o.askMin.Price,
+						}
+						executions = append(executions, execA, execB)
+					}
 				} else {
 					// order is filled
-					if entry.Quant > order.Quant {
-						entry.Quant -= order.Quant
-					} else {
-						entry = entry.Next
+					execA := orderExecution{
+						Owner:    order.Owner,
+						ID:       id,
+						SellSide: false,
+						Quant:    order.Quant,
+						Price:    o.askMin.Price,
 					}
 
-					// TODO: trade event
-					o.askMin.ListHead = entry
+					execB := orderExecution{
+						Owner:    entry.Owner,
+						ID:       entry.ID,
+						SellSide: true,
+						Quant:    order.Quant,
+						Price:    o.askMin.Price,
+					}
+
+					executions = append(executions, execA, execB)
+					entry.Quant -= order.Quant
+					if entry.Quant == 0 {
+						if entry.Next != nil {
+							o.askMin.ListHead = entry.Next
+						} else {
+							o.askMin = o.askMin.NextPoint
+						}
+					}
 					return
 				}
 				entry = entry.Next
@@ -87,13 +157,11 @@ func (o *orderBook) Limit(order Order) {
 		// TODO: handle order expire
 		// TODO: if a IOC order, do not need to insert
 		// no more matching orders, add to the order book
-		entry := &orderBookEntry{
-			orderBookEntryData: orderBookEntryData{
-				Owner:        order.Owner,
-				Quant:        order.Quant,
-				ExpireHeight: order.ExpireHeight,
-			},
-		}
+		entry := o.getEntry(orderBookEntryData{
+			Owner:        order.Owner,
+			Quant:        order.Quant,
+			ExpireHeight: order.ExpireHeight,
+		})
 
 		if o.bidMax == nil || order.Price > o.bidMax.Price {
 			o.bidMax = &pricePoint{
@@ -131,18 +199,51 @@ func (o *orderBook) Limit(order Order) {
 			entry := o.bidMax.ListHead
 			for entry != nil {
 				if entry.Quant < order.Quant {
-					// TODO: trade event
 					order.Quant -= entry.Quant
-				} else {
-					// order is filled
-					if entry.Quant > order.Quant {
-						entry.Quant -= order.Quant
-					} else {
-						entry = entry.Next
+
+					execA := orderExecution{
+						Owner:    order.Owner,
+						ID:       id,
+						SellSide: true,
+						Quant:    entry.Quant,
+						Price:    o.bidMax.Price,
 					}
 
-					// TODO: trade event
-					o.bidMax.ListHead = entry
+					execB := orderExecution{
+						Owner:    entry.Owner,
+						ID:       entry.ID,
+						SellSide: false,
+						Quant:    entry.Quant,
+						Price:    o.bidMax.Price,
+					}
+					executions = append(executions, execA, execB)
+				} else {
+					// order is filled
+					execA := orderExecution{
+						Owner:    order.Owner,
+						ID:       id,
+						SellSide: true,
+						Quant:    order.Quant,
+						Price:    o.askMin.Price,
+					}
+
+					execB := orderExecution{
+						Owner:    entry.Owner,
+						ID:       entry.ID,
+						SellSide: false,
+						Quant:    order.Quant,
+						Price:    o.askMin.Price,
+					}
+
+					executions = append(executions, execA, execB)
+					entry.Quant -= order.Quant
+					if entry.Quant == 0 {
+						if entry.Next != nil {
+							o.bidMax.ListHead = entry.Next
+						} else {
+							o.bidMax = o.bidMax.NextPoint
+						}
+					}
 					return
 				}
 				entry = entry.Next
@@ -152,13 +253,11 @@ func (o *orderBook) Limit(order Order) {
 		}
 
 		// TODO: if a IOC order, do not need to insert
-		entry := &orderBookEntry{
-			orderBookEntryData: orderBookEntryData{
-				Owner:        order.Owner,
-				Quant:        order.Quant,
-				ExpireHeight: order.ExpireHeight,
-			},
-		}
+		entry := o.getEntry(orderBookEntryData{
+			Owner:        order.Owner,
+			Quant:        order.Quant,
+			ExpireHeight: order.ExpireHeight,
+		})
 
 		if o.askMin == nil || order.Price < o.askMin.Price {
 			o.askMin = &pricePoint{
@@ -191,6 +290,8 @@ func (o *orderBook) Limit(order Order) {
 			}
 		}
 	}
+
+	return
 }
 
 type orderBookPointToMarshal struct {
@@ -205,6 +306,8 @@ func flatten(p *pricePoint) []orderBookPointToMarshal {
 		e := p.ListHead
 		for ; e != nil; e = e.Next {
 			if e.Quant == 0 {
+				// 0 quant entries are cancelled
+				// entries, skip.
 				continue
 			}
 
@@ -219,7 +322,7 @@ func flatten(p *pricePoint) []orderBookPointToMarshal {
 	return r
 }
 
-func unflattenPoint(point orderBookPointToMarshal) *pricePoint {
+func (o *orderBook) unflattenPoint(point orderBookPointToMarshal) *pricePoint {
 	if len(point.Entries) == 0 {
 		return nil
 	}
@@ -231,10 +334,8 @@ func unflattenPoint(point orderBookPointToMarshal) *pricePoint {
 	entries := make([]*orderBookEntry, len(point.Entries))
 	var last *orderBookEntry
 	for i := len(entries) - 1; i >= 0; i-- {
-		entries[i] = &orderBookEntry{
-			orderBookEntryData: point.Entries[i],
-			Next:               last,
-		}
+		entries[i] = o.getEntry(point.Entries[i])
+		entries[i].Next = last
 		last = entries[i]
 	}
 
@@ -243,11 +344,11 @@ func unflattenPoint(point orderBookPointToMarshal) *pricePoint {
 	return p
 }
 
-func unflatten(points []orderBookPointToMarshal) *pricePoint {
+func (o *orderBook) unflatten(points []orderBookPointToMarshal) *pricePoint {
 	var root *pricePoint
 	var prev *pricePoint
 	for _, p := range points {
-		cur := unflattenPoint(p)
+		cur := o.unflattenPoint(p)
 		if cur == nil {
 			continue
 		}
@@ -275,10 +376,12 @@ func (o *orderBook) EncodeRLP(w io.Writer) error {
 		return err
 	}
 
-	return nil
+	err = rlp.Encode(w, o.nextOrderID)
+	return err
 }
 
 func (o *orderBook) DecodeRLP(s *rlp.Stream) error {
+	o.idToEntry = make(map[uint64]*orderBookEntry)
 	b, err := s.Raw()
 	if err != nil {
 		return err
@@ -301,8 +404,14 @@ func (o *orderBook) DecodeRLP(s *rlp.Stream) error {
 		return err
 	}
 
-	o.askMin = unflatten(askPoints)
-	o.bidMax = unflatten(bidPoints)
+	nextOrderID, err := s.Uint()
+	if err != nil {
+		return err
+	}
+
+	o.nextOrderID = nextOrderID
+	o.askMin = o.unflatten(askPoints)
+	o.bidMax = o.unflatten(bidPoints)
 	return nil
 }
 
@@ -403,5 +512,45 @@ With routed networking,
 - How about instead of sharding, do a very fast implementation of the
   matching engine. Sure, the scalability is bounded, but we could
   already have a very good TPS.
+
+*/
+
+/*
+
+execution report, order.ID vs order.owner
+
+execution report needs:
+
+- price
+- quant
+- side
+- owner
+
+the user wants to know:
+
+- order is in the block chain, can be checked from the order status
+  below.
+- order status: price, side, remaining quant. Which can be part of the
+  account state.
+- execution report, append only, should it be in the account state? It
+  is actually very suitable for archiving services to archive. Maybe a
+  seperate trie would be good.
+
+the user wants to be able to:
+
+- cancel a order that is sent, not necessarily recorded on the
+  blockchain <- actually, we can't do that, otherwise this information
+  has to stay on the chain forever. The user can simply send another
+  txn with same nonce to override the order if it is not yet recorded.
+- cancel a order that is pending on the blockchain. He has to cancel
+  with the order ID. The order ID better be unique, so the execution
+  report would make sense.
+
+conclusion:
+
+1. the order ID gets generated by the blockchain, upon receiving the
+order. A increasing integer per order book would be fine.
+
+2. the user cancels the order with the order ID.
 
 */

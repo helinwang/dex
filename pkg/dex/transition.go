@@ -144,7 +144,6 @@ func (t *Transition) placeOrder(owner *Account, txn PlaceOrderTxn, hash consensu
 	owner.Balances[sell].Available -= sellQuantUnit
 	owner.Balances[sell].Pending += sellQuantUnit
 	order := Order{
-		ID:           hash,
 		Owner:        owner.PK.Addr(),
 		SellSide:     txn.SellSide,
 		Quant:        txn.Quant,

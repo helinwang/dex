@@ -8,7 +8,7 @@ import (
 )
 
 func TestOrderBookBid(t *testing.T) {
-	book := &orderBook{}
+	book := newOrderBook()
 	book.Limit(Order{
 		Quant: 10,
 		Price: 1,
@@ -42,7 +42,7 @@ func TestOrderBookBid(t *testing.T) {
 }
 
 func TestOrderBookSell(t *testing.T) {
-	book := &orderBook{}
+	book := newOrderBook()
 	book.Limit(Order{
 		Quant:    10,
 		Price:    1,
@@ -93,7 +93,7 @@ func TestOrderBookMatching(t *testing.T) {
 			Price:    2,
 		},
 	}
-	book := &orderBook{}
+	book := newOrderBook()
 	for _, o := range orders {
 		book.Limit(o)
 	}
@@ -110,6 +110,7 @@ func TestOrderBookMatching(t *testing.T) {
 	assert.Nil(t, book.bidMax)
 	assert.Equal(t, 1, int(book.askMin.Price))
 	assert.Equal(t, 90, int(book.askMin.ListHead.Quant))
+	assert.Equal(t, 4, int(book.nextOrderID))
 }
 
 func TestOrderBookEncodeDecode(t *testing.T) {
@@ -166,7 +167,7 @@ func TestOrderBookEncodeDecode(t *testing.T) {
 		},
 	}
 
-	book := &orderBook{}
+	book := newOrderBook()
 	for _, o := range orders {
 		book.Limit(o)
 	}
@@ -183,4 +184,20 @@ func TestOrderBookEncodeDecode(t *testing.T) {
 	}
 
 	assert.Equal(t, book.bidMax, book1.bidMax)
+}
+
+func TestCancelOrder(t *testing.T) {
+	book := newOrderBook()
+	id, _ := book.Limit(Order{
+		Price: 1,
+		Quant: 10,
+	})
+	assert.NotNil(t, book.bidMax)
+	assert.Equal(t, 1, int(book.bidMax.Price))
+	assert.Equal(t, 10, int(book.bidMax.ListHead.Quant))
+
+	book.Cancel(id)
+	assert.NotNil(t, book.bidMax)
+	assert.Equal(t, 1, int(book.bidMax.Price))
+	assert.Equal(t, 0, int(book.bidMax.ListHead.Quant))
 }
