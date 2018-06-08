@@ -205,6 +205,7 @@ func (t *Transition) placeOrder(owner *Account, txn PlaceOrderTxn, round uint64)
 
 	if sellQuantUnit == 0 {
 		log.Warn("sell quant too small")
+		return false
 	}
 
 	if sb.Available <= sellQuantUnit {

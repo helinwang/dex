@@ -114,6 +114,8 @@ func printAccount(c *cli.Context) error {
 		return err
 	}
 
+	// TODO: support send token to address, rather than PK.
+
 	for _, b := range w.Balances {
 		symbol := idToToken[b.Token].Symbol
 		decimals := int(idToToken[b.Token].Decimals)
