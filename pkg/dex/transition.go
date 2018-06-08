@@ -13,16 +13,18 @@ import (
 )
 
 type Transition struct {
-	tokenCreations []Token
-	txns           [][]byte
-	state          *State
-	orderBooks     map[MarketSymbol]*orderBook
+	tokenCreations  []Token
+	txns            [][]byte
+	state           *State
+	orderBooks      map[MarketSymbol]*orderBook
+	dirtyOrderBooks map[MarketSymbol]bool
 }
 
 func newTransition(s *State) *Transition {
 	return &Transition{
-		state:      s,
-		orderBooks: make(map[MarketSymbol]*orderBook),
+		state:           s,
+		orderBooks:      make(map[MarketSymbol]*orderBook),
+		dirtyOrderBooks: make(map[MarketSymbol]bool),
 	}
 }
 
@@ -100,21 +102,21 @@ func (t *Transition) getOrderBook(m MarketSymbol) *orderBook {
 	return book
 }
 
-func calcBaseSellQuant(quoteQuantUnit uint64, quoteDecimals uint8, priceQuantUnit uint64, priceDecimals, baseDecimals uint8) uint64 {
+func calcBaseSellQuant(baseQuantUnit uint64, quoteDecimals uint8, priceQuantUnit uint64, priceDecimals, baseDecimals uint8) uint64 {
 	var quantUnit big.Int
-	var quantDenominator big.Int
+	var quoteDenominator big.Int
 	var priceU big.Int
 	var priceDenominator big.Int
 	var baseDenominator big.Int
-	quantUnit.SetUint64(quoteQuantUnit)
-	quantDenominator.SetUint64(uint64(math.Pow10(int(quoteDecimals))))
+	quantUnit.SetUint64(baseQuantUnit)
+	quoteDenominator.SetUint64(uint64(math.Pow10(int(quoteDecimals))))
 	priceU.SetUint64(priceQuantUnit)
 	priceDenominator.SetUint64(uint64(math.Pow10(int(OrderPriceDecimals))))
 	baseDenominator.SetUint64(uint64(math.Pow10(int(baseDecimals))))
 	var result big.Int
-	result.Mul(&quantUnit, &priceU)
-	result.Mul(&result, &baseDenominator)
-	result.Div(&result, &quantDenominator)
+	result.Mul(&quantUnit, &quoteDenominator)
+	result.Mul(&result, &priceU)
+	result.Div(&result, &baseDenominator)
 	result.Div(&result, &priceDenominator)
 	return result.Uint64()
 }
@@ -177,6 +179,7 @@ func (t *Transition) placeOrder(owner *Account, txn PlaceOrderTxn, hash consensu
 		Order:  order,
 	}
 	owner.PendingOrders = append(owner.PendingOrders, pendingOrder)
+	t.dirtyOrderBooks[txn.Market] = true
 
 	if len(executions) > 0 {
 		// TODO: execution report
@@ -202,33 +205,39 @@ func (t *Transition) placeOrder(owner *Account, txn PlaceOrderTxn, hash consensu
 					}
 				}
 			}
+			_ = removeIdx
 
 			if removeIdx >= 0 {
 				acc.PendingOrders = append(acc.PendingOrders[:removeIdx], acc.PendingOrders[removeIdx+1:]...)
 			}
 
+			var soldQuant, boughtQuant uint64
 			var pendingTokenID, availableTokenID TokenID
 			if exec.SellSide {
 				// sold, deduct base pending balance,
 				// add quote available balance
 				pendingTokenID = txn.Market.Base
 				availableTokenID = txn.Market.Quote
+				soldQuant = exec.Quant
+				boughtQuant = calcBaseSellQuant(exec.Quant, quoteInfo.Decimals, exec.Price, OrderPriceDecimals, baseInfo.Decimals)
 			} else {
 				// bought, deduct quote pending
 				// balance, add base available balance
 				pendingTokenID = txn.Market.Quote
 				availableTokenID = txn.Market.Base
+				boughtQuant = exec.Quant
+				soldQuant = calcBaseSellQuant(exec.Quant, quoteInfo.Decimals, exec.Price, OrderPriceDecimals, baseInfo.Decimals)
 			}
 
-			if acc.Balances[pendingTokenID].Pending < exec.Quant {
-				panic(fmt.Errorf("insufficient pending balance, owner: %s, pending %d, executed: %d", exec.Owner.Hex(), acc.Balances[pendingTokenID].Pending, exec.Quant))
+			if acc.Balances[pendingTokenID].Pending < soldQuant {
+				panic(fmt.Errorf("insufficient pending balance, owner: %s, pending %d, executed: %d", exec.Owner.Hex(), acc.Balances[pendingTokenID].Pending, soldQuant))
 			}
 
-			acc.Balances[pendingTokenID].Pending -= exec.Quant
+			acc.Balances[pendingTokenID].Pending -= soldQuant
 			if acc.Balances[availableTokenID] == nil {
 				acc.Balances[availableTokenID] = &Balance{}
 			}
-			acc.Balances[availableTokenID].Available += exec.Quant
+			acc.Balances[availableTokenID].Available += boughtQuant
 		}
 
 		for _, acc := range addrToAcc {
@@ -305,12 +314,23 @@ func (t *Transition) Txns() [][]byte {
 	return t.txns
 }
 
+func (t *Transition) saveOrderBookIfDirty() {
+	for m, b := range t.orderBooks {
+		if t.dirtyOrderBooks[m] {
+			t.state.saveOrderBook(m, b)
+			t.dirtyOrderBooks[m] = false
+		}
+	}
+}
+
 func (t *Transition) StateHash() consensus.Hash {
+	t.saveOrderBookIfDirty()
 	return t.state.Hash()
 }
 
 // Commit commits the transition to the state root.
 func (t *Transition) Commit() consensus.State {
+	t.saveOrderBookIfDirty()
 	t.state.Commit()
 	for _, v := range t.tokenCreations {
 		t.state.tokenCache.Update(v.ID, &v.TokenInfo)

@@ -129,7 +129,7 @@ func printAccount(c *cli.Context) error {
 		return err
 	}
 
-	fmt.Println("\nOrders:")
+	fmt.Println("\nPending Orders:")
 	tw = tabwriter.NewWriter(os.Stdout, 0, 0, 1, ' ', tabwriter.Debug)
 	_, err = fmt.Fprintln(tw, "\tID\tSymbol\tSide\tPrice\tAmount\tExecuted\tExpiry Block Height\t")
 	if err != nil {

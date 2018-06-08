@@ -152,6 +152,7 @@ func (o *orderBook) Limit(order Order) (id uint64, executions []orderExecution) 
 		// TODO: if a IOC order, do not need to insert
 		// no more matching orders, add to the order book
 		entry := o.getEntry(orderBookEntryData{
+			ID:           id,
 			Owner:        order.Owner,
 			Quant:        order.Quant,
 			ExpireHeight: order.ExpireHeight,
@@ -248,6 +249,7 @@ func (o *orderBook) Limit(order Order) (id uint64, executions []orderExecution) 
 
 		// TODO: if a IOC order, do not need to insert
 		entry := o.getEntry(orderBookEntryData{
+			ID:           id,
 			Owner:        order.Owner,
 			Quant:        order.Quant,
 			ExpireHeight: order.ExpireHeight,

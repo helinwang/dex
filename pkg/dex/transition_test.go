@@ -1,7 +1,6 @@
 package dex
 
 import (
-	"math"
 	"testing"
 
 	"github.com/dfinity/go-dfinity-crypto/bls"
@@ -181,14 +180,5 @@ func TestPlaceOrderExpireLater(t *testing.T) {
 }
 
 func TestCalcBaseSellQuant(t *testing.T) {
-	baseDecimals := uint8(8)
-	baseDiv := uint64(math.Pow10(int(baseDecimals)))
-	quoteDecimals := uint8(6)
-	quoteDiv := uint64(math.Pow10(int(quoteDecimals)))
-	quoteQuant := quoteDiv * 100
-	priceDiv := uint64(math.Pow10(int(OrderPriceDecimals)))
-	priceQuantUnit := uint64(0.1 * float64(priceDiv))
-	baseQuant := calcBaseSellQuant(quoteQuant, quoteDecimals, priceQuantUnit, OrderPriceDecimals, baseDecimals)
-	assert.Equal(t, uint64(10), baseQuant/baseDiv)
 	assert.Equal(t, 40, int(calcBaseSellQuant(40, 8, 100000000, 8, 8)))
 }

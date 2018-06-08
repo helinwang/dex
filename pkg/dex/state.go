@@ -171,6 +171,16 @@ func (s *State) loadOrderBook(m MarketSymbol) *orderBook {
 	return &book
 }
 
+func (s *State) saveOrderBook(m MarketSymbol, book *orderBook) {
+	b, err := rlp.EncodeToBytes(book)
+	if err != nil {
+		panic(err)
+	}
+
+	path := marketPath(m.Encode())
+	s.state.Update(path, b)
+}
+
 // Markets returns the trading markets.
 func (s *State) Markets() []MarketSymbol {
 	prefix := marketPath(nil)
