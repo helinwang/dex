@@ -100,12 +100,17 @@ func (r *RPCServer) walletState(addr consensus.Addr, w *WalletState) error {
 		return fmt.Errorf("account %x does not exist", addr[:])
 	}
 
-	bs := make([]UserBalance, len(acc.Balances))
+	keys := make([]TokenID, len(acc.Balances))
 	i := 0
-	for k, v := range acc.Balances {
-		bs[i].Token = k
-		bs[i].Balance = *v
+	for k := range acc.Balances {
+		keys[i] = k
 		i++
+	}
+
+	bs := make([]UserBalance, len(keys))
+	for i := range bs {
+		bs[i].Token = keys[i]
+		bs[i].Balance = *acc.Balances[keys[i]]
 	}
 
 	w.PendingOrders = acc.PendingOrders

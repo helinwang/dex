@@ -114,8 +114,6 @@ func printAccount(c *cli.Context) error {
 		return err
 	}
 
-	// TODO: sort balances
-
 	for _, b := range w.Balances {
 		symbol := idToToken[b.Token].Symbol
 		decimals := int(idToToken[b.Token].Decimals)
