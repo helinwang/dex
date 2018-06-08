@@ -464,7 +464,6 @@ func placeOrder(c *cli.Context) error {
 		SellSide:     sellSide,
 		Quant:        quantUnit,
 		Price:        priceUnit,
-		PlacedHeight: state.Round,
 		ExpireHeight: expireRound,
 		Market:       market,
 	}

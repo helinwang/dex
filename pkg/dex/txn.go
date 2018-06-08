@@ -118,8 +118,6 @@ type PlaceOrderTxn struct {
 	Quant uint64
 	// price tick size is 10^-8, e.g,. price = Price * 10^-8
 	Price uint64
-	// the height that the order is placed
-	PlacedHeight uint64
 	// the order is expired when ExpireHeight >= block height
 	ExpireHeight uint64
 	Market       MarketSymbol

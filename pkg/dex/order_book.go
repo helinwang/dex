@@ -54,12 +54,6 @@ type Order struct {
 	Quant uint64
 	// price tick size is 10^-8, e.g,. price = Price * 10^-8
 	Price uint64
-
-	// TODO: the order with higher height has advantage, needs
-	// proof of the placed height
-
-	// the height that the order is placed
-	PlacedHeight uint64
 	// the order is expired when ExpireHeight >= block height
 	ExpireHeight uint64
 }
@@ -224,7 +218,7 @@ func (o *orderBook) Limit(order Order) (id uint64, executions []orderExecution) 
 						ID:       id,
 						SellSide: true,
 						Quant:    order.Quant,
-						Price:    o.askMin.Price,
+						Price:    o.bidMax.Price,
 					}
 
 					execB := orderExecution{
@@ -232,7 +226,7 @@ func (o *orderBook) Limit(order Order) (id uint64, executions []orderExecution) 
 						ID:       entry.ID,
 						SellSide: false,
 						Quant:    order.Quant,
-						Price:    o.askMin.Price,
+						Price:    o.bidMax.Price,
 					}
 
 					executions = append(executions, execA, execB)

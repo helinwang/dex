@@ -3,6 +3,7 @@ package dex
 import (
 	"bytes"
 	"encoding/gob"
+	"fmt"
 	"math"
 	"math/big"
 	"strings"
@@ -15,11 +16,14 @@ type Transition struct {
 	tokenCreations []Token
 	txns           [][]byte
 	state          *State
-	newOrders      map[MarketSymbol][]Order
+	orderBooks     map[MarketSymbol]*orderBook
 }
 
 func newTransition(s *State) *Transition {
-	return &Transition{state: s}
+	return &Transition{
+		state:      s,
+		orderBooks: make(map[MarketSymbol]*orderBook),
+	}
 }
 
 // Record records a transition to the state transition.
@@ -83,6 +87,19 @@ func (t *Transition) Record(b []byte, round uint64) (valid, success bool) {
 	return true, true
 }
 
+func (t *Transition) getOrderBook(m MarketSymbol) *orderBook {
+	book := t.orderBooks[m]
+	if book == nil {
+		book = t.state.loadOrderBook(m)
+		if book == nil {
+			book = newOrderBook()
+		}
+		t.orderBooks[m] = book
+	}
+
+	return book
+}
+
 func calcBaseSellQuant(quoteQuantUnit uint64, quoteDecimals uint8, priceQuantUnit uint64, priceDecimals, baseDecimals uint8) uint64 {
 	var quantUnit big.Int
 	var quantDenominator big.Int
@@ -141,6 +158,7 @@ func (t *Transition) placeOrder(owner *Account, txn PlaceOrderTxn, hash consensu
 		return false
 	}
 
+	// TODO: handle order expire height
 	owner.Balances[sell].Available -= sellQuantUnit
 	owner.Balances[sell].Pending += sellQuantUnit
 	order := Order{
@@ -148,11 +166,77 @@ func (t *Transition) placeOrder(owner *Account, txn PlaceOrderTxn, hash consensu
 		SellSide:     txn.SellSide,
 		Quant:        txn.Quant,
 		Price:        txn.Price,
-		PlacedHeight: txn.PlacedHeight,
 		ExpireHeight: txn.ExpireHeight,
 	}
-	t.state.AddOrder(owner, txn.Market, uint8(round%numShardPerMarket), order)
-	t.state.UpdateAccount(owner)
+
+	book := t.getOrderBook(txn.Market)
+	orderID, executions := book.Limit(order)
+	pendingOrder := PendingOrder{
+		ID:     orderID,
+		Market: txn.Market,
+		Order:  order,
+	}
+	owner.PendingOrders = append(owner.PendingOrders, pendingOrder)
+
+	if len(executions) > 0 {
+		// TODO: execution report
+		addrToAcc := make(map[consensus.Addr]*Account)
+		addrToAcc[owner.PK.Addr()] = owner
+
+		for _, exec := range executions {
+			acc := addrToAcc[exec.Owner]
+			if acc == nil {
+				acc = t.state.Account(exec.Owner)
+				if acc == nil {
+					panic(fmt.Errorf("owner %s not found on executed order, should never happen", exec.Owner.Hex()))
+				}
+				addrToAcc[exec.Owner] = acc
+			}
+
+			removeIdx := -1
+			for i := range acc.PendingOrders {
+				if acc.PendingOrders[i].Market == txn.Market && acc.PendingOrders[i].ID == exec.ID {
+					acc.PendingOrders[i].Executed += exec.Quant
+					if acc.PendingOrders[i].Executed == acc.PendingOrders[i].Quant {
+						removeIdx = i
+					}
+				}
+			}
+
+			if removeIdx >= 0 {
+				acc.PendingOrders = append(acc.PendingOrders[:removeIdx], acc.PendingOrders[removeIdx+1:]...)
+			}
+
+			var pendingTokenID, availableTokenID TokenID
+			if exec.SellSide {
+				// sold, deduct base pending balance,
+				// add quote available balance
+				pendingTokenID = txn.Market.Base
+				availableTokenID = txn.Market.Quote
+			} else {
+				// bought, deduct quote pending
+				// balance, add base available balance
+				pendingTokenID = txn.Market.Quote
+				availableTokenID = txn.Market.Base
+			}
+
+			if acc.Balances[pendingTokenID].Pending < exec.Quant {
+				panic(fmt.Errorf("insufficient pending balance, owner: %s, pending %d, executed: %d", exec.Owner.Hex(), acc.Balances[pendingTokenID].Pending, exec.Quant))
+			}
+
+			acc.Balances[pendingTokenID].Pending -= exec.Quant
+			if acc.Balances[availableTokenID] == nil {
+				acc.Balances[availableTokenID] = &Balance{}
+			}
+			acc.Balances[availableTokenID].Available += exec.Quant
+		}
+
+		for _, acc := range addrToAcc {
+			t.state.UpdateAccount(acc)
+		}
+	} else {
+		t.state.UpdateAccount(owner)
+	}
 	return true
 }
 

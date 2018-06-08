@@ -14,7 +14,6 @@ func TestOrderEncodeDecode(t *testing.T) {
 		SellSide:     true,
 		Quant:        1000000000,
 		Price:        20000000,
-		PlacedHeight: 1000,
 		ExpireHeight: 1001,
 	}
 	b, err := rlp.EncodeToBytes(&o)

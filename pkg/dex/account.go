@@ -17,13 +17,19 @@ type Balance struct {
 	Pending   uint64
 }
 
+type PendingOrder struct {
+	ID       uint64
+	Market   MarketSymbol
+	Executed uint64
+	Order
+}
+
 type Account struct {
 	PK consensus.PK
 	// a vector of nonce that enables concurrent transactions.
-	NonceVec     []uint64
-	Balances     map[TokenID]*Balance
-	OrderMarkets []MarketSymbol
-	OrderShards  []uint8
+	NonceVec      []uint64
+	Balances      map[TokenID]*Balance
+	PendingOrders []PendingOrder
 }
 
 func (a *Account) EncodeRLP(w io.Writer) error {
@@ -32,12 +38,7 @@ func (a *Account) EncodeRLP(w io.Writer) error {
 		return err
 	}
 
-	err = rlp.Encode(w, a.OrderMarkets)
-	if err != nil {
-		return err
-	}
-
-	err = rlp.Encode(w, a.OrderShards)
+	err = rlp.Encode(w, a.PendingOrders)
 	if err != nil {
 		return err
 	}
@@ -86,116 +87,52 @@ func (a *Account) DecodeRLP(s *rlp.Stream) error {
 	}
 	b.PK = consensus.PK(v)
 
-	l, err := s.List()
+	v, err = s.Raw()
+	if err != nil {
+		return err
+	}
+	var pendingOrders []PendingOrder
+	err = rlp.DecodeBytes(v, &pendingOrders)
+	if err != nil {
+		return err
+	}
+	b.PendingOrders = pendingOrders
+
+	v, err = s.Raw()
+	if err != nil {
+		return err
+	}
+	var nonceVec []uint64
+	err = rlp.DecodeBytes(v, &nonceVec)
+	if err != nil {
+		return err
+	}
+	b.NonceVec = nonceVec
+
+	v, err = s.Raw()
+	if err != nil {
+		return err
+	}
+	var keys []TokenID
+	err = rlp.DecodeBytes(v, &keys)
 	if err != nil {
 		return err
 	}
 
-	// the rlp package is not returning the correct list size,
-	// devide by 3 will result a correct size. 3 seems to come
-	// from the fact that type `MarketSymbol` has 2 fields.
-	l = l / 3
-
-	ps := make([]MarketSymbol, int(l))
-	for i := range ps {
-		d, err := s.Raw()
-		if err != nil {
-			return err
-		}
-
-		var p MarketSymbol
-		err = rlp.DecodeBytes(d, &p)
-		if err != nil {
-			return err
-		}
-
-		ps[i] = p
-	}
-	b.OrderMarkets = ps
-
-	err = s.ListEnd()
+	v, err = s.Raw()
 	if err != nil {
 		return err
 	}
-
-	// rlp encodes []uint8 as bytes rather than list
-	bs, err := s.Bytes()
-	if err != nil {
-		return err
-	}
-
-	shards := make([]uint8, len(bs))
-	for i := range shards {
-		shards[i] = bs[i]
-	}
-	b.OrderShards = shards
-
-	l, err = s.List()
-	if err != nil {
-		return err
-	}
-
-	vec := make([]uint64, int(l))
-	for i := range vec {
-		v, err := s.Uint()
-		if err != nil {
-			return err
-		}
-
-		vec[i] = v
-	}
-	b.NonceVec = vec
-
-	err = s.ListEnd()
-	if err != nil {
-		return err
-	}
-
-	l, err = s.List()
-	if err != nil {
-		return err
-	}
-
-	keys := make([]uint8, int(l))
-	for i := range keys {
-		v, err := s.Uint()
-		if err != nil {
-			return err
-		}
-
-		keys[i] = uint8(v)
-	}
-
-	err = s.ListEnd()
+	var values []*Balance
+	err = rlp.DecodeBytes(v, &values)
 	if err != nil {
 		return err
 	}
 
 	b.Balances = make(map[TokenID]*Balance)
 
-	_, err = s.List()
-	if err != nil {
-		return err
-	}
-
 	for i := range keys {
-		var balance Balance
-		d, err := s.Raw()
-		if err != nil {
-			return err
-		}
-
-		err = rlp.DecodeBytes(d, &balance)
-		if err != nil {
-			return err
-		}
-
-		b.Balances[TokenID(keys[i])] = &balance
-	}
-
-	err = s.ListEnd()
-	if err != nil {
-		return err
+		b.Balances[keys[i]] = values[i]
 	}
 
 	*a = b

@@ -146,14 +146,29 @@ func TestPlaceOrder(t *testing.T) {
 		Quant:        40,
 		Price:        100000000,
 		ExpireHeight: 0,
-		Market:       MarketSymbol{Quote: 0, Base: 1},
+		Market:       MarketSymbol{Quote: 0, Base: 0},
 	}
 	trans := s.Transition()
-	trans.Record(MakePlaceOrderTxn(sk, order, 0, 0), 1)
+	valid, success := trans.Record(MakePlaceOrderTxn(sk, order, 0, 0), 1)
+	assert.True(t, valid)
+	assert.True(t, success)
 	s = trans.Commit().(*State)
 
 	acc := s.Account(addr)
 	assert.Equal(t, 40, int(acc.Balances[0].Pending))
+
+	order = PlaceOrderTxn{
+		SellSide:     true,
+		Quant:        40,
+		Price:        100000000,
+		ExpireHeight: 0,
+		Market:       MarketSymbol{Quote: 0, Base: 0},
+	}
+	valid, success = trans.Record(MakePlaceOrderTxn(sk, order, 0, 1), 1)
+	assert.True(t, valid)
+	assert.True(t, success)
+	acc = s.Account(addr)
+	assert.Equal(t, 0, int(acc.Balances[0].Pending))
 }
 
 func TestPlaceOrderAlreadyExpire(t *testing.T) {

@@ -77,19 +77,14 @@ type TokenState struct {
 	Tokens []Token
 }
 
-type UserOrder struct {
-	Market MarketSymbol
-	Order
-}
-
 type UserBalance struct {
 	Token TokenID
 	Balance
 }
 
 type WalletState struct {
-	Balances []UserBalance
-	Orders   []UserOrder
+	Balances      []UserBalance
+	PendingOrders []PendingOrder
 }
 
 func (r *RPCServer) walletState(addr consensus.Addr, w *WalletState) error {
@@ -113,18 +108,7 @@ func (r *RPCServer) walletState(addr consensus.Addr, w *WalletState) error {
 		i++
 	}
 
-	markets := make(map[MarketSymbol]struct{})
-	for _, market := range acc.OrderMarkets {
-		markets[market] = struct{}{}
-	}
-
-	for market := range markets {
-		orders := r.s.AccountOrders(acc, market)
-		for _, o := range orders {
-			w.Orders = append(w.Orders, UserOrder{Market: market, Order: o})
-		}
-	}
-
+	w.PendingOrders = acc.PendingOrders
 	w.Balances = bs
 	return nil
 }

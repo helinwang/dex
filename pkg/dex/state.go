@@ -12,10 +12,6 @@ import (
 	log "github.com/helinwang/log15"
 )
 
-const (
-	numShardPerMarket = 16
-)
-
 // MarketSymbol is the symbol of a trading pair.
 //
 type MarketSymbol struct {
@@ -83,7 +79,7 @@ func (s *State) Commit() {
 
 var (
 	accountPrefix = []byte("a")
-	orderPrefix   = []byte("p")
+	marketPrefix  = []byte("m")
 	tokenPrefix   = []byte("t")
 )
 
@@ -91,14 +87,14 @@ func accountAddrToPath(addr consensus.Addr) []byte {
 	return append(accountPrefix, addr[:]...)
 }
 
-func orderPath(path []byte) []byte {
-	return append(orderPrefix, path...)
-}
-
 func tokenPath(tokenID TokenID) []byte {
 	path := make([]byte, 64)
 	binary.LittleEndian.PutUint64(path, uint64(tokenID))
 	return append(tokenPrefix, path...)
+}
+
+func marketPath(path []byte) []byte {
+	return append(marketPrefix, path...)
 }
 
 func encodePath(str []byte) []byte {
@@ -158,87 +154,26 @@ func (s *State) Account(addr consensus.Addr) *Account {
 	return &account
 }
 
-func (s *State) AccountOrders(acc *Account, market MarketSymbol) []Order {
-	m := make(map[MarketSymbol]map[uint8]struct{})
-	for i, market := range acc.OrderMarkets {
-		if m[market] == nil {
-			m[market] = make(map[uint8]struct{})
-		}
-		m[market][acc.OrderShards[i]] = struct{}{}
-	}
-
-	if len(m[market]) == 0 {
+// loadOrderBook deserializes the order from the state trie.
+func (s *State) loadOrderBook(m MarketSymbol) *orderBook {
+	path := marketPath(m.Encode())
+	b := s.state.Get(path)
+	if b == nil {
 		return nil
 	}
 
-	var r []Order
-	for shard := range m[market] {
-		orders := s.Orders(market, shard)
-		r = append(r, orders...)
+	var book orderBook
+	err := rlp.DecodeBytes(b, &book)
+	if err != nil {
+		panic(err)
 	}
 
-	return r
-}
-
-func (s *State) Orders(market MarketSymbol, shard uint8) []Order {
-	prefix := orderPath(append(market.Encode(), shard))
-	prefix = encodePath(prefix)
-	iter := s.state.NodeIterator(prefix)
-	var p []Order
-
-	hasNext := true
-	foundPrefix := false
-	for ; hasNext; hasNext = iter.Next(true) {
-		if err := iter.Error(); err != nil {
-			log.Error("error iterating pending orders trie", "err", err)
-			break
-		}
-
-		if !iter.Leaf() {
-			continue
-		}
-
-		path := iter.Path()
-		if !bytes.HasPrefix(path, prefix) {
-			if foundPrefix {
-				break
-			}
-
-			continue
-		}
-		foundPrefix = true
-
-		v := iter.LeafBlob()
-		var o []Order
-		err := rlp.DecodeBytes(v, &o)
-		if err != nil {
-			log.Error("error decode pending order", "market", market, "path", path, "err", err)
-			continue
-		}
-
-		p = append(p, o...)
-	}
-
-	return p
-}
-
-// MarketOrders returns the sorted orders of the given market.
-func (s *State) MarketOrders(market MarketSymbol) []Order {
-	var shards [numShardPerMarket][]Order
-	total := 0
-	for i := range shards {
-		shards[i] = s.Orders(market, uint8(i))
-		total += len(shards[i])
-	}
-
-	// each shard is sorted, merge them with k-way merge
-	r := merge(shards)
-	return r
+	return &book
 }
 
 // Markets returns the trading markets.
 func (s *State) Markets() []MarketSymbol {
-	prefix := orderPath(nil)
+	prefix := marketPath(nil)
 	prefix = encodePath(prefix)
 	iter := s.state.NodeIterator(prefix)
 
@@ -277,33 +212,6 @@ func (s *State) Markets() []MarketSymbol {
 		r = append(r, m)
 	}
 	return r
-}
-
-// AddOrder adds one order into its trading market.
-func (s *State) AddOrder(acc *Account, market MarketSymbol, shard uint8, order Order) {
-	// orders were saved into the trie with the path as:
-	// orderPrefix - encodedMarket - shard - encodedOrders.
-	order.Owner = acc.PK.Addr()
-	var orders []Order
-	path := append(market.Encode(), shard)
-	b := s.state.Get(orderPath(path))
-	if b != nil {
-		err := rlp.DecodeBytes(b, &orders)
-		if err != nil {
-			panic(err)
-		}
-	}
-
-	orders = append(orders, order)
-	sortOrders(orders)
-	b, err := rlp.EncodeToBytes(orders)
-	if err != nil {
-		panic(err)
-	}
-
-	acc.OrderMarkets = append(acc.OrderMarkets, market)
-	acc.OrderShards = append(acc.OrderShards, shard)
-	s.state.Update(orderPath(path), b)
 }
 
 // IssueNativeToken issues the native token, it is only called in
