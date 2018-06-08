@@ -114,6 +114,8 @@ func printAccount(c *cli.Context) error {
 		return err
 	}
 
+	// TODO: sort balances
+
 	for _, b := range w.Balances {
 		symbol := idToToken[b.Token].Symbol
 		decimals := int(idToToken[b.Token].Decimals)
@@ -141,11 +143,11 @@ func printAccount(c *cli.Context) error {
 			side = "sell"
 		}
 
-		market := idToToken[order.Market.Base].Symbol + "_" + idToToken[order.Market.Quote].Symbol
+		market := idToToken[order.ID.Market.Base].Symbol + "_" + idToToken[order.ID.Market.Quote].Symbol
 		price := quantToStr(order.Price, dex.OrderPriceDecimals)
-		quant := quantToStr(order.Quant, int(idToToken[order.Market.Base].Decimals))
-		executed := quantToStr(order.Executed, int(idToToken[order.Market.Base].Decimals))
-		_, err = fmt.Fprintf(tw, "\t%d\t%s\t%s\t%s\t%s\t%s\t%d\t\n", order.ID, market, side, price, quant, executed, order.ExpireHeight)
+		quant := quantToStr(order.Quant, int(idToToken[order.ID.Market.Base].Decimals))
+		executed := quantToStr(order.Executed, int(idToToken[order.ID.Market.Base].Decimals))
+		_, err = fmt.Fprintf(tw, "\t%s\t%s\t%s\t%s\t%s\t%s\t%d\t\n", order.ID.Encode(), market, side, price, quant, executed, order.ExpireHeight)
 		if err != nil {
 			return err
 		}
@@ -230,7 +232,6 @@ func sendToken(c *cli.Context) error {
 		return err
 	}
 
-	fmt.Println(consensus.SHA3(txn).Hex())
 	return nil
 }
 
@@ -377,6 +378,38 @@ func printGraphviz(c *cli.Context) error {
 	return nil
 }
 
+func cancelOrder(c *cli.Context) error {
+	orderID := c.Args().First()
+	var id dex.OrderID
+	err := id.Decode(orderID)
+	if err != nil {
+		return err
+	}
+
+	credential, err := consensus.LoadCredential(credentialPath)
+	if err != nil {
+		return err
+	}
+
+	client, err := rpc.DialHTTP("tcp", rpcAddr)
+	if err != nil {
+		return err
+	}
+
+	idx, val, err := nonce(client, credential.SK.MustPK().Addr())
+	if err != nil {
+		return err
+	}
+
+	txn := dex.MakeCancelOrderTxn(credential.SK, id, idx, val)
+	err = client.Call("WalletService.SendTxn", txn, nil)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func placeOrder(c *cli.Context) error {
 	args := c.Args()
 	if len(args) < 5 {
@@ -475,7 +508,6 @@ func placeOrder(c *cli.Context) error {
 		return err
 	}
 
-	fmt.Println(consensus.SHA3(txn).Hex())
 	return nil
 }
 
@@ -538,6 +570,11 @@ func main() {
 			Name:   "order",
 			Usage:  "Place an order: ./wallet -c NODE_CREDENTIAL_FILE_PATH order MARKET_SYMBOL (e.g,. ETH_BTC, ETH is the base asset, BTC is the quote asset) SIDE (buy or sell) PRICE (price=base_asset_value/quote_asset_value) AMOUNT (quantity of base asset) EXPIRY_TIME (in blocks: 0 means won't expire, 1 means expires at the next block, effectively an IOC order)",
 			Action: placeOrder,
+		},
+		{
+			Name:   "cancel",
+			Usage:  "Cancel an order: ./wallet -c NODE_CREDENTIAL_FILE_PATH cancel ORDER_ID",
+			Action: cancelOrder,
 		},
 	}
 

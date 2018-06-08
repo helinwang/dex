@@ -1,8 +1,12 @@
 package dex
 
 import (
+	"errors"
+	"fmt"
 	"io"
 	"sort"
+	"strconv"
+	"strings"
 
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/helinwang/dex/pkg/consensus"
@@ -17,9 +21,43 @@ type Balance struct {
 	Pending   uint64
 }
 
+type OrderID struct {
+	ID     uint64
+	Market MarketSymbol
+}
+
+func (o *OrderID) Encode() string {
+	return fmt.Sprintf("%d_%d_%d", o.Market.Base, o.Market.Quote, o.ID)
+}
+
+func (o *OrderID) Decode(str string) error {
+	ss := strings.Split(str, "_")
+	if len(ss) != 3 {
+		return errors.New("invalid order id format")
+	}
+
+	a, err := strconv.ParseUint(ss[0], 10, 64)
+	if err != nil {
+		return fmt.Errorf("error parsing order id: %v", err)
+	}
+
+	b, err := strconv.ParseUint(ss[1], 10, 64)
+	if err != nil {
+		return fmt.Errorf("error parsing order id: %v", err)
+	}
+
+	c, err := strconv.ParseUint(ss[2], 10, 64)
+	if err != nil {
+		return fmt.Errorf("error parsing order id: %v", err)
+	}
+
+	o.Market = MarketSymbol{Base: TokenID(a), Quote: TokenID(b)}
+	o.ID = c
+	return nil
+}
+
 type PendingOrder struct {
-	ID       uint64
-	Market   MarketSymbol
+	ID       OrderID
 	Executed uint64
 	Order
 }

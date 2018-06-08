@@ -30,6 +30,7 @@ func TestOrderBookBid(t *testing.T) {
 	})
 	e1 := &orderBookEntry{
 		orderBookEntryData: orderBookEntryData{
+			ID:    1,
 			Quant: 12,
 		},
 	}
@@ -66,6 +67,7 @@ func TestOrderBookSell(t *testing.T) {
 	})
 	e1 := &orderBookEntry{
 		orderBookEntryData: orderBookEntryData{
+			ID:    1,
 			Quant: 12,
 		},
 	}

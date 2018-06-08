@@ -53,12 +53,21 @@ func (t *Transition) Record(b []byte, round uint64) (valid, success bool) {
 			log.Warn("PlaceOrderTxn decode failed", "err", err)
 			return
 		}
-		if !t.placeOrder(acc, txn, consensus.SHA3(b), round) {
-			log.Warn("PlaceOrderTxn failed")
+		if !t.placeOrder(acc, txn, round) {
+			log.Warn("t.placeOrder failed")
 			return
 		}
 	case CancelOrder:
-		panic("not implemented")
+		var txn CancelOrderTxn
+		err := dec.Decode(&txn)
+		if err != nil {
+			log.Warn("CancelOrderTxn decode failed", "err", err)
+			return
+		}
+		if !t.cancelOrder(acc, txn) {
+			log.Warn("t.cancelOrder failed")
+			return
+		}
 	case IssueToken:
 		var txn IssueTokenTxn
 		err := dec.Decode(&txn)
@@ -121,8 +130,51 @@ func calcBaseSellQuant(baseQuantUnit uint64, quoteDecimals uint8, priceQuantUnit
 	return result.Uint64()
 }
 
-func (t *Transition) placeOrder(owner *Account, txn PlaceOrderTxn, hash consensus.Hash, round uint64) bool {
-	// TODO: check if fee is sufficient
+func (t *Transition) cancelOrder(owner *Account, txn CancelOrderTxn) bool {
+	idx := -1
+	for i, o := range owner.PendingOrders {
+		if o.ID == txn.ID {
+			idx = i
+			break
+		}
+	}
+
+	if idx < 0 {
+		log.Warn("can not find the order to cancel", "id", txn.ID)
+		return false
+	}
+
+	book := t.getOrderBook(txn.ID.Market)
+	book.Cancel(txn.ID.ID)
+	t.dirtyOrderBooks[txn.ID.Market] = true
+
+	order := owner.PendingOrders[idx]
+
+	var pendingQuant uint64
+	var token TokenID
+	if order.SellSide {
+		token = txn.ID.Market.Base
+		pendingQuant = order.Quant
+	} else {
+		token = txn.ID.Market.Quote
+		quoteInfo := t.state.tokenCache.idToInfo[txn.ID.Market.Quote]
+		baseInfo := t.state.tokenCache.idToInfo[txn.ID.Market.Base]
+		pendingQuant = calcBaseSellQuant(order.Quant, quoteInfo.Decimals, order.Price, OrderPriceDecimals, baseInfo.Decimals)
+	}
+
+	owner.Balances[token].Pending -= pendingQuant
+	owner.Balances[token].Available += pendingQuant
+	owner.PendingOrders = append(owner.PendingOrders[:idx], owner.PendingOrders[idx+1:]...)
+	t.state.UpdateAccount(owner)
+	return true
+}
+
+func (t *Transition) placeOrder(owner *Account, txn PlaceOrderTxn, round uint64) bool {
+	if round >= txn.ExpireHeight {
+		log.Warn("order already expired", "expire round", txn.ExpireHeight, "cur round", round)
+		return false
+	}
+
 	baseInfo := t.state.tokenCache.Info(txn.Market.Base)
 	if baseInfo == nil {
 		log.Error("trying to place order on nonexistent token", "token", txn.Market.Base)
@@ -173,13 +225,12 @@ func (t *Transition) placeOrder(owner *Account, txn PlaceOrderTxn, hash consensu
 
 	book := t.getOrderBook(txn.Market)
 	orderID, executions := book.Limit(order)
+	t.dirtyOrderBooks[txn.Market] = true
 	pendingOrder := PendingOrder{
-		ID:     orderID,
-		Market: txn.Market,
-		Order:  order,
+		ID:    OrderID{ID: orderID, Market: txn.Market},
+		Order: order,
 	}
 	owner.PendingOrders = append(owner.PendingOrders, pendingOrder)
-	t.dirtyOrderBooks[txn.Market] = true
 
 	if len(executions) > 0 {
 		// TODO: execution report
@@ -200,7 +251,7 @@ func (t *Transition) placeOrder(owner *Account, txn PlaceOrderTxn, hash consensu
 			var orderPrice uint64
 			removeIdx := -1
 			for i := range acc.PendingOrders {
-				if acc.PendingOrders[i].Market == txn.Market && acc.PendingOrders[i].ID == exec.ID {
+				if acc.PendingOrders[i].ID.Market == txn.Market && acc.PendingOrders[i].ID.ID == exec.ID {
 					acc.PendingOrders[i].Executed += exec.Quant
 					if acc.PendingOrders[i].Executed == acc.PendingOrders[i].Quant {
 						removeIdx = i

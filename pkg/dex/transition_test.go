@@ -144,7 +144,7 @@ func TestPlaceOrder(t *testing.T) {
 		SellSide:     false,
 		Quant:        40,
 		Price:        100000000,
-		ExpireHeight: 0,
+		ExpireHeight: 2,
 		Market:       MarketSymbol{Quote: 0, Base: 0},
 	}
 	trans := s.Transition()
@@ -160,7 +160,7 @@ func TestPlaceOrder(t *testing.T) {
 		SellSide:     true,
 		Quant:        40,
 		Price:        100000000,
-		ExpireHeight: 0,
+		ExpireHeight: 2,
 		Market:       MarketSymbol{Quote: 0, Base: 0},
 	}
 	valid, success = trans.Record(MakePlaceOrderTxn(sk, order, 0, 1), 1)

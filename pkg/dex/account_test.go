@@ -17,7 +17,10 @@ func TestAccountEncodeDecode(t *testing.T) {
 			5: &Balance{Available: 1<<64 - 1, Pending: 1},
 		},
 		PendingOrders: []PendingOrder{
-			{ID: 1, Market: MarketSymbol{Base: 2, Quote: 3}, Executed: 4, Order: Order{Price: 5}},
+			{
+				ID:       OrderID{ID: 1, Market: MarketSymbol{Base: 2, Quote: 3}},
+				Executed: 4,
+				Order:    Order{Price: 5}},
 		},
 	}
 
@@ -33,6 +36,17 @@ func TestAccountEncodeDecode(t *testing.T) {
 	}
 
 	assert.Equal(t, a, a1)
+}
+
+func TestOrderIDEncodeDecode(t *testing.T) {
+	const str = "1_2_3"
+	var id OrderID
+	err := id.Decode(str)
+	if err != nil {
+		panic(err)
+	}
+
+	assert.Equal(t, str, id.Encode())
 }
 
 func TestAccountHashDeterministic(t *testing.T) {

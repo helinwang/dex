@@ -124,7 +124,25 @@ type PlaceOrderTxn struct {
 }
 
 type CancelOrderTxn struct {
-	Order consensus.Hash
+	ID OrderID
+}
+
+func MakeCancelOrderTxn(sk consensus.SK, id OrderID, nonceIdx uint8, nonce uint64) []byte {
+	t := CancelOrderTxn{
+		ID: id,
+	}
+
+	txn := Txn{
+		T:          CancelOrder,
+		Owner:      sk.MustPK().Addr(),
+		NonceIdx:   nonceIdx,
+		NonceValue: nonce,
+		Data:       gobEncode(t),
+	}
+
+	key := sk.MustGet()
+	txn.Sig = key.Sign(string(txn.Encode(false))).Serialize()
+	return txn.Encode(true)
 }
 
 func MakeSendTokenTxn(from consensus.SK, to consensus.PK, tokenID TokenID, quant uint64, nonceIdx uint8, nonce uint64) []byte {

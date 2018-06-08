@@ -15,8 +15,8 @@ import (
 // MarketSymbol is the symbol of a trading pair.
 //
 type MarketSymbol struct {
-	Quote TokenID // the unit of the order's price
 	Base  TokenID // the unit of the order's quantity
+	Quote TokenID // the unit of the order's price
 }
 
 // Encode returns the bytes representation of the market symbol.
