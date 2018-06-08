@@ -44,6 +44,7 @@ type orderExecution struct {
 	SellSide bool
 	Quant    uint64
 	Price    uint64
+	Taker    bool
 }
 
 type Order struct {
@@ -100,6 +101,7 @@ func (o *orderBook) Limit(order Order) (id uint64, executions []orderExecution) 
 							SellSide: false,
 							Quant:    entry.Quant,
 							Price:    o.askMin.Price,
+							Taker:    true,
 						}
 
 						execB := orderExecution{
@@ -108,6 +110,7 @@ func (o *orderBook) Limit(order Order) (id uint64, executions []orderExecution) 
 							SellSide: true,
 							Quant:    entry.Quant,
 							Price:    o.askMin.Price,
+							Taker:    false,
 						}
 						executions = append(executions, execA, execB)
 					}
@@ -119,6 +122,7 @@ func (o *orderBook) Limit(order Order) (id uint64, executions []orderExecution) 
 						SellSide: false,
 						Quant:    order.Quant,
 						Price:    o.askMin.Price,
+						Taker:    true,
 					}
 
 					execB := orderExecution{
@@ -127,6 +131,7 @@ func (o *orderBook) Limit(order Order) (id uint64, executions []orderExecution) 
 						SellSide: true,
 						Quant:    order.Quant,
 						Price:    o.askMin.Price,
+						Taker:    false,
 					}
 
 					executions = append(executions, execA, execB)
@@ -202,6 +207,7 @@ func (o *orderBook) Limit(order Order) (id uint64, executions []orderExecution) 
 						SellSide: true,
 						Quant:    entry.Quant,
 						Price:    o.bidMax.Price,
+						Taker:    true,
 					}
 
 					execB := orderExecution{
@@ -210,6 +216,7 @@ func (o *orderBook) Limit(order Order) (id uint64, executions []orderExecution) 
 						SellSide: false,
 						Quant:    entry.Quant,
 						Price:    o.bidMax.Price,
+						Taker:    false,
 					}
 					executions = append(executions, execA, execB)
 				} else {
@@ -220,6 +227,7 @@ func (o *orderBook) Limit(order Order) (id uint64, executions []orderExecution) 
 						SellSide: true,
 						Quant:    order.Quant,
 						Price:    o.bidMax.Price,
+						Taker:    true,
 					}
 
 					execB := orderExecution{
@@ -228,6 +236,7 @@ func (o *orderBook) Limit(order Order) (id uint64, executions []orderExecution) 
 						SellSide: false,
 						Quant:    order.Quant,
 						Price:    o.bidMax.Price,
+						Taker:    false,
 					}
 
 					executions = append(executions, execA, execB)

@@ -196,6 +196,8 @@ func (t *Transition) placeOrder(owner *Account, txn PlaceOrderTxn, hash consensu
 				addrToAcc[exec.Owner] = acc
 			}
 
+			orderFound := false
+			var orderPrice uint64
 			removeIdx := -1
 			for i := range acc.PendingOrders {
 				if acc.PendingOrders[i].Market == txn.Market && acc.PendingOrders[i].ID == exec.ID {
@@ -203,7 +205,15 @@ func (t *Transition) placeOrder(owner *Account, txn PlaceOrderTxn, hash consensu
 					if acc.PendingOrders[i].Executed == acc.PendingOrders[i].Quant {
 						removeIdx = i
 					}
+
+					orderPrice = acc.PendingOrders[i].Price
+					orderFound = true
+					break
 				}
+			}
+
+			if !orderFound {
+				panic(fmt.Errorf("impossible: can not find matched order %d, market: %v", exec.ID, txn.Market))
 			}
 			_ = removeIdx
 
@@ -211,33 +221,41 @@ func (t *Transition) placeOrder(owner *Account, txn PlaceOrderTxn, hash consensu
 				acc.PendingOrders = append(acc.PendingOrders[:removeIdx], acc.PendingOrders[removeIdx+1:]...)
 			}
 
-			var soldQuant, boughtQuant uint64
-			var pendingTokenID, availableTokenID TokenID
+			var soldQuant, boughtQuant, refund uint64
+			var sellSideBalance, buySideBalance *Balance
 			if exec.SellSide {
 				// sold, deduct base pending balance,
 				// add quote available balance
-				pendingTokenID = txn.Market.Base
-				availableTokenID = txn.Market.Quote
+				sellSideBalance = acc.Balances[txn.Market.Base]
+				buySideBalance = acc.Balances[txn.Market.Quote]
 				soldQuant = exec.Quant
 				boughtQuant = calcBaseSellQuant(exec.Quant, quoteInfo.Decimals, exec.Price, OrderPriceDecimals, baseInfo.Decimals)
+				if exec.Taker {
+					refund = exec.Price - orderPrice
+				}
 			} else {
 				// bought, deduct quote pending
 				// balance, add base available balance
-				pendingTokenID = txn.Market.Quote
-				availableTokenID = txn.Market.Base
+				sellSideBalance = acc.Balances[txn.Market.Quote]
+				buySideBalance = acc.Balances[txn.Market.Base]
 				boughtQuant = exec.Quant
 				soldQuant = calcBaseSellQuant(exec.Quant, quoteInfo.Decimals, exec.Price, OrderPriceDecimals, baseInfo.Decimals)
+				if exec.Taker {
+					refund = calcBaseSellQuant(exec.Quant, quoteInfo.Decimals, orderPrice-exec.Price, OrderPriceDecimals, baseInfo.Decimals)
+				}
 			}
 
-			if acc.Balances[pendingTokenID].Pending < soldQuant {
-				panic(fmt.Errorf("insufficient pending balance, owner: %s, pending %d, executed: %d", exec.Owner.Hex(), acc.Balances[pendingTokenID].Pending, soldQuant))
+			if sellSideBalance.Pending < soldQuant {
+				panic(fmt.Errorf("insufficient pending balance, owner: %s, pending %d, executed: %d", exec.Owner.Hex(), sellSideBalance.Pending, soldQuant))
 			}
 
-			acc.Balances[pendingTokenID].Pending -= soldQuant
-			if acc.Balances[availableTokenID] == nil {
-				acc.Balances[availableTokenID] = &Balance{}
+			sellSideBalance.Pending -= (soldQuant + refund)
+			sellSideBalance.Available += refund
+
+			if buySideBalance == nil {
+				buySideBalance = &Balance{}
 			}
-			acc.Balances[availableTokenID].Available += boughtQuant
+			buySideBalance.Available += boughtQuant
 		}
 
 		for _, acc := range addrToAcc {
