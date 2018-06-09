@@ -83,8 +83,9 @@ type UserBalance struct {
 }
 
 type WalletState struct {
-	Balances      []UserBalance
-	PendingOrders []PendingOrder
+	Balances         []UserBalance
+	PendingOrders    []PendingOrder
+	ExecutionReports []ExecutionReport
 }
 
 func (r *RPCServer) walletState(addr consensus.Addr, w *WalletState) error {
@@ -114,6 +115,7 @@ func (r *RPCServer) walletState(addr consensus.Addr, w *WalletState) error {
 	}
 
 	w.PendingOrders = acc.PendingOrders
+	w.ExecutionReports = acc.ExecutionReports
 	w.Balances = bs
 	return nil
 }

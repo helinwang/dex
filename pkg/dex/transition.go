@@ -169,6 +169,15 @@ func (t *Transition) cancelOrder(owner *Account, txn CancelOrderTxn) bool {
 	return true
 }
 
+type ExecutionReport struct {
+	BlockHeight uint64
+	ID          OrderID
+	SellSide    bool
+	TradePrice  uint64
+	Quant       uint64
+	Fee         uint64
+}
+
 func (t *Transition) placeOrder(owner *Account, txn PlaceOrderTxn, round uint64) bool {
 	if round >= txn.ExpireHeight {
 		log.Warn("order already expired", "expire round", txn.ExpireHeight, "cur round", round)
@@ -234,7 +243,6 @@ func (t *Transition) placeOrder(owner *Account, txn PlaceOrderTxn, round uint64)
 	owner.PendingOrders = append(owner.PendingOrders, pendingOrder)
 
 	if len(executions) > 0 {
-		// TODO: execution report
 		addrToAcc := make(map[consensus.Addr]*Account)
 		addrToAcc[owner.PK.Addr()] = owner
 
@@ -247,6 +255,16 @@ func (t *Transition) placeOrder(owner *Account, txn PlaceOrderTxn, round uint64)
 				}
 				addrToAcc[exec.Owner] = acc
 			}
+
+			// TODO: report fee
+			report := ExecutionReport{
+				BlockHeight: round,
+				ID:          OrderID{ID: exec.ID, Market: txn.Market},
+				SellSide:    exec.SellSide,
+				TradePrice:  exec.Price,
+				Quant:       exec.Quant,
+			}
+			acc.ExecutionReports = append(acc.ExecutionReports, report)
 
 			orderFound := false
 			var orderPrice uint64

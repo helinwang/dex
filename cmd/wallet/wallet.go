@@ -18,6 +18,11 @@ import (
 	"github.com/urfave/cli"
 )
 
+const (
+	buy  = "BUY"
+	sell = "SELL"
+)
+
 var rpcAddr string
 var credentialPath string
 
@@ -133,14 +138,14 @@ func printAccount(c *cli.Context) error {
 
 	fmt.Println("\nPending Orders:")
 	tw = tabwriter.NewWriter(os.Stdout, 0, 0, 1, ' ', tabwriter.Debug)
-	_, err = fmt.Fprintln(tw, "\tID\tSymbol\tSide\tPrice\tAmount\tExecuted\tExpiry Block Height\t")
+	_, err = fmt.Fprintln(tw, "\tID\tMarket\tSide\tPrice\tAmount\tExecuted\tExpiry Block Height\t")
 	if err != nil {
 		return err
 	}
 	for _, order := range w.PendingOrders {
-		side := "buy"
+		side := buy
 		if order.SellSide {
-			side = "sell"
+			side = sell
 		}
 
 		market := idToToken[order.ID.Market.Base].Symbol + "_" + idToToken[order.ID.Market.Quote].Symbol
@@ -148,6 +153,33 @@ func printAccount(c *cli.Context) error {
 		quant := quantToStr(order.Quant, int(idToToken[order.ID.Market.Base].Decimals))
 		executed := quantToStr(order.Executed, int(idToToken[order.ID.Market.Base].Decimals))
 		_, err = fmt.Fprintf(tw, "\t%s\t%s\t%s\t%s\t%s\t%s\t%d\t\n", order.ID.Encode(), market, side, price, quant, executed, order.ExpireHeight)
+		if err != nil {
+			return err
+		}
+	}
+	err = tw.Flush()
+	if err != nil {
+		return err
+	}
+
+	fmt.Println("\nExecution Reports:")
+	tw = tabwriter.NewWriter(os.Stdout, 0, 0, 1, ' ', tabwriter.Debug)
+	_, err = fmt.Fprintln(tw, "\tBlock\tID\tMarket\tSide\tTrade Price\tAmount\tFee\t")
+	if err != nil {
+		return err
+	}
+
+	for _, exec := range w.ExecutionReports {
+		side := buy
+		if exec.SellSide {
+			side = sell
+		}
+
+		market := idToToken[exec.ID.Market.Base].Symbol + "_" + idToToken[exec.ID.Market.Quote].Symbol
+		price := quantToStr(exec.TradePrice, dex.OrderPriceDecimals)
+		quant := quantToStr(exec.Quant, int(idToToken[exec.ID.Market.Base].Decimals))
+		fee := quantToStr(exec.Fee, int(idToToken[0].Decimals))
+		_, err = fmt.Fprintf(tw, "\t%d\t%s\t%s\t%s\t%s\t%s\t%s\t\n", exec.BlockHeight, exec.ID.Encode(), market, side, price, quant, fee)
 		if err != nil {
 			return err
 		}

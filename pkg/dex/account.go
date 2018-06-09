@@ -65,9 +65,10 @@ type PendingOrder struct {
 type Account struct {
 	PK consensus.PK
 	// a vector of nonce that enables concurrent transactions.
-	NonceVec      []uint64
-	Balances      map[TokenID]*Balance
-	PendingOrders []PendingOrder
+	NonceVec         []uint64
+	Balances         map[TokenID]*Balance
+	PendingOrders    []PendingOrder
+	ExecutionReports []ExecutionReport
 }
 
 func (a *Account) EncodeRLP(w io.Writer) error {
@@ -82,6 +83,11 @@ func (a *Account) EncodeRLP(w io.Writer) error {
 	}
 
 	err = rlp.Encode(w, a.NonceVec)
+	if err != nil {
+		return err
+	}
+
+	err = rlp.Encode(w, a.ExecutionReports)
 	if err != nil {
 		return err
 	}
@@ -146,6 +152,17 @@ func (a *Account) DecodeRLP(s *rlp.Stream) error {
 		return err
 	}
 	b.NonceVec = nonceVec
+
+	v, err = s.Raw()
+	if err != nil {
+		return err
+	}
+	var reports []ExecutionReport
+	err = rlp.DecodeBytes(v, &reports)
+	if err != nil {
+		return err
+	}
+	b.ExecutionReports = reports
 
 	v, err = s.Raw()
 	if err != nil {
