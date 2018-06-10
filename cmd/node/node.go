@@ -39,7 +39,7 @@ func createNode(c consensus.NodeCredentials, genesis *consensus.Block, nativeCoi
 
 	db := trie.NewDatabase(ethdb.NewMemDatabase())
 	state := dex.NewState(db)
-	state = state.IssueNativeToken(&nativeCoinOwnerPK).(*dex.State)
+	state = state.IssueNativeToken(nativeCoinOwnerPK).(*dex.State)
 	return consensus.MakeNode(c, &network.Network{}, cfg, genesis, state, dex.NewTxnPool(state), u)
 }
 
