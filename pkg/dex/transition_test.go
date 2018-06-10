@@ -30,6 +30,7 @@ func TestSendToken(t *testing.T) {
 	s := NewState(trie.NewDatabase(ethdb.NewMemDatabase()))
 	sk, addr := createAccount(s, 100)
 
+	// check balance not changed before commiting the txn
 	newAcc := s.Account(addr)
 	assert.Equal(t, 100, int(newAcc.Balances[0].Available))
 
@@ -38,8 +39,8 @@ func TestSendToken(t *testing.T) {
 
 	to := consensus.PK(skRecv.GetPublicKey().Serialize())
 	txn := MakeSendTokenTxn(sk, to, 0, 20, 0, 0)
-	trans := s.Transition()
-	valid, success := trans.Record(txn, 1)
+	trans := s.Transition(1)
+	valid, success := trans.Record(txn)
 	assert.True(t, valid)
 	assert.True(t, success)
 
@@ -73,7 +74,7 @@ func TestTransitionNotCommitToDB(t *testing.T) {
 
 	newAcc := s.Account(addr)
 	assert.Equal(t, 100, int(newAcc.Balances[0].Available))
-	trans := s.Transition()
+	trans := s.Transition(1)
 
 	for i := 0; i < 99; i++ {
 		var skRecv bls.SecretKey
@@ -81,7 +82,7 @@ func TestTransitionNotCommitToDB(t *testing.T) {
 
 		to := consensus.PK(skRecv.GetPublicKey().Serialize())
 		txn := MakeSendTokenTxn(sk, to, 0, 1, uint8(i), 0)
-		valid, success := trans.Record(txn, 1)
+		valid, success := trans.Record(txn)
 		assert.True(t, valid)
 		assert.True(t, success)
 	}
@@ -107,7 +108,7 @@ func TestIssueNativeToken(t *testing.T) {
 	sk.SetByCSPRNG()
 	pk := consensus.PK(sk.GetPublicKey().Serialize())
 	s := NewState(trie.NewDatabase(ethdb.NewMemDatabase()))
-	s = s.IssueNativeToken(&pk).(*State)
+	s = s.IssueNativeToken(pk).(*State)
 
 	assert.True(t, s.tokenCache.Exists(BNBInfo.Symbol))
 	assert.Equal(t, &BNBInfo, s.tokenCache.Info(0))
@@ -121,9 +122,9 @@ func TestIssueToken(t *testing.T) {
 	s := NewState(trie.NewDatabase(ethdb.NewMemDatabase()))
 	s.tokenCache.Update(0, &BNBInfo)
 	sk, addr := createAccount(s, 100)
-	trans := s.Transition()
+	trans := s.Transition(1)
 	txn := MakeIssueTokenTxn(sk, btcInfo, 0, 0)
-	trans.Record(txn, 1)
+	trans.Record(txn)
 	s = trans.Commit().(*State)
 
 	assert.Equal(t, 2, s.tokenCache.Size())
@@ -135,20 +136,68 @@ func TestIssueToken(t *testing.T) {
 	assert.Equal(t, uint64(0), acc.Balances[1].Pending)
 }
 
-func TestPlaceOrder(t *testing.T) {
+func TestOrderAlreadyExpired(t *testing.T) {
 	s := NewState(trie.NewDatabase(ethdb.NewMemDatabase()))
 	s.tokenCache.Update(0, &BNBInfo)
-	s.tokenCache.Update(1, &btcInfo)
 	sk, addr := createAccount(s, 100)
 	order := PlaceOrderTxn{
 		SellSide:     false,
 		Quant:        40,
 		Price:        100000000,
-		ExpireHeight: 2,
+		ExpireHeight: 1,
 		Market:       MarketSymbol{Quote: 0, Base: 0},
 	}
-	trans := s.Transition()
-	valid, success := trans.Record(MakePlaceOrderTxn(sk, order, 0, 0), 1)
+
+	trans := s.Transition(1)
+	valid, success := trans.Record(MakePlaceOrderTxn(sk, order, 0, 0))
+	assert.False(t, valid)
+	assert.False(t, success)
+	s = trans.Commit().(*State)
+	acc := s.Account(addr)
+	assert.Equal(t, 0, len(acc.PendingOrders))
+}
+
+func TestOrderExpire(t *testing.T) {
+	s := NewState(trie.NewDatabase(ethdb.NewMemDatabase()))
+	s.tokenCache.Update(0, &BNBInfo)
+	sk, addr := createAccount(s, 100)
+	order := PlaceOrderTxn{
+		SellSide:     false,
+		Quant:        40,
+		Price:        100000000,
+		ExpireHeight: 3,
+		Market:       MarketSymbol{Quote: 0, Base: 0},
+	}
+
+	trans := s.Transition(1)
+	valid, success := trans.Record(MakePlaceOrderTxn(sk, order, 0, 0))
+	assert.True(t, valid)
+	assert.True(t, success)
+	// transition for the current round will expire the order for
+	// the next round.
+	s = trans.Commit().(*State)
+	acc := s.Account(addr)
+	assert.Equal(t, 1, len(acc.PendingOrders))
+	trans = s.Transition(2)
+	s = trans.Commit().(*State)
+
+	acc = s.Account(addr)
+	assert.Equal(t, 0, len(acc.PendingOrders))
+}
+
+func TestPlaceOrder(t *testing.T) {
+	s := NewState(trie.NewDatabase(ethdb.NewMemDatabase()))
+	s.tokenCache.Update(0, &BNBInfo)
+	sk, addr := createAccount(s, 100)
+	order := PlaceOrderTxn{
+		SellSide:     false,
+		Quant:        40,
+		Price:        100000000,
+		ExpireHeight: 3,
+		Market:       MarketSymbol{Quote: 0, Base: 0},
+	}
+	trans := s.Transition(1)
+	valid, success := trans.Record(MakePlaceOrderTxn(sk, order, 0, 0))
 	assert.True(t, valid)
 	assert.True(t, success)
 	s = trans.Commit().(*State)
@@ -156,27 +205,22 @@ func TestPlaceOrder(t *testing.T) {
 	acc := s.Account(addr)
 	assert.Equal(t, 40, int(acc.Balances[0].Pending))
 
+	trans = s.Transition(2)
 	order = PlaceOrderTxn{
 		SellSide:     true,
 		Quant:        40,
 		Price:        100000000,
-		ExpireHeight: 2,
+		ExpireHeight: 3,
 		Market:       MarketSymbol{Quote: 0, Base: 0},
 	}
-	valid, success = trans.Record(MakePlaceOrderTxn(sk, order, 0, 1), 1)
+	valid, success = trans.Record(MakePlaceOrderTxn(sk, order, 0, 1))
+	// TODO: rename trans.Commit to something that indicates a new
+	// state is generated, rather than the prev state is modified.
+	s = trans.Commit().(*State)
 	assert.True(t, valid)
 	assert.True(t, success)
 	acc = s.Account(addr)
 	assert.Equal(t, 0, int(acc.Balances[0].Pending))
-}
-
-func TestPlaceOrderAlreadyExpire(t *testing.T) {
-	// TODO
-}
-
-func TestPlaceOrderExpireLater(t *testing.T) {
-	// TODO
-	// TODO: also handle height reduced due to reorg.
 }
 
 func TestCalcBaseSellQuant(t *testing.T) {

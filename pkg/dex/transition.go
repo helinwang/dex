@@ -13,25 +13,35 @@ import (
 )
 
 type Transition struct {
+	round           uint64
+	finalized       bool
 	tokenCreations  []Token
 	txns            [][]byte
+	expirations     map[uint64][]orderExpiration
+	filledOrders    []PendingOrder
 	state           *State
 	orderBooks      map[MarketSymbol]*orderBook
 	dirtyOrderBooks map[MarketSymbol]bool
 }
 
-func newTransition(s *State) *Transition {
+func newTransition(s *State, round uint64) *Transition {
 	return &Transition{
 		state:           s,
+		round:           round,
+		expirations:     make(map[uint64][]orderExpiration),
 		orderBooks:      make(map[MarketSymbol]*orderBook),
 		dirtyOrderBooks: make(map[MarketSymbol]bool),
 	}
 }
 
 // Record records a transition to the state transition.
-func (t *Transition) Record(b []byte, round uint64) (valid, success bool) {
-	txn, acc, ready, valid := validateSigAndNonce(t.state, b)
-	if !valid {
+func (t *Transition) Record(b []byte) (valid, success bool) {
+	if t.finalized {
+		panic("record should never be called after finalized")
+	}
+
+	txn, acc, ready, nonceValid := validateSigAndNonce(t.state, b)
+	if !nonceValid {
 		return
 	}
 
@@ -53,7 +63,7 @@ func (t *Transition) Record(b []byte, round uint64) (valid, success bool) {
 			log.Warn("PlaceOrderTxn decode failed", "err", err)
 			return
 		}
-		if !t.placeOrder(acc, txn, round) {
+		if !t.placeOrder(acc, txn, t.round) {
 			log.Warn("t.placeOrder failed")
 			return
 		}
@@ -147,26 +157,29 @@ func (t *Transition) cancelOrder(owner *Account, txn CancelOrderTxn) bool {
 	book := t.getOrderBook(txn.ID.Market)
 	book.Cancel(txn.ID.ID)
 	t.dirtyOrderBooks[txn.ID.Market] = true
+	cancel := owner.PendingOrders[idx]
+	owner.PendingOrders = append(owner.PendingOrders[:idx], owner.PendingOrders[idx+1:]...)
 
-	order := owner.PendingOrders[idx]
+	t.refundAfterCancel(owner, cancel, txn.ID.Market)
+	t.state.UpdateAccount(owner)
+	return true
+}
 
+func (t *Transition) refundAfterCancel(owner *Account, cancel PendingOrder, market MarketSymbol) {
 	var pendingQuant uint64
 	var token TokenID
-	if order.SellSide {
-		token = txn.ID.Market.Base
-		pendingQuant = order.Quant
+	if cancel.SellSide {
+		token = market.Base
+		pendingQuant = cancel.Quant
 	} else {
-		token = txn.ID.Market.Quote
-		quoteInfo := t.state.tokenCache.idToInfo[txn.ID.Market.Quote]
-		baseInfo := t.state.tokenCache.idToInfo[txn.ID.Market.Base]
-		pendingQuant = calcBaseSellQuant(order.Quant, quoteInfo.Decimals, order.Price, OrderPriceDecimals, baseInfo.Decimals)
+		token = market.Quote
+		quoteInfo := t.state.tokenCache.idToInfo[market.Quote]
+		baseInfo := t.state.tokenCache.idToInfo[market.Base]
+		pendingQuant = calcBaseSellQuant(cancel.Quant, quoteInfo.Decimals, cancel.Price, OrderPriceDecimals, baseInfo.Decimals)
 	}
 
 	owner.Balances[token].Pending -= pendingQuant
 	owner.Balances[token].Available += pendingQuant
-	owner.PendingOrders = append(owner.PendingOrders[:idx], owner.PendingOrders[idx+1:]...)
-	t.state.UpdateAccount(owner)
-	return true
 }
 
 type ExecutionReport struct {
@@ -222,7 +235,6 @@ func (t *Transition) placeOrder(owner *Account, txn PlaceOrderTxn, round uint64)
 		return false
 	}
 
-	// TODO: handle order expire height
 	owner.Balances[sell].Available -= sellQuantUnit
 	owner.Balances[sell].Pending += sellQuantUnit
 	order := Order{
@@ -241,6 +253,8 @@ func (t *Transition) placeOrder(owner *Account, txn PlaceOrderTxn, round uint64)
 		Order: order,
 	}
 	owner.PendingOrders = append(owner.PendingOrders, pendingOrder)
+	id := OrderID{ID: orderID, Market: txn.Market}
+	t.expirations[order.ExpireHeight] = append(t.expirations[order.ExpireHeight], orderExpiration{ID: id, Owner: owner.PK.Addr()})
 
 	if len(executions) > 0 {
 		addrToAcc := make(map[consensus.Addr]*Account)
@@ -285,10 +299,11 @@ func (t *Transition) placeOrder(owner *Account, txn PlaceOrderTxn, round uint64)
 			if !orderFound {
 				panic(fmt.Errorf("impossible: can not find matched order %d, market: %v", exec.ID, txn.Market))
 			}
-			_ = removeIdx
 
 			if removeIdx >= 0 {
+				pendingOrder := acc.PendingOrders[removeIdx]
 				acc.PendingOrders = append(acc.PendingOrders[:removeIdx], acc.PendingOrders[removeIdx+1:]...)
+				t.filledOrders = append(t.filledOrders, pendingOrder)
 			}
 
 			var soldQuant, boughtQuant, refund uint64
@@ -402,23 +417,111 @@ func (t *Transition) Txns() [][]byte {
 	return t.txns
 }
 
-func (t *Transition) saveOrderBookIfDirty() {
+func (t *Transition) finalizeState(round uint64) {
+	if !t.finalized {
+		t.removeFilledOrderFromExpiration()
+		// must be called after
+		// t.removeFilledOrderFromExpiration
+		t.recordOrderExpirations()
+		// must be called after t.recordOrderExpirations,
+		// since current round may add expiring orders for the
+		// next round.
+		t.expireOrders()
+		// must be called after t.expireOrders, since it could
+		// make order book dirty.
+		t.saveDirtyOrderBooks()
+
+		t.finalized = true
+	}
+}
+
+func (t *Transition) recordOrderExpirations() {
+	for expireHeight, ids := range t.expirations {
+		t.state.addOrderExpirations(expireHeight, ids)
+	}
+}
+
+func (t *Transition) saveDirtyOrderBooks() {
 	for m, b := range t.orderBooks {
 		if t.dirtyOrderBooks[m] {
 			t.state.saveOrderBook(m, b)
-			t.dirtyOrderBooks[m] = false
 		}
 	}
 }
 
+func (t *Transition) removeFilledOrderFromExpiration() {
+	heights := make(map[uint64]int)
+	filled := make(map[OrderID]bool)
+	for _, o := range t.filledOrders {
+		filled[o.ID] = true
+		heights[o.ExpireHeight]++
+	}
+
+	for height, toRemove := range heights {
+		// remove filled order's expiration from the
+		// to-be-added expirations of this round.
+		expirations := t.expirations[height]
+		newExpirations := make([]orderExpiration, 0, len(expirations))
+		for _, exp := range expirations {
+			if !filled[exp.ID] {
+				newExpirations = append(newExpirations, exp)
+			}
+		}
+		t.expirations[height] = newExpirations
+		removed := len(newExpirations) - len(expirations)
+		if removed == toRemove {
+			continue
+		}
+
+		// remove filled order's expiration from the saved
+		// expiration from disk.
+		t.state.removeOrderExpirations(height, filled)
+	}
+}
+
+func (t *Transition) expireOrders() {
+	// expire orders whose expiration is the next round
+	orders := t.state.getOrderExpirations(t.round + 1)
+	addrToAcc := make(map[consensus.Addr]*Account)
+	for _, o := range orders {
+		t.getOrderBook(o.ID.Market).Cancel(o.ID.ID)
+		t.dirtyOrderBooks[o.ID.Market] = true
+
+		acc, ok := addrToAcc[o.Owner]
+		if !ok {
+			acc = t.state.Account(o.Owner)
+			addrToAcc[o.Owner] = acc
+		}
+
+		idx := -1
+		for i := range acc.PendingOrders {
+			if acc.PendingOrders[i].ID == o.ID {
+				idx = i
+				break
+			}
+		}
+
+		if idx < 0 {
+			panic("can not find expiring order")
+		}
+
+		cancel := acc.PendingOrders[idx]
+		acc.PendingOrders = append(acc.PendingOrders[:idx], acc.PendingOrders[idx+1:]...)
+		t.refundAfterCancel(acc, cancel, o.ID.Market)
+	}
+
+	for _, acc := range addrToAcc {
+		t.state.UpdateAccount(acc)
+	}
+}
+
 func (t *Transition) StateHash() consensus.Hash {
-	t.saveOrderBookIfDirty()
+	t.finalizeState(t.round)
 	return t.state.Hash()
 }
 
-// Commit commits the transition to the state root.
 func (t *Transition) Commit() consensus.State {
-	t.saveOrderBookIfDirty()
+	t.finalizeState(t.round)
 	t.state.Commit()
 	for _, v := range t.tokenCreations {
 		t.state.tokenCache.Update(v.ID, &v.TokenInfo)

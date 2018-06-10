@@ -197,14 +197,14 @@ func (e *emptyState) MatchOrders() Hash {
 	return Hash{}
 }
 
-func (e *emptyState) Transition() Transition {
+func (e *emptyState) Transition(round uint64) Transition {
 	return &emptyTransition{}
 }
 
 type emptyTransition struct {
 }
 
-func (e *emptyTransition) Record(txn []byte, round uint64) (valid, future bool) {
+func (e *emptyTransition) Record(txn []byte) (valid, future bool) {
 	return true, false
 }
 

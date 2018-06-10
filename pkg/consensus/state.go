@@ -3,7 +3,7 @@ package consensus
 // Transition is the transition from one State to another State.
 type Transition interface {
 	// Record records a transition to the state transition.
-	Record(txn []byte, round uint64) (valid, success bool)
+	Record(txn []byte) (valid, success bool)
 
 	// Txns returns the recorded transactions.
 	Txns() [][]byte
@@ -19,7 +19,7 @@ type Transition interface {
 // State is the blockchain state.
 type State interface {
 	Hash() Hash
-	Transition() Transition
+	Transition(round uint64) Transition
 }
 
 // TxnPool is the pool that stores the received transactions.

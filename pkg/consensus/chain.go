@@ -125,9 +125,9 @@ func (c *Chain) ProposeBlock(sk SK) *BlockProposal {
 	block, state, _ := c.Leader()
 	round := block.Round + 1
 
-	trans := state.Transition()
+	trans := state.Transition(round)
 	for _, txn := range txns {
-		valid, _ := trans.Record(txn, round)
+		valid, _ := trans.Record(txn)
 		if !valid {
 			// TODO: handle "lost" txn due to reorg.
 			c.TxnPool.Remove(SHA3(txn))
@@ -449,7 +449,7 @@ func (c *Chain) addNtShare(n *NtShare, groupID int) (*Block, bool) {
 }
 
 func getTransition(state State, txnData []byte, round uint64) (trans Transition, err error) {
-	trans = state.Transition()
+	trans = state.Transition(round)
 
 	if len(txnData) == 0 {
 		return
@@ -463,7 +463,7 @@ func getTransition(state State, txnData []byte, round uint64) (trans Transition,
 	}
 
 	for _, t := range txns {
-		valid, success := trans.Record(t, round)
+		valid, success := trans.Record(t)
 		if !valid || !success {
 			err = errors.New("failed to apply transactions")
 			return

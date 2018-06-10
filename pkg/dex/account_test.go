@@ -22,6 +22,7 @@ func TestAccountEncodeDecode(t *testing.T) {
 				Executed: 4,
 				Order:    Order{Price: 5}},
 		},
+		ExecutionReports: []ExecutionReport{},
 	}
 
 	b, err := rlp.EncodeToBytes(&a)

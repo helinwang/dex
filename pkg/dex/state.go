@@ -78,13 +78,21 @@ func (s *State) Commit() {
 }
 
 var (
-	accountPrefix = []byte("a")
-	marketPrefix  = []byte("m")
-	tokenPrefix   = []byte("t")
+	accountPrefix         = []byte{0}
+	marketPrefix          = []byte{1}
+	tokenPrefix           = []byte{2}
+	orderExpirationPrefix = []byte{3}
 )
 
 func accountAddrToPath(addr consensus.Addr) []byte {
 	return append(accountPrefix, addr[:]...)
+}
+
+func expirationToPath(round uint64) []byte {
+	b := make([]byte, 64)
+	binary.LittleEndian.PutUint64(b, round)
+	path := append(orderExpirationPrefix, b...)
+	return path
 }
 
 func tokenPath(tokenID TokenID) []byte {
@@ -226,11 +234,11 @@ func (s *State) Markets() []MarketSymbol {
 
 // IssueNativeToken issues the native token, it is only called in
 // during the chain creation.
-func (s *State) IssueNativeToken(owner *consensus.PK) consensus.State {
+func (s *State) IssueNativeToken(owner consensus.PK) consensus.State {
 	issueTokenTxn := IssueTokenTxn{Info: BNBInfo}
-	trans := s.Transition().(*Transition)
+	trans := s.Transition(0).(*Transition)
 	o := &Account{
-		PK: *owner,
+		PK: owner,
 	}
 	trans.issueToken(o, issueTokenTxn)
 	return trans.Commit()
@@ -242,7 +250,7 @@ func (s *State) Hash() consensus.Hash {
 }
 
 // Transition returns the state change transition.
-func (s *State) Transition() consensus.Transition {
+func (s *State) Transition(round uint64) consensus.Transition {
 	root, err := s.state.Commit(nil)
 	if err != nil {
 		panic(err)
@@ -258,5 +266,52 @@ func (s *State) Transition() consensus.Transition {
 		tokenCache: s.tokenCache.Clone(),
 		state:      trie,
 	}
-	return newTransition(state)
+	return newTransition(state, round)
+}
+
+type orderExpiration struct {
+	ID    OrderID
+	Owner consensus.Addr
+}
+
+func (s *State) getOrderExpirations(round uint64) []orderExpiration {
+	var all []orderExpiration
+	path := expirationToPath(round)
+	exisiting := s.state.Get(path)
+	if len(exisiting) > 0 {
+		err := rlp.DecodeBytes(exisiting, &all)
+		if err != nil {
+			panic(err)
+		}
+	}
+	return all
+}
+
+func (s *State) addOrderExpirations(round uint64, ids []orderExpiration) {
+	all := s.getOrderExpirations(round)
+	all = append(all, ids...)
+	b, err := rlp.EncodeToBytes(all)
+	if err != nil {
+		panic(err)
+	}
+
+	path := expirationToPath(round)
+	s.state.Update(path, b)
+}
+
+func (s *State) removeOrderExpirations(round uint64, ids map[OrderID]bool) {
+	all := s.getOrderExpirations(round)
+	newExps := make([]orderExpiration, 0, len(all))
+	for _, exp := range all {
+		if !ids[exp.ID] {
+			newExps = append(newExps, exp)
+		}
+	}
+
+	b, err := rlp.EncodeToBytes(newExps)
+	if err != nil {
+		panic(err)
+	}
+	path := expirationToPath(round)
+	s.state.Update(path, b)
 }
