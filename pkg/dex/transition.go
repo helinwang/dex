@@ -205,7 +205,7 @@ type ExecutionReport struct {
 }
 
 func (t *Transition) placeOrder(owner *Account, txn PlaceOrderTxn, round uint64) bool {
-	if round >= txn.ExpireHeight {
+	if txn.ExpireHeight > 0 && round >= txn.ExpireHeight {
 		log.Warn("order already expired", "expire round", txn.ExpireHeight, "cur round", round)
 		return false
 	}
@@ -267,7 +267,10 @@ func (t *Transition) placeOrder(owner *Account, txn PlaceOrderTxn, round uint64)
 	}
 	owner.PendingOrders = append(owner.PendingOrders, pendingOrder)
 	id := OrderID{ID: orderID, Market: txn.Market}
-	t.expirations[order.ExpireHeight] = append(t.expirations[order.ExpireHeight], orderExpiration{ID: id, Owner: owner.PK.Addr()})
+
+	if order.ExpireHeight > 0 {
+		t.expirations[order.ExpireHeight] = append(t.expirations[order.ExpireHeight], orderExpiration{ID: id, Owner: owner.PK.Addr()})
+	}
 
 	if len(executions) > 0 {
 		addrToAcc := make(map[consensus.Addr]*Account)
@@ -466,6 +469,10 @@ func (t *Transition) removeFilledOrderFromExpiration() {
 	heights := make(map[uint64]int)
 	filled := make(map[OrderID]bool)
 	for _, o := range t.filledOrders {
+		if o.ExpireHeight == 0 {
+			continue
+		}
+
 		filled[o.ID] = true
 		heights[o.ExpireHeight]++
 	}
