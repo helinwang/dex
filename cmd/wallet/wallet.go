@@ -56,6 +56,8 @@ func parseAddr(accountAddr string) (consensus.Addr, error) {
 	return addr, nil
 }
 
+// TODO: burn should update total supply
+
 func frozenToStr(fs []dex.Frozen, decimals int) string {
 	strs := make([]string, len(fs))
 	for i, f := range fs {
