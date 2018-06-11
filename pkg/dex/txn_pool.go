@@ -69,5 +69,8 @@ func (t *TxnPool) Txns() [][]byte {
 }
 
 func (t *TxnPool) Remove(hash consensus.Hash) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
 	delete(t.txns, hash)
 }
