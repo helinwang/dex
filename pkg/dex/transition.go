@@ -100,8 +100,21 @@ func (t *Transition) Record(b []byte) (valid, success bool) {
 			log.Warn("SendTokenTxn failed")
 			return
 		}
+	case FreezeToken:
+		var txn FreezeTokenTxn
+		err := dec.Decode(&txn)
+		if err != nil {
+			log.Warn("FreezeTokenTxn decode failed", "err", err)
+			return
+		}
+		if !t.freezeToken(acc, txn) {
+			log.Warn("FreezeTokenTxn failed")
+			return
+		}
+
 	default:
-		panic("unknown txn type")
+		log.Warn("unknown txn type", "type", txn.T)
+		return false, false
 	}
 
 	t.txns = append(t.txns, b)
@@ -393,7 +406,7 @@ func (t *Transition) sendToken(owner *Account, txn SendTokenTxn) bool {
 	}
 
 	if b.Available < txn.Quant {
-		log.Warn("in sufficient available token balance", "tokenID", txn.TokenID, "quant", txn.Quant, "available", b.Available)
+		log.Warn("insufficient available token balance", "tokenID", txn.TokenID, "quant", txn.Quant, "available", b.Available)
 		return false
 	}
 
@@ -430,7 +443,7 @@ func (t *Transition) finalizeState(round uint64) {
 		// must be called after t.expireOrders, since it could
 		// make order book dirty.
 		t.saveDirtyOrderBooks()
-
+		t.releaseTokens()
 		t.finalized = true
 	}
 }
@@ -479,6 +492,39 @@ func (t *Transition) removeFilledOrderFromExpiration() {
 	}
 }
 
+// TODO: optimization: cache all changed accounts, and save them
+// during the finalization.
+
+func (t *Transition) releaseTokens() {
+
+	// release the tokens that will be released next round
+	tokens := t.state.getFreezeTokens(t.round + 1)
+	addrToAcc := make(map[consensus.Addr]*Account)
+	for _, token := range tokens {
+		acc, ok := addrToAcc[token.Addr]
+		if !ok {
+			acc = t.state.Account(token.Addr)
+			addrToAcc[token.Addr] = acc
+		}
+
+		b := acc.Balances[token.TokenID]
+		removeIdx := -1
+		for i, f := range b.Frozen {
+			if f.Quant == token.Quant {
+				removeIdx = i
+				break
+			}
+		}
+		f := b.Frozen[removeIdx]
+		b.Frozen = append(b.Frozen[:removeIdx], b.Frozen[removeIdx+1:]...)
+		b.Available += f.Quant
+	}
+
+	for _, acc := range addrToAcc {
+		t.state.UpdateAccount(acc)
+	}
+}
+
 func (t *Transition) expireOrders() {
 	// expire orders whose expiration is the next round
 	orders := t.state.getOrderExpirations(t.round + 1)
@@ -513,6 +559,38 @@ func (t *Transition) expireOrders() {
 	for _, acc := range addrToAcc {
 		t.state.UpdateAccount(acc)
 	}
+}
+
+func (t *Transition) freezeToken(acc *Account, txn FreezeTokenTxn) bool {
+	if txn.Quant == 0 {
+		return false
+	}
+
+	if txn.AvailableRound <= t.round {
+		log.Warn("trying to freeze token to too early round", "available round", txn.AvailableRound, "cur round", t.round)
+		return false
+	}
+
+	b, ok := acc.Balances[txn.TokenID]
+	if !ok {
+		log.Warn("trying to freeze token that the owner does not have", "tokenID", txn.TokenID)
+		return false
+	}
+
+	if b.Available < txn.Quant {
+		log.Warn("insufficient available token balance", "tokenID", txn.TokenID, "quant", txn.Quant, "available", b.Available)
+		return false
+	}
+
+	frozen := Frozen{
+		AvailableRound: txn.AvailableRound,
+		Quant:          txn.Quant,
+	}
+	b.Available -= txn.Quant
+	b.Frozen = append(b.Frozen, frozen)
+	t.state.UpdateAccount(acc)
+	t.state.freezeToken(txn.AvailableRound, freezeToken{Addr: acc.PK.Addr(), TokenID: txn.TokenID, Quant: txn.Quant})
+	return true
 }
 
 func (t *Transition) StateHash() consensus.Hash {

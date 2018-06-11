@@ -16,9 +16,15 @@ const (
 	maxNonceIdx = 100
 )
 
+type Frozen struct {
+	AvailableRound uint64
+	Quant          uint64
+}
+
 type Balance struct {
 	Available uint64
 	Pending   uint64
+	Frozen    []Frozen
 }
 
 type OrderID struct {

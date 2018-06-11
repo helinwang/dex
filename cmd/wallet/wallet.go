@@ -56,7 +56,15 @@ func parseAddr(accountAddr string) (consensus.Addr, error) {
 	return addr, nil
 }
 
-// TODO: print trade report
+func frozenToStr(fs []dex.Frozen, decimals int) string {
+	strs := make([]string, len(fs))
+	for i, f := range fs {
+		strs[i] = fmt.Sprintf("%s@%d", quantToStr(f.Quant, decimals), f.AvailableRound)
+	}
+
+	return strings.Join(strs, ",")
+}
+
 func printAccount(c *cli.Context) error {
 	var addr consensus.Addr
 	accountAddr := c.Args().First()
@@ -114,7 +122,7 @@ func printAccount(c *cli.Context) error {
 	fmt.Printf("Addr:\n%x\n", addr[:])
 	fmt.Println("\nBalances:")
 	tw := tabwriter.NewWriter(os.Stdout, 0, 0, 1, ' ', tabwriter.Debug)
-	_, err = fmt.Fprintln(tw, "\tSymbol\tAvailable\tPending\t")
+	_, err = fmt.Fprintln(tw, "\tSymbol\tAvailable\tPending\tFrozen\t")
 	if err != nil {
 		return err
 	}
@@ -126,7 +134,7 @@ func printAccount(c *cli.Context) error {
 		decimals := int(idToToken[b.Token].Decimals)
 		available := quantToStr(b.Available, decimals)
 		pending := quantToStr(b.Pending, decimals)
-		_, err = fmt.Fprintf(tw, "\t%s\t%s\t%s\t\n", symbol, available, pending)
+		_, err = fmt.Fprintf(tw, "\t%s\t%s\t%s\t%s\t\n", symbol, available, pending, frozenToStr(b.Frozen, decimals))
 		if err != nil {
 			return err
 		}
@@ -410,6 +418,68 @@ func printGraphviz(c *cli.Context) error {
 	return nil
 }
 
+func freezeToken(c *cli.Context) error {
+	args := c.Args()
+	if len(args) < 3 {
+		return fmt.Errorf("freeze token needs 3 arguments (received: %d), please check usage using ./wallet -h", len(args))
+	}
+
+	credential, err := consensus.LoadCredential(credentialPath)
+	if err != nil {
+		return err
+	}
+
+	symbol := args[0]
+	quant, err := strconv.ParseFloat(args[1], 64)
+	if err != nil {
+		return fmt.Errorf("error parse freeze token amount: %v", err)
+	}
+	availableHeight, err := strconv.ParseUint(args[2], 10, 64)
+	if err != nil {
+		return fmt.Errorf("error parse freeze token available height: %v", err)
+	}
+
+	client, err := rpc.DialHTTP("tcp", rpcAddr)
+	if err != nil {
+		return err
+	}
+
+	tokens, err := getTokens(client)
+	if err != nil {
+		return err
+	}
+
+	var tokenID dex.TokenID
+	var mul float64
+	found := false
+	for _, t := range tokens {
+		if strings.ToLower(string(t.Symbol)) == strings.ToLower(symbol) {
+			tokenID = t.ID
+			mul = math.Pow10(int(t.Decimals))
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		return fmt.Errorf("symbol not found: %s", symbol)
+	}
+
+	idx, val, err := nonce(client, credential.SK.MustPK().Addr())
+	if err != nil {
+		return err
+	}
+
+	t := dex.FreezeTokenTxn{TokenID: tokenID, AvailableRound: availableHeight, Quant: uint64(quant * mul)}
+	txn := dex.MakeFreezeTokenTxn(credential.SK, t, idx, val)
+	err = client.Call("WalletService.SendTxn", txn, nil)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func cancelOrder(c *cli.Context) error {
 	orderID := c.Args().First()
 	var id dex.OrderID
@@ -607,6 +677,11 @@ func main() {
 			Name:   "cancel",
 			Usage:  "Cancel an order: ./wallet -c NODE_CREDENTIAL_FILE_PATH cancel ORDER_ID",
 			Action: cancelOrder,
+		},
+		{
+			Name:   "freeze",
+			Usage:  "Freeze token: ./wallet -c NODE_CREDENTIAL_FILE_PATH freeze SYMBOL AMOUNT AVAILABLE_HEIGHT",
+			Action: freezeToken,
 		},
 	}
 

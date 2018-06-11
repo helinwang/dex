@@ -21,6 +21,8 @@ const (
 	CancelOrder
 	IssueToken
 	SendToken
+	FreezeToken
+	BurnToken
 )
 
 type Txn struct {
@@ -186,24 +188,29 @@ func MakePlaceOrderTxn(sk consensus.SK, t PlaceOrderTxn, nonceIdx uint8, nonceVa
 
 func MakeIssueTokenTxn(sk consensus.SK, info TokenInfo, nonceIdx uint8, nonceValue uint64) []byte {
 	t := IssueTokenTxn{Info: info}
-	owner, err := sk.PK()
-	if err != nil {
-		panic(err)
-	}
-
 	txn := Txn{
 		T:          IssueToken,
 		Data:       gobEncode(t),
 		NonceIdx:   nonceIdx,
 		NonceValue: nonceValue,
-		Owner:      owner.Addr(),
+		Owner:      sk.MustPK().Addr(),
 	}
 
-	key, err := sk.Get()
-	if err != nil {
-		panic(err)
+	key := sk.MustGet()
+	txn.Sig = key.Sign(string(txn.Encode(false))).Serialize()
+	return txn.Encode(true)
+}
+
+func MakeFreezeTokenTxn(sk consensus.SK, t FreezeTokenTxn, nonceIdx uint8, nonceValue uint64) []byte {
+	txn := Txn{
+		T:          FreezeToken,
+		Data:       gobEncode(t),
+		NonceIdx:   nonceIdx,
+		NonceValue: nonceValue,
+		Owner:      sk.MustPK().Addr(),
 	}
 
+	key := sk.MustGet()
 	txn.Sig = key.Sign(string(txn.Encode(false))).Serialize()
 	return txn.Encode(true)
 }
@@ -216,6 +223,12 @@ type SendTokenTxn struct {
 	TokenID TokenID
 	To      consensus.PK
 	Quant   uint64
+}
+
+type FreezeTokenTxn struct {
+	TokenID        TokenID
+	AvailableRound uint64
+	Quant          uint64
 }
 
 // TODO: maybe move this func to common package

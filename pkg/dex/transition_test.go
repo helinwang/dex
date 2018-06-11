@@ -54,6 +54,31 @@ func TestSendToken(t *testing.T) {
 	assert.Equal(t, 80, int(newAcc.Balances[0].Available))
 }
 
+func TestFreezeToken(t *testing.T) {
+	s := NewState(trie.NewDatabase(ethdb.NewMemDatabase()))
+	sk, addr := createAccount(s, 100)
+
+	// check balance not changed before commiting the txn
+	newAcc := s.Account(addr)
+	assert.Equal(t, 100, int(newAcc.Balances[0].Available))
+	txn := MakeFreezeTokenTxn(sk, FreezeTokenTxn{TokenID: 0, AvailableRound: 3, Quant: 50}, 0, 0)
+
+	trans := s.Transition(1)
+	valid, success := trans.Record(txn)
+	assert.True(t, valid)
+	assert.True(t, success)
+	s = trans.Commit().(*State)
+	newAcc = s.Account(addr)
+	assert.Equal(t, 50, int(newAcc.Balances[0].Available))
+	assert.Equal(t, []Frozen([]Frozen{Frozen{AvailableRound: 3, Quant: 50}}), newAcc.Balances[0].Frozen)
+
+	trans = s.Transition(2)
+	s = trans.Commit().(*State)
+	newAcc = s.Account(addr)
+	assert.Equal(t, 100, int(newAcc.Balances[0].Available))
+	assert.Equal(t, 0, len(newAcc.Balances[0].Frozen))
+}
+
 func TestTransitionNotCommitToDB(t *testing.T) {
 	memDB := ethdb.NewMemDatabase()
 	db := trie.NewDatabase(memDB)
@@ -97,12 +122,6 @@ func TestTransitionNotCommitToDB(t *testing.T) {
 	assert.Equal(t, 1, int(newAcc.Balances[0].Available))
 }
 
-var btcInfo = TokenInfo{
-	Symbol:     "BTC",
-	Decimals:   8,
-	TotalUnits: 21000000 * 100000000,
-}
-
 func TestIssueNativeToken(t *testing.T) {
 	var sk bls.SecretKey
 	sk.SetByCSPRNG()
@@ -119,6 +138,12 @@ func TestIssueNativeToken(t *testing.T) {
 }
 
 func TestIssueToken(t *testing.T) {
+	var btcInfo = TokenInfo{
+		Symbol:     "BTC",
+		Decimals:   8,
+		TotalUnits: 21000000 * 100000000,
+	}
+
 	s := NewState(trie.NewDatabase(ethdb.NewMemDatabase()))
 	s.tokenCache.Update(0, &BNBInfo)
 	sk, addr := createAccount(s, 100)

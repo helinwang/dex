@@ -17,7 +17,7 @@ type Hash [hashBytes]byte
 
 // String is the string representation of hash.
 func (h Hash) String() string {
-	return fmt.Sprintf("%x", h[:2])
+	return fmt.Sprintf("%x", h[:])
 }
 
 // Hex is the hex representation of hash.

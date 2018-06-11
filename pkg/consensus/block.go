@@ -17,7 +17,7 @@ var ZeroAddr = Addr{}
 type Addr [addrBytes]byte
 
 func (a Addr) String() string {
-	return fmt.Sprintf("%x", a[:2])
+	return fmt.Sprintf("%x", a[:])
 }
 
 func (a Addr) Hex() string {

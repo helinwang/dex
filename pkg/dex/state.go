@@ -82,7 +82,14 @@ var (
 	marketPrefix          = []byte{1}
 	tokenPrefix           = []byte{2}
 	orderExpirationPrefix = []byte{3}
+	freezeAtRoundPrefix   = []byte{4}
 )
+
+func freezeAtRoundToPath(round uint64) []byte {
+	b := make([]byte, 64)
+	binary.LittleEndian.PutUint64(b, round)
+	return append(freezeAtRoundPrefix, b...)
+}
 
 func accountAddrToPath(addr consensus.Addr) []byte {
 	return append(accountPrefix, addr[:]...)
@@ -313,5 +320,39 @@ func (s *State) removeOrderExpirations(round uint64, ids map[OrderID]bool) {
 		panic(err)
 	}
 	path := expirationToPath(round)
+	s.state.Update(path, b)
+}
+
+type freezeToken struct {
+	Addr    consensus.Addr
+	TokenID TokenID
+	Quant   uint64
+}
+
+func (s *State) getFreezeTokens(round uint64) []freezeToken {
+	path := freezeAtRoundToPath(round)
+	b := s.state.Get(path)
+	if len(b) == 0 {
+		return nil
+	}
+
+	var all []freezeToken
+	err := rlp.DecodeBytes(b, &all)
+	if err != nil {
+		panic(err)
+	}
+
+	return all
+}
+
+func (s *State) freezeToken(round uint64, f freezeToken) {
+	all := s.getFreezeTokens(round)
+	all = append(all, f)
+	b, err := rlp.EncodeToBytes(all)
+	if err != nil {
+		panic(err)
+	}
+
+	path := freezeAtRoundToPath(round)
 	s.state.Update(path, b)
 }

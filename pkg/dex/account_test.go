@@ -13,8 +13,8 @@ func TestAccountEncodeDecode(t *testing.T) {
 		PK:       consensus.PK{1, 2, 3},
 		NonceVec: []uint64{4, 5},
 		Balances: map[TokenID]*Balance{
-			0: &Balance{Available: 100, Pending: 20},
-			5: &Balance{Available: 1<<64 - 1, Pending: 1},
+			0: &Balance{Available: 100, Pending: 20, Frozen: []Frozen{}},
+			5: &Balance{Available: 1<<64 - 1, Pending: 1, Frozen: []Frozen{}},
 		},
 		PendingOrders: []PendingOrder{
 			{
