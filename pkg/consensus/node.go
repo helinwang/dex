@@ -80,51 +80,17 @@ func (n *Node) Start(myAddr, seedAddr string) {
 	n.net.Start(myAddr, seedAddr)
 }
 
-// StartRound tells the node that a new round has just started.
-func (n *Node) StartRound(round uint64) {
+// StartRound marks the start of the given round. It happens when the
+// random beacon signature for the given round is received.
+func (n *Node) _StartRound(round uint64) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 
 	log.Debug("start round", "round", round, "addr", n.addr)
 
-	n.notarizeChs = nil
-	if n.cancelNotarize != nil {
-		n.cancelNotarize()
-	}
-
 	var ntCancelCtx context.Context
-	rb, bp, nt := n.chain.RandomBeacon.Committees(round)
+	_, bp, nt := n.chain.RandomBeacon.Committees(round)
 	for _, m := range n.memberships {
-		if m.groupID == rb {
-			// Current node is a member of the random
-			// beacon committee, members collatively
-			// produce the random beacon signature using
-			// BLS threshold signature scheme. There are
-			// multiple committees, which committee will
-			// produce the next random beacon signature is
-			// derived from the current random beacon
-			// signature.
-			keyShare := m.skShare
-			go func() {
-				history := n.chain.RandomBeacon.History()
-				if round < 1 {
-					log.Error("round should not < 1")
-					return
-				}
-
-				idx := round - 1
-				if idx >= uint64(len(history)) {
-					// TODO: handle this case better, need to be retry
-					log.Error("new round started, but have not received last round random beacon", "idx", idx, "len", len(history))
-					return
-				}
-
-				lastSigHash := SHA3(history[idx].Sig)
-				s := signRandBeaconShare(n.sk.MustGet(), keyShare, round, lastSigHash)
-				n.net.recvRandBeaconSigShare(s)
-			}()
-		}
-
 		if m.groupID == bp {
 			bp := n.chain.ProposeBlock(n.sk)
 			go func() {
@@ -151,6 +117,42 @@ func (n *Node) StartRound(round uint64) {
 				cancel()
 			}()
 		}
+	}
+}
+
+// EndRound marks the end of the given round. It happens when the
+// block for the given round is received.
+func (n *Node) EndRound(round uint64) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+
+	log.Debug("end round", "round", round, "addr", n.addr)
+
+	n.notarizeChs = nil
+	if n.cancelNotarize != nil {
+		n.cancelNotarize()
+	}
+
+	rb, _, _ := n.chain.RandomBeacon.Committees(round)
+	for _, m := range n.memberships {
+		if m.groupID != rb {
+			continue
+		}
+		// Current node is a member of the random
+		// beacon committee, members collatively
+		// produce the random beacon signature using
+		// BLS threshold signature scheme. There are
+		// multiple committees, which committee will
+		// produce the next random beacon signature is
+		// derived from the current random beacon
+		// signature.
+		keyShare := m.skShare
+		go func() {
+			history := n.chain.RandomBeacon.History()
+			lastSigHash := SHA3(history[round].Sig)
+			s := signRandBeaconShare(n.sk.MustGet(), keyShare, round+1, lastSigHash)
+			n.net.recvRandBeaconSigShare(n.net.myself, s)
+		}()
 	}
 }
 
@@ -184,7 +186,7 @@ func MakeNode(credentials NodeCredentials, net Network, cfg Config, genesis *Blo
 		m := membership{groupID: credentials.Groups[j], skShare: share}
 		node.memberships = append(node.memberships, m)
 	}
-
+	node.chain.RandomBeacon.n = node
 	return node
 }
 

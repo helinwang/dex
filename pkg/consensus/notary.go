@@ -47,9 +47,9 @@ func (n *Notary) Notarize(ctx, cancel context.Context, bCh chan *BlockProposal, 
 				case <-cancel.Done():
 					return
 				case bp := <-bCh:
-					rank, err := n.chain.RandomBeacon.Rank(bp.Owner, n.chain.Round())
+					rank, err := n.chain.RandomBeacon.Rank(bp.Owner, n.chain.Height())
 					if err != nil {
-						log.Error("get rank error", "err", err, "bp round", bp.Round, "chain round", n.chain.Round())
+						log.Error("get rank error", "err", err, "bp round", bp.Round, "chain round", n.chain.Height())
 						continue
 					}
 
@@ -63,9 +63,9 @@ func (n *Notary) Notarize(ctx, cancel context.Context, bCh chan *BlockProposal, 
 				}
 			}
 		case bp := <-bCh:
-			rank, err := n.chain.RandomBeacon.Rank(bp.Owner, n.chain.Round())
+			rank, err := n.chain.RandomBeacon.Rank(bp.Owner, n.chain.Height())
 			if err != nil {
-				log.Error("get rank error", "err", err, "bp round", bp.Round, "chain round", n.chain.Round())
+				log.Error("get rank error", "err", err, "bp round", bp.Round, "chain round", n.chain.Height())
 				continue
 			}
 

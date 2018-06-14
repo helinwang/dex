@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/ethereum/go-ethereum/rlp"
 	log "github.com/helinwang/log15"
@@ -116,7 +115,7 @@ func (c *Chain) ChainStatus() ChainStatus {
 
 	s := ChainStatus{}
 	s.Round = c.round()
-	s.RandBeaconDepth = c.RandomBeacon.Depth()
+	s.RandBeaconDepth = c.RandomBeacon.Round()
 	return s
 }
 
@@ -221,8 +220,8 @@ func (c *Chain) round() uint64 {
 	return uint64(round)
 }
 
-// Round returns the current round.
-func (c *Chain) Round() uint64 {
+// Height returns the current round.
+func (c *Chain) Height() uint64 {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -494,8 +493,6 @@ func (c *Chain) addBlock(b *Block, bp *BlockProposal, s State, weight float64) e
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	prevRound := c.round()
-
 	h := b.Hash()
 	if _, ok := c.hashToBlock[h]; ok {
 		return errChainDataAlreadyExists
@@ -553,19 +550,6 @@ func (c *Chain) addBlock(b *Block, bp *BlockProposal, s State, weight float64) e
 
 	_, leaderState, _ := c.leader()
 	go c.updater.Update(leaderState)
-
-	if round == prevRound+1 {
-		// TODO: make it more robust
-		go func() {
-			for {
-				if c.RandomBeacon.Depth() >= round {
-					c.n.StartRound(round)
-					return
-				}
-				time.Sleep(50 * time.Millisecond)
-			}
-		}()
-	}
 	return nil
 }
 

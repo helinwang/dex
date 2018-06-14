@@ -3,13 +3,15 @@ package consensus
 import (
 	"context"
 	"errors"
+	"fmt"
+	"sync"
 	"time"
 
 	lru "github.com/hashicorp/golang-lru"
 	log "github.com/helinwang/log15"
 )
 
-// blockSyncer downloads blocks and block proposals, validates them
+// syncer downloads blocks and block proposals, validates them
 // and connect them to the chain.
 //
 // The synchronization steps:
@@ -21,20 +23,22 @@ import (
 // 4. validate B and all it's prev blocks, then connect to the chain
 // if valid
 // 5. validate BP, then connect to the chain if validate
-type blockSyncer struct {
+type syncer struct {
 	v                 *validator
 	chain             *Chain
 	requester         requester
 	invalidBlockCache *lru.Cache
+
+	syncRandBeaconMu sync.Mutex
 }
 
-func newBlockSyncer(v *validator, chain *Chain, requester requester) *blockSyncer {
+func newSyncer(v *validator, chain *Chain, requester requester) *syncer {
 	c, err := lru.New(1024)
 	if err != nil {
 		panic(err)
 	}
 
-	return &blockSyncer{
+	return &syncer{
 		v:                 v,
 		chain:             chain,
 		requester:         requester,
@@ -45,16 +49,52 @@ func newBlockSyncer(v *validator, chain *Chain, requester requester) *blockSynce
 type requester interface {
 	RequestBlock(ctx context.Context, p Peer, hash Hash) (*Block, error)
 	RequestBlockProposal(ctx context.Context, p Peer, hash Hash) (*BlockProposal, error)
+	RequestRandBeaconSig(ctx context.Context, p Peer, round uint64) (*RandBeaconSig, error)
 }
 
 var errCanNotConnectToChain = errors.New("can not connect to chain")
 
-func (s *blockSyncer) SyncBlock(p Peer, hash Hash, round uint64) error {
+func (s *syncer) SyncBlock(p Peer, hash Hash, round uint64) error {
 	_, err := s.syncBlockAndConnectToChain(p, hash, round)
 	if err == errCanNotConnectToChain {
 		s.invalidBlockCache.Add(hash, struct{}{})
 	}
 	return err
+}
+
+func (s *syncer) SyncRandBeaconSig(p Peer, hash Hash, round uint64) (bool, error) {
+	if s.chain.RandomBeacon.Round() > round {
+		return false, nil
+	}
+
+	s.syncRandBeaconMu.Lock()
+	defer s.syncRandBeaconMu.Unlock()
+
+	var sigs []*RandBeaconSig
+	for s.chain.RandomBeacon.Round() <= round {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+		defer cancel()
+		sig, err := s.requester.RequestRandBeaconSig(ctx, p, round)
+		if err != nil {
+			return false, err
+		}
+		sigs = append(sigs, sig)
+		if sig.Round > 0 {
+			round = sig.Round - 1
+		} else {
+			panic("syncing rand beacon sig of 0 round, should never happen")
+		}
+	}
+
+	for i := len(sigs) - 1; i >= 0; i-- {
+		sig := sigs[i]
+		success := s.chain.RandomBeacon.AddRandBeaconSig(sig)
+		if !success {
+			return false, fmt.Errorf("failed to add rand beacon sig, round: %d, hash: %x", round, sig.Hash())
+		}
+	}
+
+	return true, nil
 }
 
 type tradesResult struct {
@@ -67,7 +107,7 @@ type bpResult struct {
 	E  error
 }
 
-func (s *blockSyncer) syncBlockAndConnectToChain(p Peer, hash Hash, round uint64) (State, error) {
+func (s *syncer) syncBlockAndConnectToChain(p Peer, hash Hash, round uint64) (State, error) {
 	// TODO: validate block, get weight
 	// TODO: prevent syncing the same block concurrently
 

@@ -2,8 +2,8 @@ package consensus
 
 import (
 	"errors"
+	"fmt"
 	"sync"
-	"time"
 
 	log "github.com/helinwang/log15"
 )
@@ -14,7 +14,9 @@ import (
 // the next round in lockstep.
 type RandomBeacon struct {
 	cfg               Config
+	n                 *Node
 	mu                sync.Mutex
+	roundWaitCh       map[uint64]chan struct{}
 	nextRBCmteHistory []int
 	nextNtCmteHistory []int
 	nextBPCmteHistory []int
@@ -51,6 +53,7 @@ func NewRandomBeacon(seed Rand, groups []*Group, cfg Config) *RandomBeacon {
 		rbRand:            rbRand,
 		bpRand:            bpRand,
 		ntRand:            ntRand,
+		roundWaitCh:       make(map[uint64]chan struct{}),
 		nextRBCmteHistory: []int{initRBGroup},
 		nextNtCmteHistory: []int{initNtGroup},
 		nextBPCmteHistory: []int{initBPGroup},
@@ -78,13 +81,13 @@ func (r *RandomBeacon) AddRandBeaconSigShare(s *RandBeaconSigShare, groupID int)
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if depth := r.depth(); depth != s.Round {
-		if s.Round > depth {
-			log.Warn("failed to add RandBeaconSigShare that has bigger round than depth", "round", s.Round, "depth", depth)
+	if round := r.round(); round+1 != s.Round {
+		if s.Round >= round+1 {
+			log.Warn("failed to add RandBeaconSigShare that has bigger round than round + 1", "round", s.Round, "round", round)
 			return nil, false
 		}
 
-		log.Debug("skipped the RandBeaconSigShare that has smaller round than depth", "round", s.Round, "depth", depth)
+		log.Debug("skipped the RandBeaconSigShare that has smaller round than round", "round", s.Round, "round", round)
 		return nil, true
 	}
 
@@ -123,13 +126,13 @@ func (r *RandomBeacon) AddRandBeaconSig(s *RandBeaconSig) bool {
 
 	log.Info("AddRandBeaconSig", "round", s.Round, "hash", s.Hash())
 
-	if depth := r.depth(); depth != s.Round {
-		if s.Round > depth {
-			log.Warn("adding RandBeaconSig of higher round", "round", s.Round, "beacon depth", depth)
+	if round := r.round(); round != s.Round {
+		if s.Round > round {
+			log.Warn("adding RandBeaconSig of higher round", "round", s.Round, "beacon round", round)
 			return false
 		}
 
-		log.Debug("skipped RandBeaconSig of lower round", "round", s.Round, "beacon depth", depth)
+		log.Debug("skipped RandBeaconSig of lower round", "round", s.Round, "beacon round", round)
 		// still treat as success
 		return true
 	}
@@ -138,6 +141,14 @@ func (r *RandomBeacon) AddRandBeaconSig(s *RandBeaconSig) bool {
 	r.curRoundShares = make(map[Hash]*RandBeaconSigShare)
 	r.curRoundItems = nil
 	r.sigHistory = append(r.sigHistory, s)
+	round := r.round()
+	fmt.Println("r", round, len(r.nextRBCmteHistory))
+	ch, ok := r.roundWaitCh[round]
+	if ok {
+		close(ch)
+		delete(r.roundWaitCh, round)
+	}
+	go r.n._StartRound(round)
 	return true
 }
 
@@ -154,24 +165,43 @@ func (r *RandomBeacon) Inventory() []ItemID {
 	return ret
 }
 
-func (r *RandomBeacon) depth() uint64 {
-	return uint64(len(r.sigHistory))
+func (r *RandomBeacon) round() uint64 {
+	return uint64(len(r.sigHistory) - 1)
 }
 
-// Depth returns the depth of the random beacon.
+// Round returns the round of the random beacon.
 //
-// Comparison of depth with Chain.Round():
-// - depth >= Chain.Round() + 2: when the node is synchronizing. It
+// Comparison of round with Chain.Round():
+// - round >= Chain.Round() + 2: when the node is synchronizing. It
 // will synchronize the random beacon first, and then synchronize the
 // chain's blocks.
-// - depth >= Chain.Round() && depth <= Chain.Round() + 1: when the
+// - round >= Chain.Round() && round <= Chain.Round() + 1: when the
 // node is synchronized.
-// - depth < Chain.Round(): random beacon is synchronizing.
-func (r *RandomBeacon) Depth() uint64 {
+// - round < Chain.Round(): random beacon is synchronizing.
+func (r *RandomBeacon) Round() uint64 {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	return r.depth()
+	return r.round()
+}
+
+// WaitUntil will return until the given round is reached.
+func (r *RandomBeacon) WaitUntil(round uint64) {
+	r.mu.Lock()
+	curRound := r.round()
+	if round <= curRound {
+		r.mu.Unlock()
+		return
+	}
+
+	ch, ok := r.roundWaitCh[round]
+	if !ok {
+		ch = make(chan struct{}, 0)
+		r.roundWaitCh[round] = ch
+	}
+	r.mu.Unlock()
+
+	<-ch
 }
 
 // Rank returns the rank for the given member in the current block
@@ -183,11 +213,6 @@ func (r *RandomBeacon) Rank(addr Addr, round uint64) (int, error) {
 
 	r.mu.Lock()
 	i := round - 1
-	for i >= uint64(len(r.nextBPCmteHistory)) {
-		r.mu.Unlock()
-		time.Sleep(100 * time.Millisecond)
-		r.mu.Lock()
-	}
 	bp := r.nextBPCmteHistory[i]
 	g := r.groups[bp]
 	idx := -1
@@ -221,22 +246,11 @@ func (r *RandomBeacon) deriveRand(h Hash) {
 // Committees returns the current random beacon, block proposal,
 // notarization committees.
 func (r *RandomBeacon) Committees(round uint64) (rb, bp, nt int) {
-	if round < 1 {
-		panic("should not happen")
-	}
+	fmt.Println(round, len(r.nextRBCmteHistory), len(r.nextBPCmteHistory), len(r.nextNtCmteHistory))
 	r.mu.Lock()
-
-	idx := round - 1
-	for idx >= uint64(len(r.nextRBCmteHistory)) {
-		r.mu.Unlock()
-		time.Sleep(100 * time.Millisecond)
-		r.mu.Lock()
-	}
-
-	// TODO: check idx
-	rb = r.nextRBCmteHistory[idx]
-	bp = r.nextBPCmteHistory[idx]
-	nt = r.nextNtCmteHistory[idx]
+	rb = r.nextRBCmteHistory[round]
+	bp = r.nextBPCmteHistory[round]
+	nt = r.nextNtCmteHistory[round]
 	r.mu.Unlock()
 	return
 }

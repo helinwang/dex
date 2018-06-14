@@ -18,8 +18,8 @@ const (
 type Peer interface {
 	Txn(txn []byte) error
 	SysTxn(s *SysTxn) error
-	RandBeaconSigShare(r *RandBeaconSigShare) error
-	RandBeaconSig(r *RandBeaconSig) error
+	RandBeaconSigShare(sender Peer, r *RandBeaconSigShare) error
+	RandBeaconSig(sender Peer, r *RandBeaconSig) error
 	Block(sender Peer, b *Block) error
 	BlockProposal(sender Peer, b *BlockProposal) error
 	NotarizationShare(n *NtShare) error
@@ -87,18 +87,20 @@ type Network interface {
 // Networking is the component that enables the node to talk to its
 // peers over the network.
 type Networking struct {
-	net         Network
-	myself      Peer
-	v           *validator
-	chain       *Chain
-	blockCache  *lru.Cache
-	bpCache     *lru.Cache
-	tradesCache *lru.Cache
-	blockSyncer *blockSyncer
+	net                Network
+	myself             Peer
+	v                  *validator
+	chain              *Chain
+	blockCache         *lru.Cache
+	bpCache            *lru.Cache
+	tradesCache        *lru.Cache
+	randBeaconSigCache *lru.Cache
+	blockSyncer        *syncer
 
 	mu            sync.Mutex
 	peers         []Peer
 	peerAddrs     []string
+	rbSigWaiters  map[uint64][]chan *RandBeaconSig
 	blockWaiters  map[Hash][]chan *Block
 	bpWaiters     map[Hash][]chan *BlockProposal
 	tradesWaiters map[Hash][]chan []byte
@@ -121,23 +123,52 @@ func NewNetworking(net Network, chain *Chain) *Networking {
 		panic(err)
 	}
 
+	randBeaconSigCache, err := lru.New(1024)
+	if err != nil {
+		panic(err)
+	}
+
 	r := &receiver{}
 	n := &Networking{
-		myself:        r,
-		net:           net,
-		v:             newValidator(chain),
-		chain:         chain,
-		blockCache:    bCache,
-		bpCache:       bpCache,
-		tradesCache:   tradesCache,
-		blockWaiters:  make(map[Hash][]chan *Block),
-		bpWaiters:     make(map[Hash][]chan *BlockProposal),
-		tradesWaiters: make(map[Hash][]chan []byte),
+		myself:             r,
+		net:                net,
+		v:                  newValidator(chain),
+		chain:              chain,
+		blockCache:         bCache,
+		bpCache:            bpCache,
+		tradesCache:        tradesCache,
+		randBeaconSigCache: randBeaconSigCache,
+		rbSigWaiters:       make(map[uint64][]chan *RandBeaconSig),
+		blockWaiters:       make(map[Hash][]chan *Block),
+		bpWaiters:          make(map[Hash][]chan *BlockProposal),
+		tradesWaiters:      make(map[Hash][]chan []byte),
 	}
 	r.n = n
-	bs := newBlockSyncer(n.v, chain, n)
+	bs := newSyncer(n.v, chain, n)
 	n.blockSyncer = bs
 	return n
+}
+
+func (n *Networking) RequestRandBeaconSig(ctx context.Context, p Peer, round uint64) (*RandBeaconSig, error) {
+	v, ok := n.randBeaconSigCache.Get(round)
+	if ok {
+		return v.(*RandBeaconSig), nil
+	}
+
+	c := make(chan *RandBeaconSig, 1)
+	n.mu.Lock()
+	n.rbSigWaiters[round] = append(n.rbSigWaiters[round], c)
+	if len(n.rbSigWaiters[round]) == 1 {
+		go p.GetData(n.myself, []ItemID{{T: RandBeaconItem, ItemRound: round}})
+	}
+	n.mu.Unlock()
+
+	select {
+	case r := <-c:
+		return r, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
 }
 
 func (n *Networking) RequestBlock(ctx context.Context, p Peer, hash Hash) (*Block, error) {
@@ -300,7 +331,7 @@ func (n *Networking) Start(addr, seedAddr string) error {
 		for _, r := range rb {
 			success := n.chain.RandomBeacon.AddRandBeaconSig(r)
 			if !success {
-				return fmt.Errorf("add RandBeaconSig failed, round: %d, beacon depth: %d", r.Round, n.chain.RandomBeacon.Depth())
+				return fmt.Errorf("add RandBeaconSig failed, round: %d, beacon depth: %d", r.Round, n.chain.RandomBeacon.Round())
 			}
 		}
 	}
@@ -340,21 +371,32 @@ func (n *Networking) RecvSysTxn(t *SysTxn) {
 	panic("not implemented")
 }
 
-func (n *Networking) recvRandBeaconSig(r *RandBeaconSig) {
+func (n *Networking) recvRandBeaconSig(sender Peer, r *RandBeaconSig) {
 	if !n.v.ValidateRandBeaconSig(r) {
+		log.Warn("failed to validate rand beacon sig", "round", r.Round, "hash", r.Hash())
 		return
 	}
 
-	success := n.chain.RandomBeacon.AddRandBeaconSig(r)
-	if !success {
-		log.Warn("add random beacon sig failed", "round", r.Round, "beacon depth", n.chain.RandomBeacon.Depth())
+	n.randBeaconSigCache.Add(r.Round, r)
+	n.mu.Lock()
+	for _, ch := range n.rbSigWaiters[r.Round] {
+		ch <- r
+	}
+	n.rbSigWaiters[r.Round] = nil
+	n.mu.Unlock()
+
+	broadcast, err := n.blockSyncer.SyncRandBeaconSig(sender, r.Hash(), r.Round)
+	if err != nil {
+		log.Warn("SyncRandBeaconSig failed", "err", err)
 		return
 	}
 
-	go n.BroadcastItem(ItemID{T: RandBeaconItem, Hash: r.Hash(), ItemRound: r.Round})
+	if broadcast {
+		go n.BroadcastItem(ItemID{T: RandBeaconItem, Hash: r.Hash(), ItemRound: r.Round})
+	}
 }
 
-func (n *Networking) recvRandBeaconSigShare(r *RandBeaconSigShare) {
+func (n *Networking) recvRandBeaconSigShare(sender Peer, r *RandBeaconSigShare) {
 	groupID, valid := n.v.ValidateRandBeaconSigShare(r)
 
 	if !valid {
@@ -367,7 +409,7 @@ func (n *Networking) recvRandBeaconSigShare(r *RandBeaconSigShare) {
 	}
 
 	if sig != nil {
-		go n.recvRandBeaconSig(sig)
+		go n.recvRandBeaconSig(sender, sig)
 		return
 	}
 
@@ -484,7 +526,7 @@ func (n *Networking) recvInventory(p Peer, ids []ItemID) {
 
 	log.Info("recv inventory", "inventory", ids)
 
-	round := n.chain.Round()
+	round := n.chain.Height()
 	for _, id := range ids {
 		switch id.T {
 		case TxnItem:
@@ -566,7 +608,7 @@ func (n *Networking) recvInventory(p Peer, ids []ItemID) {
 				n.removePeer(p)
 			}
 		case RandBeaconItem:
-			if id.ItemRound != n.chain.RandomBeacon.Depth() {
+			if id.ItemRound != n.chain.RandomBeacon.Round() {
 				if id.ItemRound > round {
 					log.Warn("received random beacon share for a bigger round", "round", id.ItemRound, "expecting", round)
 				}
@@ -661,13 +703,13 @@ func (n *Networking) serveData(p Peer, ids []ItemID) {
 			}
 
 			log.Info("serving RandBeaconShareItem", "id", id, "item", share.Hash())
-			err := p.RandBeaconSigShare(share)
+			err := p.RandBeaconSigShare(n.myself, share)
 			if err != nil {
 				log.Error("send random beacon sig share to peer error", "err", err)
 				n.removePeer(p)
 			}
 		case RandBeaconItem:
-			if rbr := n.chain.RandomBeacon.Depth(); id.ItemRound >= rbr {
+			if rbr := n.chain.RandomBeacon.Round(); id.ItemRound >= rbr {
 				log.Warn("peer requested random beacon of too high depth, need to be smaller than random beacon round\n", "requested round", id.ItemRound, "random beacon round", rbr)
 				continue
 			}
@@ -675,7 +717,7 @@ func (n *Networking) serveData(p Peer, ids []ItemID) {
 			history := n.chain.RandomBeacon.History()
 			r := history[id.ItemRound]
 			log.Info("serving RandBeaconItem", "id", id, "item", r.Hash())
-			err := p.RandBeaconSig(r)
+			err := p.RandBeaconSig(n.myself, r)
 			if err != nil {
 				log.Error("send rand beacon sig to peer error", "err", err)
 				n.removePeer(p)
@@ -716,13 +758,13 @@ func (r *receiver) SysTxn(t *SysTxn) error {
 	return nil
 }
 
-func (r *receiver) RandBeaconSigShare(s *RandBeaconSigShare) error {
-	r.n.recvRandBeaconSigShare(s)
+func (r *receiver) RandBeaconSigShare(sender Peer, s *RandBeaconSigShare) error {
+	r.n.recvRandBeaconSigShare(sender, s)
 	return nil
 }
 
-func (r *receiver) RandBeaconSig(s *RandBeaconSig) error {
-	r.n.recvRandBeaconSig(s)
+func (r *receiver) RandBeaconSig(sender Peer, s *RandBeaconSig) error {
+	r.n.recvRandBeaconSig(sender, s)
 	return nil
 }
 

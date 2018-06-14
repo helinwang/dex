@@ -25,12 +25,7 @@ func rankToWeight(rank int) float64 {
 
 func (v *validator) ValidateBlock(b *Block) (float64, bool) {
 	// TODO: validate txns
-	if depth := v.chain.RandomBeacon.Depth(); b.Round > depth {
-		// TODO: sync with the sender
-		log.Warn("received block of too high round, can't validate", "round", b.Round, "depth", depth)
-		return 0, false
-	}
-
+	v.chain.RandomBeacon.WaitUntil(b.Round)
 	if b := v.chain.Block(b.Hash()); b != nil {
 		log.Warn("block already received")
 		return 0, false
@@ -73,7 +68,8 @@ func (v *validator) ValidateBlock(b *Block) (float64, bool) {
 
 func (v *validator) ValidateBlockProposal(bp *BlockProposal) (float64, bool) {
 	// TODO: validate txns
-	round := v.chain.Round()
+	v.chain.RandomBeacon.WaitUntil(bp.Round)
+	round := v.chain.Height()
 	if bp.Round != round {
 		if bp.Round > round {
 			log.Warn("received block proposal of higher round", "round", bp.Round, "my round", round)
@@ -129,7 +125,7 @@ func (v *validator) ValidateBlockProposal(bp *BlockProposal) (float64, bool) {
 }
 
 func (v *validator) ValidateNtShare(n *NtShare) (int, bool) {
-	round := v.chain.Round()
+	round := v.chain.Height()
 	if n.Round != round {
 		if n.Round > round {
 			log.Warn("received nt share of higher round", "round", n.Round, "my round", round)
@@ -188,13 +184,19 @@ func (v *validator) ValidateNtShare(n *NtShare) (int, bool) {
 
 func (v *validator) ValidateRandBeaconSig(r *RandBeaconSig) bool {
 	// TODO: validate sig, owner, round, share
-	targetDepth := v.chain.RandomBeacon.Depth()
-	if r.Round != targetDepth {
-		if r.Round > targetDepth {
-			log.Warn("received RandBeaconSig of higher round", "round", r.Round, "target depth", targetDepth)
-		} else {
-			log.Debug("received RandBeaconSig of lower round", "round", r.Round, "target depth", targetDepth)
-		}
+	if r.Round == 0 {
+		log.Error("received RandBeaconSig of 0 round, should not happen")
+		return false
+	}
+
+	v.chain.RandomBeacon.WaitUntil(r.Round - 1)
+	round := v.chain.RandomBeacon.Round()
+	if round == r.Round {
+		panic("what?")
+	}
+
+	if r.Round < round {
+		log.Debug("received RandBeaconSig of lower round", "round", r.Round, "target depth", round)
 		return false
 	}
 
@@ -202,13 +204,21 @@ func (v *validator) ValidateRandBeaconSig(r *RandBeaconSig) bool {
 }
 
 func (v *validator) ValidateRandBeaconSigShare(r *RandBeaconSigShare) (int, bool) {
-	targetDepth := v.chain.RandomBeacon.Depth()
-	if r.Round != targetDepth {
-		if r.Round > targetDepth {
-			log.Warn("received RandBeaconSigShare of higher round", "round", r.Round, "target depth", targetDepth)
-		} else {
-			log.Debug("received RandBeaconSigShare of lower round", "round", r.Round, "target depth", targetDepth)
-		}
+	if r.Round == 0 {
+		log.Error("received RandBeaconSig of 0 round, should not happen")
+		return 0, false
+	}
+
+	round := v.chain.RandomBeacon.Round()
+	if round == r.Round {
+		panic(r.Round)
+	}
+
+	v.chain.RandomBeacon.WaitUntil(r.Round - 1)
+
+	round = v.chain.RandomBeacon.Round()
+	if r.Round <= round {
+		log.Debug("received RandBeaconSigShare of lower or same round", "round", r.Round, "target depth", round)
 		return 0, false
 	}
 
@@ -217,7 +227,7 @@ func (v *validator) ValidateRandBeaconSigShare(r *RandBeaconSigShare) (int, bool
 		return 0, false
 	}
 
-	rb, _, _ := v.chain.RandomBeacon.Committees(targetDepth)
+	rb, _, _ := v.chain.RandomBeacon.Committees(round)
 	group := v.chain.RandomBeacon.groups[rb]
 	sharePK, ok := group.MemberPK[r.Owner]
 	if !ok {
