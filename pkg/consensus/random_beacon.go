@@ -28,7 +28,6 @@ type RandomBeacon struct {
 	bpRand Rand
 
 	curRoundShares map[Hash]*RandBeaconSigShare
-	curRoundItems  []ItemID
 	sigHistory     []*RandBeaconSig
 }
 
@@ -96,7 +95,6 @@ func (r *RandomBeacon) AddRandBeaconSigShare(s *RandBeaconSigShare, groupID int)
 	}
 
 	r.curRoundShares[s.Hash()] = s
-	r.curRoundItems = append(r.curRoundItems, ItemID{T: RandBeaconShareItem, Hash: s.Hash(), ItemRound: s.Round})
 	if len(r.curRoundShares) >= r.cfg.GroupThreshold {
 		sig, err := recoverRandBeaconSig(r.curRoundShares)
 		if err != nil {
@@ -139,7 +137,6 @@ func (r *RandomBeacon) AddRandBeaconSig(s *RandBeaconSig) bool {
 
 	r.deriveRand(SHA3(s.Sig))
 	r.curRoundShares = make(map[Hash]*RandBeaconSigShare)
-	r.curRoundItems = nil
 	r.sigHistory = append(r.sigHistory, s)
 	round := r.round()
 	fmt.Println("r", round, len(r.nextRBCmteHistory))
@@ -150,19 +147,6 @@ func (r *RandomBeacon) AddRandBeaconSig(s *RandBeaconSig) bool {
 	}
 	go r.n._StartRound(round)
 	return true
-}
-
-func (r *RandomBeacon) Inventory() []ItemID {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	if len(r.curRoundItems) == 0 {
-		return nil
-	}
-
-	ret := make([]ItemID, len(r.curRoundItems))
-	copy(ret, r.curRoundItems)
-	return ret
 }
 
 func (r *RandomBeacon) round() uint64 {

@@ -231,7 +231,6 @@ type FreezeTokenTxn struct {
 	Quant          uint64
 }
 
-// TODO: maybe move this func to common package
 func gobEncode(v interface{}) []byte {
 	var buf bytes.Buffer
 	enc := gob.NewEncoder(&buf)

@@ -95,7 +95,7 @@ func (n *Node) _StartRound(round uint64) {
 			bp := n.chain.ProposeBlock(n.sk)
 			go func() {
 				log.Debug("proposing block", "addr", n.addr, "round", bp.Round, "hash", bp.Hash())
-				n.net.recvBlockProposal(n.net.myself, bp)
+				n.net.recvBlockProposal(n.net.addr, bp)
 			}()
 		}
 
@@ -110,7 +110,7 @@ func (n *Node) _StartRound(round uint64) {
 			ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(n.cfg.BlockTime))
 			go func() {
 				onNotarize := func(s *NtShare) {
-					go n.net.recvNtShare(s)
+					go n.net.recvNtShare(n.net.addr, s)
 				}
 
 				notary.Notarize(ctx, ntCancelCtx, inCh, onNotarize)
@@ -151,7 +151,7 @@ func (n *Node) EndRound(round uint64) {
 			history := n.chain.RandomBeacon.History()
 			lastSigHash := SHA3(history[round].Sig)
 			s := signRandBeaconShare(n.sk.MustGet(), keyShare, round+1, lastSigHash)
-			n.net.recvRandBeaconSigShare(n.net.myself, s)
+			n.net.recvRandBeaconSigShare(n.net.addr, s)
 		}()
 	}
 }
@@ -172,7 +172,7 @@ func (n *Node) SendTxn(t []byte) {
 }
 
 // MakeNode makes a new node with the given configurations.
-func MakeNode(credentials NodeCredentials, net Network, cfg Config, genesis *Block, state State, txnPool TxnPool, u Updater) *Node {
+func MakeNode(credentials NodeCredentials, net *Network, cfg Config, genesis *Block, state State, txnPool TxnPool, u Updater) *Node {
 	randSeed := Rand(SHA3([]byte("dex")))
 	chain := NewChain(genesis, state, randSeed, cfg, txnPool, u)
 	networking := NewNetworking(net, chain)

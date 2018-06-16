@@ -13,7 +13,6 @@ import (
 	"github.com/ethereum/go-ethereum/trie"
 	"github.com/helinwang/dex/pkg/consensus"
 	"github.com/helinwang/dex/pkg/dex"
-	"github.com/helinwang/dex/pkg/network"
 )
 
 func decodeFromFile(path string, v interface{}) {
@@ -39,7 +38,7 @@ func createNode(c consensus.NodeCredentials, genesis *consensus.Block, nativeCoi
 	db := trie.NewDatabase(ethdb.NewMemDatabase())
 	state := dex.NewState(db)
 	state = state.IssueNativeToken(nativeCoinOwnerPK).(*dex.State)
-	return consensus.MakeNode(c, &network.Network{}, cfg, genesis, state, dex.NewTxnPool(state), u)
+	return consensus.MakeNode(c, consensus.NewNetwork(), cfg, genesis, state, dex.NewTxnPool(state), u)
 }
 
 func main() {
