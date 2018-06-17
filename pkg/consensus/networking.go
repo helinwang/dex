@@ -78,7 +78,7 @@ type Networking struct {
 	blockCache         *lru.Cache
 	bpCache            *lru.Cache
 	randBeaconSigCache *lru.Cache
-	blockSyncer        *syncer
+	syncer             *syncer
 
 	mu           sync.Mutex
 	rbSigWaiters map[uint64][]chan *RandBeaconSig
@@ -115,8 +115,7 @@ func NewNetworking(net *Network, chain *Chain) *Networking {
 		bpWaiters:          make(map[Hash][]chan *BlockProposal),
 	}
 
-	bs := newSyncer(n.v, chain, n)
-	n.blockSyncer = bs
+	n.syncer = newSyncer(n.v, chain, n)
 	return n
 }
 
@@ -130,8 +129,6 @@ func gobEncode(v interface{}) []byte {
 	}
 	return buf.Bytes()
 }
-
-// TODO: remove peer when send packet failed
 
 func (n *Networking) requestItem(addr UnicastAddr, item Item) error {
 	return n.net.Send(addr, Packet{Data: ItemRequest(item)})
@@ -276,7 +273,7 @@ func (n *Networking) recvRandBeaconSig(addr UnicastAddr, r *RandBeaconSig) {
 	n.rbSigWaiters[r.Round] = nil
 	n.mu.Unlock()
 
-	broadcast, err := n.blockSyncer.SyncRandBeaconSig(addr, r.Round)
+	broadcast, err := n.syncer.SyncRandBeaconSig(addr, r.Round)
 	if err != nil {
 		log.Warn("SyncRandBeaconSig failed", "err", err)
 		return
@@ -326,7 +323,7 @@ func (n *Networking) recvBlock(addr UnicastAddr, b *Block) {
 	n.blockWaiters[h] = nil
 	n.mu.Unlock()
 
-	err := n.blockSyncer.SyncBlock(addr, h, b.Round)
+	err := n.syncer.SyncBlock(addr, h, b.Round)
 	if err != nil {
 		log.Warn("sync block error", "err", err)
 		return
@@ -352,7 +349,7 @@ func (n *Networking) recvBlockProposal(addr UnicastAddr, bp *BlockProposal) {
 	n.mu.Unlock()
 
 	if bp.Round > 0 {
-		err := n.blockSyncer.SyncBlock(addr, bp.PrevBlock, bp.Round-1)
+		err := n.syncer.SyncBlock(addr, bp.PrevBlock, bp.Round-1)
 		if err != nil {
 			log.Warn("sync block error", "err", err)
 			return
@@ -431,7 +428,7 @@ func (n *Networking) recvInventory(addr UnicastAddr, item Item) {
 
 		log.Info("request NtShareItem", "item", item)
 		// TODO: rename blockSyncer to syncer
-		go n.blockSyncer.SyncNtShare(addr, item.Hash)
+		go n.syncer.SyncNtShare(addr, item.Hash)
 	case RandBeaconShareItem:
 		share := n.chain.RandomBeacon.GetShare(item.Hash)
 		if share != nil {
@@ -439,10 +436,10 @@ func (n *Networking) recvInventory(addr UnicastAddr, item Item) {
 		}
 
 		log.Info("request RandBeaconShareItem", "item", item)
-		go n.blockSyncer.SyncRandBeaconSigShare(addr, item.Round)
+		go n.syncer.SyncRandBeaconSigShare(addr, item.Round)
 	case RandBeaconItem:
 		log.Info("request RandBeaconItem", "item", item)
-		go n.blockSyncer.SyncRandBeaconSig(addr, item.Round)
+		go n.syncer.SyncRandBeaconSig(addr, item.Round)
 	}
 }
 

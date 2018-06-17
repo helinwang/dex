@@ -2,7 +2,6 @@ package consensus
 
 import (
 	"errors"
-	"fmt"
 	"sync"
 
 	log "github.com/helinwang/log15"
@@ -139,7 +138,6 @@ func (r *RandomBeacon) AddRandBeaconSig(s *RandBeaconSig) bool {
 	r.curRoundShares = make(map[Hash]*RandBeaconSigShare)
 	r.sigHistory = append(r.sigHistory, s)
 	round := r.round()
-	fmt.Println("r", round, len(r.nextRBCmteHistory))
 	ch, ok := r.roundWaitCh[round]
 	if ok {
 		close(ch)
@@ -230,7 +228,6 @@ func (r *RandomBeacon) deriveRand(h Hash) {
 // Committees returns the current random beacon, block proposal,
 // notarization committees.
 func (r *RandomBeacon) Committees(round uint64) (rb, bp, nt int) {
-	fmt.Println(round, len(r.nextRBCmteHistory), len(r.nextBPCmteHistory), len(r.nextNtCmteHistory))
 	r.mu.Lock()
 	rb = r.nextRBCmteHistory[round]
 	bp = r.nextBPCmteHistory[round]

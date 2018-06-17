@@ -383,20 +383,34 @@ func (n *Network) connect(addr UnicastAddr) error {
 	return nil
 }
 
-var ErrUnicastAddrNotFound = errors.New("unicast address not found")
-
 func (n *Network) Send(addr NetAddr, p Packet) error {
 	switch v := addr.(type) {
 	case UnicastAddr:
+		n.mu.Lock()
 		conn, ok := n.conns[v]
+		n.mu.Unlock()
 		if !ok {
-			return ErrUnicastAddrNotFound
+			log.Warn("sending to unknown address", "addr", addr)
+			return errors.New("can not find the send address")
 		}
 
 		err := conn.Write(p)
 		if err != nil {
+			log.Warn("send failed, removing this peer", "err", err)
+			n.mu.Lock()
+			if conn, ok = n.conns[v]; ok {
+				delete(n.conns, v)
+			}
+			n.mu.Unlock()
+			conn.Close()
 			return err
 		}
+	case Broadcast:
+		n.mu.Lock()
+		for addr := range n.conns {
+			go n.Send(addr, p)
+		}
+		n.mu.Lock()
 	default:
 		panic(addr)
 	}
