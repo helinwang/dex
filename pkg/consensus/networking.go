@@ -134,7 +134,7 @@ func gobEncode(v interface{}) []byte {
 // TODO: remove peer when send packet failed
 
 func (n *Networking) requestItem(addr UnicastAddr, item Item) error {
-	return n.net.Send(addr, ItemRequest(item))
+	return n.net.Send(addr, Packet{Data: ItemRequest(item)})
 }
 
 func (n *Networking) RequestRandBeaconSig(ctx context.Context, addr UnicastAddr, round uint64) (*RandBeaconSig, error) {
@@ -235,22 +235,20 @@ func (n *Networking) RequestBlockProposal(ctx context.Context, addr UnicastAddr,
 // Start starts the networking component.
 // TODO: fix lint
 // nolint: gocyclo
-func (n *Networking) Start(addr, seedAddr string) error {
-	myAddr := UnicastAddr(addr)
-	n.addr = myAddr
-	err := n.net.Start(myAddr)
+func (n *Networking) Start(host string, port int, seedAddr string) error {
+	myAddr, err := n.net.Start(host, port)
 	if err != nil {
 		return err
 	}
+	n.addr = myAddr
 
-	// TODO: connect to peers
-	return nil
+	return n.net.ConnectSeed(seedAddr)
 }
 
 // TODO: don't broadcast when syncing.
 
 func (n *Networking) broadcast(item Item) {
-	n.net.Send(Broadcast{}, item)
+	n.net.Send(Broadcast{}, Packet{Data: item})
 }
 
 func (n *Networking) RecvTxn(t []byte) {
@@ -456,7 +454,7 @@ func (n *Networking) serveData(addr UnicastAddr, item Item) {
 		txn := n.chain.TxnPool.Get(item.Hash)
 		if txn != nil {
 			log.Info("serving TxnItem", "item", item)
-			go n.net.Send(addr, txn)
+			go n.net.Send(addr, Packet{Data: txn})
 		}
 	case SysTxnItem:
 		panic("not implemented")
@@ -467,7 +465,7 @@ func (n *Networking) serveData(addr UnicastAddr, item Item) {
 		}
 
 		log.Info("serving BlockItem", "item", item)
-		go n.net.Send(addr, b)
+		go n.net.Send(addr, Packet{Data: b})
 	case BlockProposalItem:
 		bp := n.chain.BlockProposal(item.Hash)
 		if bp == nil {
@@ -475,7 +473,7 @@ func (n *Networking) serveData(addr UnicastAddr, item Item) {
 		}
 
 		log.Info("serving BlockProposalItem", "item", item)
-		go n.net.Send(addr, bp)
+		go n.net.Send(addr, Packet{Data: bp})
 	case NtShareItem:
 		nts := n.chain.NtShare(item.Hash)
 		if nts == nil {
@@ -483,7 +481,7 @@ func (n *Networking) serveData(addr UnicastAddr, item Item) {
 		}
 
 		log.Info("serving NtShareItem", "item", item)
-		go n.net.Send(addr, nts)
+		go n.net.Send(addr, Packet{Data: nts})
 	case RandBeaconShareItem:
 		share := n.chain.RandomBeacon.GetShare(item.Hash)
 		if share == nil {
@@ -491,11 +489,11 @@ func (n *Networking) serveData(addr UnicastAddr, item Item) {
 		}
 
 		log.Info("serving RandBeaconShareItem", "item", item)
-		go n.net.Send(addr, share)
+		go n.net.Send(addr, Packet{Data: share})
 	case RandBeaconItem:
 		history := n.chain.RandomBeacon.History()
 		r := history[item.Round]
 		log.Info("serving RandBeaconItem", "item", item)
-		go n.net.Send(addr, r)
+		go n.net.Send(addr, Packet{Data: r})
 	}
 }

@@ -2,6 +2,24 @@ package consensus
 
 import "github.com/dfinity/go-dfinity-crypto/bls"
 
+// Sign is a serialized signature
+type Sign []byte
+
+func (s Sign) Verify(pk PK, msg []byte) bool {
+	if len(s) == 0 || len(pk) == 0 {
+		return false
+	}
+
+	var sign bls.Sign
+	err := sign.Deserialize(s)
+	if err != nil {
+		return false
+	}
+
+	key := pk.MustGet()
+	return sign.Verify(&key, string(msg))
+}
+
 // PK is a serialized public key.
 type PK []byte
 
@@ -70,4 +88,9 @@ func (s SK) MustPK() PK {
 	}
 
 	return PK(sk.GetPublicKey().Serialize())
+}
+
+func (s SK) Sign(msg []byte) Sign {
+	sk := s.MustGet()
+	return Sign(sk.Sign(string(msg)).Serialize())
 }

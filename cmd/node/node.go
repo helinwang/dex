@@ -6,6 +6,7 @@ import (
 	"encoding/gob"
 	"flag"
 	"io/ioutil"
+	"math/rand"
 	"time"
 
 	"github.com/dfinity/go-dfinity-crypto/bls"
@@ -38,10 +39,11 @@ func createNode(c consensus.NodeCredentials, genesis *consensus.Block, nativeCoi
 	db := trie.NewDatabase(ethdb.NewMemDatabase())
 	state := dex.NewState(db)
 	state = state.IssueNativeToken(nativeCoinOwnerPK).(*dex.State)
-	return consensus.MakeNode(c, consensus.NewNetwork(), cfg, genesis, state, dex.NewTxnPool(state), u)
+	return consensus.MakeNode(c, consensus.NewNetwork(c.SK), cfg, genesis, state, dex.NewTxnPool(state), u)
 }
 
 func main() {
+	rand.Seed(time.Now().UnixNano())
 	// log15.Root().SetHandler(log15.LvlFilterHandler(log15.LvlWarn, log15.StdoutHandler))
 	err := bls.Init(int(bls.CurveFp254BNb))
 	if err != nil {
@@ -50,7 +52,8 @@ func main() {
 
 	nativeCoinOwnerPK := flag.String("genesis-coin-owner-pk", "", "base64 encoded pre-mined native coin owner PK at the genesis")
 	c := flag.String("c", "", "path to the node credential file")
-	addr := flag.String("addr", ":8008", "node address to listen connection on")
+	host := flag.String("host", "127.0.0.1", "node address to listen connection on")
+	port := flag.Int("port", 11001, "node address to listen connection on")
 	seedNode := flag.String("seed", "", "seed node address")
 	g := flag.String("genesis", "", "path to the genesis block file")
 	rpcAddr := flag.String("rpc-addr", ":12001", "rpc address used to serve wallet RPC calls")
@@ -85,7 +88,7 @@ func main() {
 	server.SetSender(n)
 	server.SetStater(n.Chain())
 	server.Start(*rpcAddr)
-	n.Start(*addr, *seedNode)
+	n.Start(*host, *port, *seedNode)
 	n.EndRound(0)
 
 	select {}
