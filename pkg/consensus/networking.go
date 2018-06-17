@@ -1,9 +1,8 @@
 package consensus
 
 import (
-	"bytes"
 	"context"
-	"encoding/gob"
+	"fmt"
 	"sync"
 
 	lru "github.com/hashicorp/golang-lru"
@@ -14,65 +13,55 @@ const (
 	connectPeerCount = 8
 )
 
-// TODO: networking should ensure that adding things to the chain is
-// in order: from lower round to higher round.
-
 // Item is the identification of an item that the current node owns.
 type Item struct {
-	T     ItemType
+	T     itemType
 	Round uint64
 	Hash  Hash
 }
 
-type ItemRequest Item
+type itemRequest Item
 
-// ItemType is the different type of items.
-type ItemType int
+// itemType is the different type of items.
+type itemType int
 
 // different types of items
 const (
-	TxnItem ItemType = iota
-	SysTxnItem
-	BlockItem
-	BlockProposalItem
-	NtShareItem
-	// TODO: rename to RandBeaconSigShareItem and RandBeaconSigItem
-	RandBeaconShareItem
-	RandBeaconItem
+	txnItem itemType = iota
+	sysTxnItem
+	blockItem
+	blockProposalItem
+	ntShareItem
+	randBeaconSigShareItem
+	randBeaconSigItem
 )
 
-func (i ItemType) String() string {
+func (i itemType) String() string {
 	switch i {
-	case TxnItem:
+	case txnItem:
 		return "TxnItem"
-	case SysTxnItem:
+	case sysTxnItem:
 		return "SysTxnItem"
-	case BlockItem:
+	case blockItem:
 		return "BlockItem"
-	case BlockProposalItem:
+	case blockProposalItem:
 		return "BlockProposalItem"
-	case NtShareItem:
+	case ntShareItem:
 		return "NtShareItem"
-	case RandBeaconShareItem:
+	case randBeaconSigShareItem:
 		return "RandBeaconShareItem"
-	case RandBeaconItem:
+	case randBeaconSigItem:
 		return "RandBeaconItem"
 	default:
 		panic("unknown item")
 	}
 }
 
-// Network is used to connect to the peers.
-// type Network interface {
-// 	Start(addr string, onPeerConnect func(p Unicast)) error
-// 	Connect(addr Unicast) error
-// }
-
 // Networking is the component that enables the node to talk to its
 // peers over the network.
 type Networking struct {
-	addr               UnicastAddr
-	net                *Network
+	addr               unicastAddr
+	net                *network
 	v                  *validator
 	chain              *Chain
 	blockCache         *lru.Cache
@@ -87,7 +76,7 @@ type Networking struct {
 }
 
 // NewNetworking creates a new networking component.
-func NewNetworking(net *Network, chain *Chain) *Networking {
+func NewNetworking(net *network, chain *Chain) *Networking {
 	bCache, err := lru.New(1024)
 	if err != nil {
 		panic(err)
@@ -119,22 +108,11 @@ func NewNetworking(net *Network, chain *Chain) *Networking {
 	return n
 }
 
-func gobEncode(v interface{}) []byte {
-	var buf bytes.Buffer
-	enc := gob.NewEncoder(&buf)
-	err := enc.Encode(v)
-	if err != nil {
-		// should not happen
-		panic(err)
-	}
-	return buf.Bytes()
+func (n *Networking) requestItem(addr unicastAddr, item Item) error {
+	return n.net.Send(addr, packet{Data: itemRequest(item)})
 }
 
-func (n *Networking) requestItem(addr UnicastAddr, item Item) error {
-	return n.net.Send(addr, Packet{Data: ItemRequest(item)})
-}
-
-func (n *Networking) RequestRandBeaconSig(ctx context.Context, addr UnicastAddr, round uint64) (*RandBeaconSig, error) {
+func (n *Networking) requestRandBeaconSig(ctx context.Context, addr unicastAddr, round uint64) (*RandBeaconSig, error) {
 	v, ok := n.randBeaconSigCache.Get(round)
 	if ok {
 		return v.(*RandBeaconSig), nil
@@ -145,7 +123,7 @@ func (n *Networking) RequestRandBeaconSig(ctx context.Context, addr UnicastAddr,
 	n.rbSigWaiters[round] = append(n.rbSigWaiters[round], c)
 	if len(n.rbSigWaiters[round]) == 1 {
 		err := n.requestItem(addr, Item{
-			T:     RandBeaconItem,
+			T:     randBeaconSigItem,
 			Round: round,
 		})
 		if err != nil {
@@ -163,7 +141,7 @@ func (n *Networking) RequestRandBeaconSig(ctx context.Context, addr UnicastAddr,
 	}
 }
 
-func (n *Networking) RequestBlock(ctx context.Context, addr UnicastAddr, hash Hash) (*Block, error) {
+func (n *Networking) requestBlock(ctx context.Context, addr unicastAddr, hash Hash) (*Block, error) {
 	v, ok := n.blockCache.Get(hash)
 	if ok {
 		return v.(*Block), nil
@@ -178,7 +156,7 @@ func (n *Networking) RequestBlock(ctx context.Context, addr UnicastAddr, hash Ha
 	n.blockWaiters[hash] = append(n.blockWaiters[hash], c)
 	if len(n.blockWaiters[hash]) == 1 {
 		err := n.requestItem(addr, Item{
-			T:    BlockItem,
+			T:    blockItem,
 			Hash: hash,
 		})
 		if err != nil {
@@ -196,7 +174,7 @@ func (n *Networking) RequestBlock(ctx context.Context, addr UnicastAddr, hash Ha
 	}
 }
 
-func (n *Networking) RequestBlockProposal(ctx context.Context, addr UnicastAddr, hash Hash) (*BlockProposal, error) {
+func (n *Networking) requestBlockProposal(ctx context.Context, addr unicastAddr, hash Hash) (*BlockProposal, error) {
 	v, ok := n.bpCache.Get(hash)
 	if ok {
 		return v.(*BlockProposal), nil
@@ -211,7 +189,7 @@ func (n *Networking) RequestBlockProposal(ctx context.Context, addr UnicastAddr,
 	n.bpWaiters[hash] = append(n.bpWaiters[hash], c)
 	if len(n.bpWaiters[hash]) == 1 {
 		err := n.requestItem(addr, Item{
-			T:    BlockProposalItem,
+			T:    blockProposalItem,
 			Hash: hash,
 		})
 		if err != nil {
@@ -230,8 +208,6 @@ func (n *Networking) RequestBlockProposal(ctx context.Context, addr UnicastAddr,
 }
 
 // Start starts the networking component.
-// TODO: fix lint
-// nolint: gocyclo
 func (n *Networking) Start(host string, port int, seedAddr string) error {
 	myAddr, err := n.net.Start(host, port)
 	if err != nil {
@@ -239,27 +215,55 @@ func (n *Networking) Start(host string, port int, seedAddr string) error {
 	}
 	n.addr = myAddr
 
+	go n.recvData()
 	return n.net.ConnectSeed(seedAddr)
+}
+
+func (n *Networking) recvData() {
+	for {
+		addr, pac := n.net.Recv()
+		fmt.Printf("recv %v, %T\n", addr, pac.Data)
+		// see conn.go:init() for the list of possible data
+		// types
+		switch v := pac.Data.(type) {
+		case []byte:
+			go n.recvTxn(v)
+		case *RandBeaconSig:
+			go n.recvRandBeaconSig(addr, v)
+		case *RandBeaconSigShare:
+			go n.recvRandBeaconSigShare(addr, v)
+		case *Block:
+			go n.recvBlock(addr, v)
+		case *BlockProposal:
+			go n.recvBlockProposal(addr, v)
+		case Item:
+			go n.recvInventory(addr, v)
+		case itemRequest:
+			go n.serveData(addr, Item(v))
+		default:
+			panic(fmt.Errorf("received unsupported data type: %T", pac.Data))
+		}
+	}
 }
 
 // TODO: don't broadcast when syncing.
 
 func (n *Networking) broadcast(item Item) {
-	n.net.Send(Broadcast{}, Packet{Data: item})
+	n.net.Send(broadcast{}, packet{Data: item})
 }
 
-func (n *Networking) RecvTxn(t []byte) {
+func (n *Networking) recvTxn(t []byte) {
 	broadcast := n.chain.TxnPool.Add(t)
 	if broadcast {
-		go n.broadcast(Item{T: TxnItem, Hash: SHA3(t)})
+		go n.broadcast(Item{T: txnItem, Hash: SHA3(t)})
 	}
 }
 
-func (n *Networking) RecvSysTxn(t *SysTxn) {
+func (n *Networking) recvSysTxn(t *SysTxn) {
 	panic("not implemented")
 }
 
-func (n *Networking) recvRandBeaconSig(addr UnicastAddr, r *RandBeaconSig) {
+func (n *Networking) recvRandBeaconSig(addr unicastAddr, r *RandBeaconSig) {
 	if !n.v.ValidateRandBeaconSig(r) {
 		log.Warn("failed to validate rand beacon sig", "round", r.Round, "hash", r.Hash())
 		return
@@ -280,11 +284,11 @@ func (n *Networking) recvRandBeaconSig(addr UnicastAddr, r *RandBeaconSig) {
 	}
 
 	if broadcast {
-		go n.broadcast(Item{T: RandBeaconItem, Round: r.Round})
+		go n.broadcast(Item{T: randBeaconSigItem, Round: r.Round})
 	}
 }
 
-func (n *Networking) recvRandBeaconSigShare(addr UnicastAddr, r *RandBeaconSigShare) {
+func (n *Networking) recvRandBeaconSigShare(addr unicastAddr, r *RandBeaconSigShare) {
 	groupID, valid := n.v.ValidateRandBeaconSigShare(r)
 
 	if !valid {
@@ -301,10 +305,10 @@ func (n *Networking) recvRandBeaconSigShare(addr UnicastAddr, r *RandBeaconSigSh
 		return
 	}
 
-	go n.broadcast(Item{T: RandBeaconShareItem, Round: r.Round})
+	go n.broadcast(Item{T: randBeaconSigShareItem, Round: r.Round})
 }
 
-func (n *Networking) recvBlock(addr UnicastAddr, b *Block) {
+func (n *Networking) recvBlock(addr unicastAddr, b *Block) {
 	// TODO: if not able to validate block, wait until random
 	// beacon syncer finished the corresponding round.
 	_, valid := n.v.ValidateBlock(b)
@@ -329,10 +333,10 @@ func (n *Networking) recvBlock(addr UnicastAddr, b *Block) {
 		return
 	}
 
-	go n.broadcast(Item{T: BlockItem, Hash: b.Hash()})
+	go n.broadcast(Item{T: blockItem, Hash: b.Hash()})
 }
 
-func (n *Networking) recvBlockProposal(addr UnicastAddr, bp *BlockProposal) {
+func (n *Networking) recvBlockProposal(addr unicastAddr, bp *BlockProposal) {
 	weight, valid := n.v.ValidateBlockProposal(bp)
 	if !valid {
 		return
@@ -365,10 +369,10 @@ func (n *Networking) recvBlockProposal(addr UnicastAddr, bp *BlockProposal) {
 		return
 	}
 
-	go n.broadcast(Item{T: BlockProposalItem, Hash: bp.Hash()})
+	go n.broadcast(Item{T: blockProposalItem, Hash: bp.Hash()})
 }
 
-func (n *Networking) recvNtShare(addr UnicastAddr, s *NtShare) {
+func (n *Networking) recvNtShare(addr unicastAddr, s *NtShare) {
 	log.Info("recv nt share", "hash", s.Hash())
 	groupID, valid := n.v.ValidateNtShare(s)
 	if !valid {
@@ -386,33 +390,33 @@ func (n *Networking) recvNtShare(addr UnicastAddr, s *NtShare) {
 	}
 
 	// TODO: use multicast rather than broadcast
-	go n.broadcast(Item{T: NtShareItem, Hash: s.Hash()})
+	go n.broadcast(Item{T: ntShareItem, Hash: s.Hash()})
 }
 
 // TODO: fix lint
 // nolint: gocyclo
-func (n *Networking) recvInventory(addr UnicastAddr, item Item) {
+func (n *Networking) recvInventory(addr unicastAddr, item Item) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 
 	log.Info("recv inventory", "inventory", item)
 
 	switch item.T {
-	case TxnItem:
+	case txnItem:
 		if n.chain.TxnPool.NotSeen(item.Hash) {
 			log.Info("request TxnItem", "item", item)
 			n.requestItem(addr, item)
 		}
-	case SysTxnItem:
+	case sysTxnItem:
 		panic("not implemented")
-	case BlockItem:
+	case blockItem:
 		if b := n.chain.Block(item.Hash); b != nil {
 			return
 		}
 
 		log.Info("request BlockItem", "item", item)
 		n.requestItem(addr, item)
-	case BlockProposalItem:
+	case blockProposalItem:
 		if bp := n.chain.BlockProposal(item.Hash); bp != nil {
 			return
 		}
@@ -420,7 +424,7 @@ func (n *Networking) recvInventory(addr UnicastAddr, item Item) {
 		log.Info("request BlockProposalItem", "item", item)
 		// TODO: replace n.requestItem with syncer.Sync
 		n.requestItem(addr, item)
-	case NtShareItem:
+	case ntShareItem:
 		// TODO: move all existance check to syncer.
 		if nt := n.chain.NtShare(item.Hash); nt != nil {
 			return
@@ -429,7 +433,7 @@ func (n *Networking) recvInventory(addr UnicastAddr, item Item) {
 		log.Info("request NtShareItem", "item", item)
 		// TODO: rename blockSyncer to syncer
 		go n.syncer.SyncNtShare(addr, item.Hash)
-	case RandBeaconShareItem:
+	case randBeaconSigShareItem:
 		share := n.chain.RandomBeacon.GetShare(item.Hash)
 		if share != nil {
 			return
@@ -437,7 +441,7 @@ func (n *Networking) recvInventory(addr UnicastAddr, item Item) {
 
 		log.Info("request RandBeaconShareItem", "item", item)
 		go n.syncer.SyncRandBeaconSigShare(addr, item.Round)
-	case RandBeaconItem:
+	case randBeaconSigItem:
 		log.Info("request RandBeaconItem", "item", item)
 		go n.syncer.SyncRandBeaconSig(addr, item.Round)
 	}
@@ -445,52 +449,52 @@ func (n *Networking) recvInventory(addr UnicastAddr, item Item) {
 
 // TODO: fix lint
 // nolint: gocyclo
-func (n *Networking) serveData(addr UnicastAddr, item Item) {
+func (n *Networking) serveData(addr unicastAddr, item Item) {
 	switch item.T {
-	case TxnItem:
+	case txnItem:
 		txn := n.chain.TxnPool.Get(item.Hash)
 		if txn != nil {
 			log.Info("serving TxnItem", "item", item)
-			go n.net.Send(addr, Packet{Data: txn})
+			go n.net.Send(addr, packet{Data: txn})
 		}
-	case SysTxnItem:
+	case sysTxnItem:
 		panic("not implemented")
-	case BlockItem:
+	case blockItem:
 		b := n.chain.Block(item.Hash)
 		if b == nil {
 			return
 		}
 
 		log.Info("serving BlockItem", "item", item)
-		go n.net.Send(addr, Packet{Data: b})
-	case BlockProposalItem:
+		go n.net.Send(addr, packet{Data: b})
+	case blockProposalItem:
 		bp := n.chain.BlockProposal(item.Hash)
 		if bp == nil {
 			return
 		}
 
 		log.Info("serving BlockProposalItem", "item", item)
-		go n.net.Send(addr, Packet{Data: bp})
-	case NtShareItem:
+		go n.net.Send(addr, packet{Data: bp})
+	case ntShareItem:
 		nts := n.chain.NtShare(item.Hash)
 		if nts == nil {
 			return
 		}
 
 		log.Info("serving NtShareItem", "item", item)
-		go n.net.Send(addr, Packet{Data: nts})
-	case RandBeaconShareItem:
+		go n.net.Send(addr, packet{Data: nts})
+	case randBeaconSigShareItem:
 		share := n.chain.RandomBeacon.GetShare(item.Hash)
 		if share == nil {
 			return
 		}
 
 		log.Info("serving RandBeaconShareItem", "item", item)
-		go n.net.Send(addr, Packet{Data: share})
-	case RandBeaconItem:
+		go n.net.Send(addr, packet{Data: share})
+	case randBeaconSigItem:
 		history := n.chain.RandomBeacon.History()
 		r := history[item.Round]
 		log.Info("serving RandBeaconItem", "item", item)
-		go n.net.Send(addr, Packet{Data: r})
+		go n.net.Send(addr, packet{Data: r})
 	}
 }

@@ -8,10 +8,10 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func makeNetwork() *Network {
+func makeNetwork() *network {
 	var sk bls.SecretKey
 	sk.SetByCSPRNG()
-	return NewNetwork(SK(sk.GetLittleEndian()))
+	return newNetwork(SK(sk.GetLittleEndian()))
 }
 
 func TestNetworkConnectSeed(t *testing.T) {
@@ -33,5 +33,5 @@ func TestNetworkConnectSeed(t *testing.T) {
 		panic(err)
 	}
 
-	assert.Equal(t, []UnicastAddr{addr1, addr0}, n1.publicNodes)
+	assert.Equal(t, []unicastAddr{addr1, addr0}, n1.publicNodes)
 }

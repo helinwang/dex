@@ -47,14 +47,14 @@ func newSyncer(v *validator, chain *Chain, requester requester) *syncer {
 }
 
 type requester interface {
-	RequestBlock(ctx context.Context, addr UnicastAddr, hash Hash) (*Block, error)
-	RequestBlockProposal(ctx context.Context, addr UnicastAddr, hash Hash) (*BlockProposal, error)
-	RequestRandBeaconSig(ctx context.Context, addr UnicastAddr, round uint64) (*RandBeaconSig, error)
+	requestBlock(ctx context.Context, addr unicastAddr, hash Hash) (*Block, error)
+	requestBlockProposal(ctx context.Context, addr unicastAddr, hash Hash) (*BlockProposal, error)
+	requestRandBeaconSig(ctx context.Context, addr unicastAddr, round uint64) (*RandBeaconSig, error)
 }
 
 var errCanNotConnectToChain = errors.New("can not connect to chain")
 
-func (s *syncer) SyncBlock(addr UnicastAddr, hash Hash, round uint64) error {
+func (s *syncer) SyncBlock(addr unicastAddr, hash Hash, round uint64) error {
 	_, err := s.syncBlockAndConnectToChain(addr, hash, round)
 	if err == errCanNotConnectToChain {
 		s.invalidBlockCache.Add(hash, struct{}{})
@@ -62,16 +62,16 @@ func (s *syncer) SyncBlock(addr UnicastAddr, hash Hash, round uint64) error {
 	return err
 }
 
-func (s *syncer) SyncNtShare(addr UnicastAddr, hash Hash) {
+func (s *syncer) SyncNtShare(addr unicastAddr, hash Hash) {
 	// TODO: don't proceed if the block is already notarized, or
 	// can not connect to chain.
 	panic("not implemented")
 }
 
-func (s *syncer) SyncRandBeaconSigShare(addr UnicastAddr, round uint64) {
+func (s *syncer) SyncRandBeaconSigShare(addr unicastAddr, round uint64) {
 }
 
-func (s *syncer) SyncRandBeaconSig(addr UnicastAddr, round uint64) (bool, error) {
+func (s *syncer) SyncRandBeaconSig(addr unicastAddr, round uint64) (bool, error) {
 	if s.chain.RandomBeacon.Round() > round {
 		return false, nil
 	}
@@ -83,7 +83,7 @@ func (s *syncer) SyncRandBeaconSig(addr UnicastAddr, round uint64) (bool, error)
 	for s.chain.RandomBeacon.Round() <= round {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 		defer cancel()
-		sig, err := s.requester.RequestRandBeaconSig(ctx, addr, round)
+		sig, err := s.requester.requestRandBeaconSig(ctx, addr, round)
 		if err != nil {
 			return false, err
 		}
@@ -116,7 +116,7 @@ type bpResult struct {
 	E  error
 }
 
-func (s *syncer) syncBlockAndConnectToChain(addr UnicastAddr, hash Hash, round uint64) (State, error) {
+func (s *syncer) syncBlockAndConnectToChain(addr unicastAddr, hash Hash, round uint64) (State, error) {
 	// TODO: validate block, get weight
 	// TODO: prevent syncing the same block concurrently
 
@@ -133,14 +133,14 @@ func (s *syncer) syncBlockAndConnectToChain(addr UnicastAddr, hash Hash, round u
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
 
-	b, err := s.requester.RequestBlock(ctx, addr, hash)
+	b, err := s.requester.requestBlock(ctx, addr, hash)
 	if err != nil {
 		return nil, err
 	}
 
 	bpCh := make(chan bpResult, 1)
 	go func() {
-		bp, err := s.requester.RequestBlockProposal(ctx, addr, b.BlockProposal)
+		bp, err := s.requester.requestBlockProposal(ctx, addr, b.BlockProposal)
 		bpCh <- bpResult{BP: bp, E: err}
 	}()
 

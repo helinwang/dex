@@ -2,7 +2,6 @@ package consensus
 
 import (
 	"context"
-	"encoding/gob"
 	"errors"
 	"fmt"
 	"math/rand"
@@ -20,111 +19,44 @@ const (
 	intialConn = 8
 )
 
-// init registers the types with gob, so that the gob will know how to
-// encode and decode Packet.
-func init() {
-	var a []byte
-	var b *RandBeaconSig
-	var c *RandBeaconSigShare
-	var d *Block
-	var e *BlockProposal
-	var f Item
-	var g ItemRequest
-	var h *connectRequest
-	var i []UnicastAddr
-	var j ack
-
-	gob.Register(a)
-	gob.Register(b)
-	gob.Register(c)
-	gob.Register(d)
-	gob.Register(e)
-	gob.Register(f)
-	gob.Register(g)
-	gob.Register(h)
-	gob.Register(i)
-	gob.Register(j)
-}
-
-type Packet struct {
-	Data interface{}
-}
-
-// TODO: remove peer if send failed
+// TODO: periodically sync with peer about the public nodes it knows
 // TODO: periodically ping peer
-// TODO: handle two different connects: peer discovery, connect as a peer
 // TODO: rename Networking
-type UnicastAddr struct {
+type unicastAddr struct {
 	Addr  string
 	PKStr string
 }
 
-type NetAddr interface {
+type netAddr interface {
 }
 
-type Broadcast struct{}
+type broadcast struct{}
 
-type conn struct {
-	conn net.Conn
-	enc  *gob.Encoder
-	dec  *gob.Decoder
+type packetAndAddr struct {
+	P packet
+	A unicastAddr
 }
 
-func newConn(c net.Conn) *conn {
-	enc := gob.NewEncoder(c)
-	dec := gob.NewDecoder(c)
-	return &conn{
-		enc:  enc,
-		dec:  dec,
-		conn: c,
-	}
-}
-
-func (p *conn) Write(pac Packet) error {
-	return p.enc.Encode(pac)
-}
-
-func (p *conn) Read() (pac Packet, err error) {
-	err = p.dec.Decode(&pac)
-	if err != nil {
-		return
-	}
-
-	return
-}
-
-func (p *conn) Close() {
-	err := p.conn.Close()
-	if err != nil {
-		log.Warn("error close connection", "err", err)
-	}
-}
-
-type PacketAndAddr struct {
-	P Packet
-	A UnicastAddr
-}
-
-type Network struct {
+type network struct {
 	sk   SK
 	port uint16
-	ch   chan PacketAndAddr
+	ch   chan packetAndAddr
 
 	mu    sync.Mutex
-	conns map[UnicastAddr]*conn
+	conns map[unicastAddr]*conn
 	// nodes with a public IP
-	publicNodes []UnicastAddr
+	publicNodes []unicastAddr
 }
 
-func NewNetwork(sk SK) *Network {
-	return &Network{
+func newNetwork(sk SK) *network {
+	return &network{
 		sk:    sk,
-		ch:    make(chan PacketAndAddr, 100),
-		conns: make(map[UnicastAddr]*conn),
+		ch:    make(chan packetAndAddr, 100),
+		conns: make(map[unicastAddr]*conn),
 	}
 }
 
-func (n *Network) acceptPeerOrDisconnect(c net.Conn) {
+func (n *network) acceptPeerOrDisconnect(c net.Conn) {
 	conn := newConn(c)
 	pac, err := conn.Read()
 	if err != nil {
@@ -142,7 +74,7 @@ func (n *Network) acceptPeerOrDisconnect(c net.Conn) {
 
 		recv = v
 	case ack:
-		conn.Write(Packet{Data: ack{}})
+		conn.Write(packet{Data: ack{}})
 		conn.Close()
 		return
 	default:
@@ -159,18 +91,18 @@ func (n *Network) acceptPeerOrDisconnect(c net.Conn) {
 
 	n.mu.Lock()
 	if isPubNode {
-		n.publicNodes = append(n.publicNodes, UnicastAddr{Addr: addr, PKStr: string(recv.PK)})
+		n.publicNodes = append(n.publicNodes, unicastAddr{Addr: addr, PKStr: string(recv.PK)})
 	}
 	pubNodes := n.publicNodes
 	n.mu.Unlock()
 
-	conn.Write(Packet{Data: pubNodes})
+	conn.Write(packet{Data: pubNodes})
 
 	// send a connect reuqest just to tell the other node about my
 	// public key.
 	req := &connectRequest{}
 	req.Sign(n.sk)
-	conn.Write(Packet{Data: req})
+	conn.Write(packet{Data: req})
 
 	if recv.GetNodesOnly {
 		conn.Close()
@@ -178,7 +110,7 @@ func (n *Network) acceptPeerOrDisconnect(c net.Conn) {
 	}
 }
 
-func (n *Network) Start(host string, port int) (UnicastAddr, error) {
+func (n *network) Start(host string, port int) (unicastAddr, error) {
 	n.port = uint16(port)
 	addr := fmt.Sprintf("%s:%d", host, port)
 	ln, err := net.Listen("tcp", addr)
@@ -197,10 +129,10 @@ func (n *Network) Start(host string, port int) (UnicastAddr, error) {
 			go n.acceptPeerOrDisconnect(c)
 		}
 	}()
-	return UnicastAddr{Addr: addr, PKStr: string(n.sk.MustPK())}, nil
+	return unicastAddr{Addr: addr, PKStr: string(n.sk.MustPK())}, nil
 }
 
-func (n *Network) ConnectSeed(addr string) error {
+func (n *network) ConnectSeed(addr string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), timeoutDur)
 	pk, nodes, err := n.getAddrsFromSeed(ctx, addr)
 	cancel()
@@ -210,9 +142,9 @@ func (n *Network) ConnectSeed(addr string) error {
 
 	myPKStr := string(n.sk.MustPK())
 	if len(nodes) == 0 {
-		nodes = []UnicastAddr{{PKStr: string(pk), Addr: addr}}
+		nodes = []unicastAddr{{PKStr: string(pk), Addr: addr}}
 	} else if len(nodes) == 1 && nodes[0].PKStr == myPKStr {
-		nodes = append(nodes, UnicastAddr{PKStr: string(pk), Addr: addr})
+		nodes = append(nodes, unicastAddr{PKStr: string(pk), Addr: addr})
 	}
 	perm := rand.Perm(len(nodes))
 
@@ -237,14 +169,14 @@ func (n *Network) ConnectSeed(addr string) error {
 	return nil
 }
 
-func (n *Network) checkPubIP(ctx context.Context, addr string) bool {
+func (n *network) checkPubIP(ctx context.Context, addr string) bool {
 	c, err := net.Dial("tcp", addr)
 	if err != nil {
 		return false
 	}
 
 	conn := newConn(c)
-	err = conn.Write(Packet{Data: ack{}})
+	err = conn.Write(packet{Data: ack{}})
 	if err != nil {
 		return false
 	}
@@ -274,7 +206,7 @@ func (n *Network) checkPubIP(ctx context.Context, addr string) bool {
 	}
 }
 
-func (n *Network) getAddrsFromSeed(ctx context.Context, addr string) (PK, []UnicastAddr, error) {
+func (n *network) getAddrsFromSeed(ctx context.Context, addr string) (PK, []unicastAddr, error) {
 	c, err := net.Dial("tcp", addr)
 	if err != nil {
 		return nil, nil, err
@@ -283,12 +215,12 @@ func (n *Network) getAddrsFromSeed(ctx context.Context, addr string) (PK, []Unic
 	conn := newConn(c)
 	req := &connectRequest{GetNodesOnly: true, Port: n.port}
 	req.Sign(n.sk)
-	err = conn.Write(Packet{Data: req})
+	err = conn.Write(packet{Data: req})
 	if err != nil {
 		return nil, nil, err
 	}
 	type result struct {
-		addrs []UnicastAddr
+		addrs []unicastAddr
 		pk    PK
 		err   error
 	}
@@ -302,7 +234,7 @@ func (n *Network) getAddrsFromSeed(ctx context.Context, addr string) (PK, []Unic
 			return
 		}
 
-		addrs, ok := pac.Data.([]UnicastAddr)
+		addrs, ok := pac.Data.([]unicastAddr)
 		if !ok {
 			fmt.Printf("%T\n", pac.Data)
 			ch <- result{err: errors.New("the first packet should be of type []UnicastAddr")}
@@ -337,7 +269,7 @@ func (n *Network) getAddrsFromSeed(ctx context.Context, addr string) (PK, []Unic
 	}
 }
 
-func (n *Network) connect(addr UnicastAddr) error {
+func (n *network) connect(addr unicastAddr) error {
 	n.mu.Lock()
 	if _, ok := n.conns[addr]; ok {
 		n.mu.Unlock()
@@ -352,7 +284,7 @@ func (n *Network) connect(addr UnicastAddr) error {
 	conn := newConn(c)
 	req := &connectRequest{}
 	req.Sign(n.sk)
-	err = conn.Write(Packet{Data: req})
+	err = conn.Write(packet{Data: req})
 	if err != nil {
 		return err
 	}
@@ -383,9 +315,9 @@ func (n *Network) connect(addr UnicastAddr) error {
 	return nil
 }
 
-func (n *Network) Send(addr NetAddr, p Packet) error {
+func (n *network) Send(addr netAddr, p packet) error {
 	switch v := addr.(type) {
-	case UnicastAddr:
+	case unicastAddr:
 		n.mu.Lock()
 		conn, ok := n.conns[v]
 		n.mu.Unlock()
@@ -405,7 +337,7 @@ func (n *Network) Send(addr NetAddr, p Packet) error {
 			conn.Close()
 			return err
 		}
-	case Broadcast:
+	case broadcast:
 		n.mu.Lock()
 		for addr := range n.conns {
 			go n.Send(addr, p)
@@ -417,7 +349,7 @@ func (n *Network) Send(addr NetAddr, p Packet) error {
 	return nil
 }
 
-func (n *Network) Recv() (NetAddr, Packet) {
+func (n *network) Recv() (unicastAddr, packet) {
 	p := <-n.ch
 	return p.A, p.P
 }

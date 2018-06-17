@@ -168,13 +168,14 @@ func (n *Node) RecvBlockProposal(bp *BlockProposal) {
 }
 
 func (n *Node) SendTxn(t []byte) {
-	n.net.RecvTxn(t)
+	n.net.recvTxn(t)
 }
 
 // MakeNode makes a new node with the given configurations.
-func MakeNode(credentials NodeCredentials, net *Network, cfg Config, genesis *Block, state State, txnPool TxnPool, u Updater) *Node {
+func MakeNode(credentials NodeCredentials, cfg Config, genesis *Block, state State, txnPool TxnPool, u Updater) *Node {
 	randSeed := Rand(SHA3([]byte("dex")))
 	chain := NewChain(genesis, state, randSeed, cfg, txnPool, u)
+	net := newNetwork(credentials.SK)
 	networking := NewNetworking(net, chain)
 	node := NewNode(chain, credentials.SK, networking, cfg)
 	for j := range credentials.Groups {
