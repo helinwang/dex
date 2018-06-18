@@ -82,17 +82,22 @@ func (n *network) acceptPeerOrDisconnect(c net.Conn) {
 		return
 	}
 
-	// check if the connecting node is a public node
 	ip := strings.Split(c.RemoteAddr().String(), ":")[0]
-	addr := fmt.Sprintf("%s:%d", ip, recv.Port)
-	ctx, cancel := context.WithTimeout(context.Background(), timeoutDur)
-	isPubNode := n.checkPubIP(ctx, addr)
-	cancel()
+	addrStr := fmt.Sprintf("%s:%d", ip, recv.Port)
+	addr := unicastAddr{Addr: addrStr, PKStr: string(recv.PK)}
+	go func() {
+		// check if the connecting node is a public node
+		ctx, cancel := context.WithTimeout(context.Background(), timeoutDur)
+		isPubAddr := n.isPubAddr(ctx, addrStr)
+		cancel()
+		if isPubAddr {
+			n.mu.Lock()
+			n.publicNodes = append(n.publicNodes, addr)
+			n.mu.Unlock()
+		}
+	}()
 
 	n.mu.Lock()
-	if isPubNode {
-		n.publicNodes = append(n.publicNodes, unicastAddr{Addr: addr, PKStr: string(recv.PK)})
-	}
 	pubNodes := n.publicNodes
 	n.mu.Unlock()
 
@@ -108,6 +113,14 @@ func (n *network) acceptPeerOrDisconnect(c net.Conn) {
 		conn.Close()
 		return
 	}
+
+	n.mu.Lock()
+	n.conns[addr] = conn
+	go n.readConn(addr, conn)
+	n.mu.Unlock()
+}
+
+func (n *network) checkIsPubAddr(addr string) {
 }
 
 func (n *network) Start(host string, port int) (unicastAddr, error) {
@@ -148,6 +161,8 @@ func (n *network) ConnectSeed(addr string) error {
 	}
 	perm := rand.Perm(len(nodes))
 
+	log.Info("received nodes", "nodes", nodes)
+
 	connected := 0
 	for _, idx := range perm {
 		addr := nodes[idx]
@@ -169,7 +184,7 @@ func (n *network) ConnectSeed(addr string) error {
 	return nil
 }
 
-func (n *network) checkPubIP(ctx context.Context, addr string) bool {
+func (n *network) isPubAddr(ctx context.Context, addr string) bool {
 	c, err := net.Dial("tcp", addr)
 	if err != nil {
 		return false
@@ -263,13 +278,15 @@ func (n *network) getAddrsFromSeed(ctx context.Context, addr string) (PK, []unic
 
 	select {
 	case <-ctx.Done():
-		return nil, nil, ctx.Err()
+		return nil, nil, fmt.Errorf("get public node addresses err: %v", ctx.Err())
 	case r := <-ch:
 		return r.pk, r.addrs, r.err
 	}
 }
 
 func (n *network) connect(addr unicastAddr) error {
+	log.Info("connecting to peer", "addr", addr.Addr)
+
 	n.mu.Lock()
 	if _, ok := n.conns[addr]; ok {
 		n.mu.Unlock()
@@ -292,27 +309,37 @@ func (n *network) connect(addr unicastAddr) error {
 	n.mu.Lock()
 	if _, ok := n.conns[addr]; !ok {
 		n.conns[addr] = conn
-		go func() {
-			for {
-				pac, err := conn.Read()
-				if err != nil {
-					log.Warn("read peer conn error", "err", err)
-					conn.Close()
-					break
-				}
-
-				_ = pac
-			}
-
-			n.mu.Lock()
-			delete(n.conns, addr)
-			n.mu.Unlock()
-		}()
+		go n.readConn(addr, conn)
 	} else {
 		c.Close()
 	}
 	n.mu.Unlock()
 	return nil
+}
+
+func (n *network) readConn(addr unicastAddr, conn *conn) {
+	for {
+		pac, err := conn.Read()
+		if err != nil {
+			log.Warn("read peer conn error", "err", err)
+			conn.Close()
+			break
+		}
+
+		switch v := pac.Data.(type) {
+		case []unicastAddr:
+			// TODO: update public node list
+			_ = v
+		case *connectRequest:
+			// connection already established, discard
+		default:
+			n.ch <- packetAndAddr{A: addr, P: pac}
+		}
+	}
+
+	n.mu.Lock()
+	delete(n.conns, addr)
+	n.mu.Unlock()
 }
 
 func (n *network) Send(addr netAddr, p packet) error {
@@ -342,7 +369,7 @@ func (n *network) Send(addr netAddr, p packet) error {
 		for addr := range n.conns {
 			go n.Send(addr, p)
 		}
-		n.mu.Lock()
+		n.mu.Unlock()
 	default:
 		panic(addr)
 	}

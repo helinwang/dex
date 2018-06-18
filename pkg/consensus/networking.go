@@ -216,6 +216,10 @@ func (n *Networking) Start(host string, port int, seedAddr string) error {
 	n.addr = myAddr
 
 	go n.recvData()
+	if seedAddr == "" {
+		return nil
+	}
+
 	return n.net.ConnectSeed(seedAddr)
 }
 

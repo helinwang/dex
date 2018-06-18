@@ -33,5 +33,6 @@ func TestNetworkConnectSeed(t *testing.T) {
 		panic(err)
 	}
 
-	assert.Equal(t, []unicastAddr{addr1, addr0}, n1.publicNodes)
+	assert.Equal(t, []unicastAddr{addr0}, n1.publicNodes)
+	assert.Equal(t, []unicastAddr{addr1}, n0.publicNodes)
 }

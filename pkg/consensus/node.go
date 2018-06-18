@@ -76,8 +76,8 @@ func (n *Node) Chain() *Chain {
 }
 
 // Start starts the p2p network service.
-func (n *Node) Start(host string, port int, seedAddr string) {
-	n.net.Start(host, port, seedAddr)
+func (n *Node) Start(host string, port int, seedAddr string) error {
+	return n.net.Start(host, port, seedAddr)
 }
 
 // StartRound marks the start of the given round. It happens when the

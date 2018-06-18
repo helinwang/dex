@@ -11,9 +11,11 @@ import (
 
 	"github.com/dfinity/go-dfinity-crypto/bls"
 	"github.com/ethereum/go-ethereum/ethdb"
+
 	"github.com/ethereum/go-ethereum/trie"
 	"github.com/helinwang/dex/pkg/consensus"
 	"github.com/helinwang/dex/pkg/dex"
+	"github.com/helinwang/log15"
 )
 
 func decodeFromFile(path string, v interface{}) {
@@ -87,8 +89,17 @@ func main() {
 	n := createNode(credentials, &genesis, consensus.PK(pk), server)
 	server.SetSender(n)
 	server.SetStater(n.Chain())
-	server.Start(*rpcAddr)
-	n.Start(*host, *port, *seedNode)
+	err = server.Start(*rpcAddr)
+	if err != nil {
+		log15.Warn("can not start wallet service", "err", err)
+	}
+
+	err = n.Start(*host, *port, *seedNode)
+	if err != nil {
+		log15.Error("can not connect to seed node", "seed", *seedNode, "err", err)
+		return
+	}
+
 	n.EndRound(0)
 
 	select {}
