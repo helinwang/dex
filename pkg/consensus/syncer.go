@@ -24,9 +24,10 @@ import (
 // if valid
 // 5. validate BP, then connect to the chain if validate
 type syncer struct {
-	v                 *validator
-	chain             *Chain
-	requester         requester
+	v         *validator
+	chain     *Chain
+	requester requester
+	// TODO: is invalidBlockCache necessary?
 	invalidBlockCache *lru.Cache
 
 	syncRandBeaconMu sync.Mutex
@@ -62,10 +63,8 @@ func (s *syncer) SyncBlock(addr unicastAddr, hash Hash, round uint64) error {
 	return err
 }
 
-func (s *syncer) SyncNtShare(addr unicastAddr, hash Hash) {
-	// TODO: don't proceed if the block is already notarized, or
-	// can not connect to chain.
-	panic("not implemented")
+func (s *syncer) SyncBlockProposal(addr unicastAddr, hash Hash) (*BlockProposal, error) {
+	return nil, nil
 }
 
 func (s *syncer) SyncRandBeaconSig(addr unicastAddr, round uint64) (bool, error) {

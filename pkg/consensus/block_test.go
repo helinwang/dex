@@ -108,7 +108,7 @@ func TestNtShareEncodeDecode(t *testing.T) {
 		BP:       Hash{2},
 		SigShare: []byte{4},
 		Owner:    Addr{5},
-		OwnerSig: []byte{6},
+		Sig:      []byte{6},
 	}
 
 	var nt0 NtShare
@@ -125,7 +125,7 @@ func TestNtShareEncodeDecode(t *testing.T) {
 		panic(err)
 	}
 
-	nt.OwnerSig = []byte{}
+	nt.Sig = []byte{}
 	assert.Equal(t, nt, nt1)
 
 }

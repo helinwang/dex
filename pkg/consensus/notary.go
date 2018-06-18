@@ -119,6 +119,6 @@ func (n *Notary) notarize(bp *BlockProposal) *NtShare {
 
 	nts.SigShare = n.share.Sign(string(blk.Encode(false))).Serialize()
 	nts.Owner = n.owner
-	nts.OwnerSig = n.sk.Sign(string(nts.Encode(false))).Serialize()
+	nts.Sig = n.sk.Sign(string(nts.Encode(false))).Serialize()
 	return nts
 }

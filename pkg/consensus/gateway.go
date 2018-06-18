@@ -75,7 +75,6 @@ type gateway struct {
 	bpWaiters    map[Hash][]chan *BlockProposal
 }
 
-// newGateway creates a new gateway
 func newGateway(net *network, chain *Chain) *gateway {
 	bCache, err := lru.New(1024)
 	if err != nil {
@@ -382,6 +381,30 @@ func (n *gateway) recvBlockProposal(addr unicastAddr, bp *BlockProposal) {
 
 func (n *gateway) recvNtShare(addr unicastAddr, s *NtShare) {
 	log.Info("recv nt share", "hash", s.Hash())
+	round := n.chain.Height()
+	if s.Round < round {
+		return
+	}
+
+	if s.Round > round {
+		n.chain.RandomBeacon.WaitUntil(s.Round)
+	}
+
+	if nts := n.chain.NtShare(s.Hash()); nts != nil {
+		return
+	}
+
+	bp, err := n.syncer.SyncBlockProposal(addr, s.BP)
+	if err != nil {
+		log.Error("error sync block proposal for nt share", "err", err)
+		return
+	}
+
+	if bp.Round != s.Round {
+		log.Error("notarization share round does not match block proposal round", "nt round", s.Round, "bp round", bp.Round)
+		return
+	}
+
 	groupID, valid := n.v.ValidateNtShare(s)
 	if !valid {
 		return

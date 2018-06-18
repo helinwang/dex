@@ -124,34 +124,10 @@ func (v *validator) ValidateBlockProposal(bp *BlockProposal) (float64, bool) {
 	return weight, true
 }
 
+// TODO: validator should not check round information, and signature
+// validation should be a method of the data type.
 func (v *validator) ValidateNtShare(n *NtShare) (int, bool) {
-	round := v.chain.Height()
-	if n.Round != round {
-		if n.Round > round {
-			log.Warn("received nt share of higher round", "round", n.Round, "my round", round)
-		} else {
-			log.Debug("received nt share of lower round", "round", n.Round, "my round", round)
-		}
-		return 0, false
-	}
-
-	if nts := v.chain.NtShare(n.Hash()); nts != nil {
-		log.Warn("notarization share already received")
-		return 0, false
-	}
-
-	bp := v.chain.BlockProposal(n.BP)
-	if bp == nil {
-		log.Warn("ValidateNtShare: prev block not found")
-		return 0, false
-	}
-
-	if bp.Round != n.Round {
-		log.Warn("ValidateNtShare: notarization is in different round with block proposal", "bp round", bp.Round, "round", n.Round)
-		return 0, false
-	}
-
-	_, _, nt := v.chain.RandomBeacon.Committees(round)
+	_, _, nt := v.chain.RandomBeacon.Committees(n.Round)
 	group := v.chain.RandomBeacon.groups[nt]
 	sharePK, ok := group.MemberPK[n.Owner]
 	if !ok {
@@ -160,7 +136,7 @@ func (v *validator) ValidateNtShare(n *NtShare) (int, bool) {
 	}
 
 	var sign bls.Sign
-	err := sign.Deserialize(n.OwnerSig)
+	err := sign.Deserialize(n.Sig)
 	if err != nil {
 		log.Warn("valid nt sig error", "err", err)
 		return 0, false

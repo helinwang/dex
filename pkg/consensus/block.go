@@ -100,7 +100,8 @@ func (r *RandBeaconSigShare) Hash() Hash {
 	return SHA3(r.Encode(true))
 }
 
-// NtShare is one share of the notarization.
+// NtShare is one share of the notarization. A notarization and its
+// block proposal form a block.
 //
 // Each member of the notarization committee will broadcast its own
 // notarization signature share. which threshold numbers of signature
@@ -113,14 +114,14 @@ type NtShare struct {
 	Receipts Hash
 	SigShare []byte
 	Owner    Addr
-	OwnerSig []byte
+	Sig      Sign
 }
 
 // Encode encodes the notarization share.
 func (n *NtShare) Encode(withSig bool) []byte {
 	en := *n
 	if !withSig {
-		en.OwnerSig = nil
+		en.Sig = nil
 	}
 
 	b, err := rlp.EncodeToBytes(en)
