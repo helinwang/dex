@@ -123,8 +123,8 @@ func (r *RandomBeacon) AddRandBeaconSig(s *RandBeaconSig) bool {
 
 	log.Info("AddRandBeaconSig", "round", s.Round, "hash", s.Hash())
 
-	if round := r.round(); round != s.Round {
-		if s.Round > round {
+	if round := r.round(); round+1 != s.Round {
+		if s.Round > round+1 {
 			log.Warn("adding RandBeaconSig of higher round", "round", s.Round, "beacon round", round)
 			return false
 		}

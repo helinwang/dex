@@ -68,10 +68,8 @@ func (s *syncer) SyncNtShare(addr unicastAddr, hash Hash) {
 	panic("not implemented")
 }
 
-func (s *syncer) SyncRandBeaconSigShare(addr unicastAddr, round uint64) {
-}
-
 func (s *syncer) SyncRandBeaconSig(addr unicastAddr, round uint64) (bool, error) {
+	log.Info("SyncRandBeaconSig", "round", round)
 	if s.chain.RandomBeacon.Round() > round {
 		return false, nil
 	}
@@ -80,7 +78,7 @@ func (s *syncer) SyncRandBeaconSig(addr unicastAddr, round uint64) (bool, error)
 	defer s.syncRandBeaconMu.Unlock()
 
 	var sigs []*RandBeaconSig
-	for s.chain.RandomBeacon.Round() <= round {
+	for s.chain.RandomBeacon.Round() < round {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 		defer cancel()
 		sig, err := s.requester.requestRandBeaconSig(ctx, addr, round)
@@ -99,7 +97,7 @@ func (s *syncer) SyncRandBeaconSig(addr unicastAddr, round uint64) (bool, error)
 		sig := sigs[i]
 		success := s.chain.RandomBeacon.AddRandBeaconSig(sig)
 		if !success {
-			return false, fmt.Errorf("failed to add rand beacon sig, round: %d, hash: %x", round, sig.Hash())
+			return false, fmt.Errorf("failed to add rand beacon sig, round: %d, hash: %v", sig.Round, sig.Hash())
 		}
 	}
 

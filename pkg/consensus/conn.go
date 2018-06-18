@@ -20,6 +20,7 @@ func init() {
 	var h *connectRequest
 	var i []unicastAddr
 	var j ack
+	var k *NtShare
 
 	gob.Register(a)
 	gob.Register(b)
@@ -31,6 +32,7 @@ func init() {
 	gob.Register(h)
 	gob.Register(i)
 	gob.Register(j)
+	gob.Register(k)
 }
 
 type packet struct {

@@ -161,7 +161,7 @@ func (n *network) ConnectSeed(addr string) error {
 	}
 	perm := rand.Perm(len(nodes))
 
-	log.Info("received nodes", "nodes", nodes)
+	log.Info("received nodes", "count", len(nodes))
 
 	connected := 0
 	for _, idx := range perm {
@@ -299,7 +299,7 @@ func (n *network) connect(addr unicastAddr) error {
 	}
 
 	conn := newConn(c)
-	req := &connectRequest{}
+	req := &connectRequest{Port: n.port}
 	req.Sign(n.sk)
 	err = conn.Write(packet{Data: req})
 	if err != nil {
@@ -318,6 +318,7 @@ func (n *network) connect(addr unicastAddr) error {
 }
 
 func (n *network) readConn(addr unicastAddr, conn *conn) {
+	fmt.Println("read conn", addr.Addr)
 	for {
 		pac, err := conn.Read()
 		if err != nil {
@@ -326,6 +327,7 @@ func (n *network) readConn(addr unicastAddr, conn *conn) {
 			break
 		}
 
+		fmt.Printf("read conn recv %s, %T\n", addr.Addr, pac.Data)
 		switch v := pac.Data.(type) {
 		case []unicastAddr:
 			// TODO: update public node list

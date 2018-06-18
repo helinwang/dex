@@ -49,9 +49,9 @@ func (i itemType) String() string {
 	case ntShareItem:
 		return "NtShareItem"
 	case randBeaconSigShareItem:
-		return "RandBeaconShareItem"
+		return "RandBeaconSigShareItem"
 	case randBeaconSigItem:
-		return "RandBeaconItem"
+		return "RandBeaconSigItem"
 	default:
 		panic("unknown item")
 	}
@@ -226,7 +226,7 @@ func (n *Networking) Start(host string, port int, seedAddr string) error {
 func (n *Networking) recvData() {
 	for {
 		addr, pac := n.net.Recv()
-		fmt.Printf("recv %v, %T\n", addr, pac.Data)
+		fmt.Printf("recv %v, %T\n", addr.Addr, pac.Data)
 		// see conn.go:init() for the list of possible data
 		// types
 		switch v := pac.Data.(type) {
@@ -240,9 +240,12 @@ func (n *Networking) recvData() {
 			go n.recvBlock(addr, v)
 		case *BlockProposal:
 			go n.recvBlockProposal(addr, v)
+		case *NtShare:
+			go n.recvNtShare(addr, v)
 		case Item:
 			go n.recvInventory(addr, v)
 		case itemRequest:
+			fmt.Println("recv request", v)
 			go n.serveData(addr, Item(v))
 		default:
 			panic(fmt.Errorf("received unsupported data type: %T", pac.Data))
@@ -309,7 +312,8 @@ func (n *Networking) recvRandBeaconSigShare(addr unicastAddr, r *RandBeaconSigSh
 		return
 	}
 
-	go n.broadcast(Item{T: randBeaconSigShareItem, Round: r.Round})
+	fmt.Println("sig share round", r.Round)
+	go n.broadcast(Item{T: randBeaconSigShareItem, Round: r.Round, Hash: r.Hash()})
 }
 
 func (n *Networking) recvBlock(addr unicastAddr, b *Block) {
@@ -435,18 +439,20 @@ func (n *Networking) recvInventory(addr unicastAddr, item Item) {
 		}
 
 		log.Info("request NtShareItem", "item", item)
-		// TODO: rename blockSyncer to syncer
-		go n.syncer.SyncNtShare(addr, item.Hash)
+		n.requestItem(addr, item)
 	case randBeaconSigShareItem:
+		if n.chain.RandomBeacon.Round()+1 != item.Round {
+			return
+		}
+
 		share := n.chain.RandomBeacon.GetShare(item.Hash)
 		if share != nil {
 			return
 		}
 
 		log.Info("request RandBeaconShareItem", "item", item)
-		go n.syncer.SyncRandBeaconSigShare(addr, item.Round)
+		n.requestItem(addr, item)
 	case randBeaconSigItem:
-		log.Info("request RandBeaconItem", "item", item)
 		go n.syncer.SyncRandBeaconSig(addr, item.Round)
 	}
 }
