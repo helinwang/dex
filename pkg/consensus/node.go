@@ -22,7 +22,7 @@ type Node struct {
 	addr  Addr
 	cfg   Config
 	sk    SK
-	net   *Networking
+	net   *gateway
 	chain *Chain
 
 	mu sync.Mutex
@@ -52,7 +52,7 @@ type Config struct {
 }
 
 // NewNode creates a new node.
-func NewNode(chain *Chain, sk SK, net *Networking, cfg Config) *Node {
+func NewNode(chain *Chain, sk SK, net *gateway, cfg Config) *Node {
 	pk, err := sk.PK()
 	if err != nil {
 		panic(err)
@@ -176,7 +176,7 @@ func MakeNode(credentials NodeCredentials, cfg Config, genesis *Block, state Sta
 	randSeed := Rand(SHA3([]byte("dex")))
 	chain := NewChain(genesis, state, randSeed, cfg, txnPool, u)
 	net := newNetwork(credentials.SK)
-	networking := NewNetworking(net, chain)
+	networking := newGateway(net, chain)
 	node := NewNode(chain, credentials.SK, networking, cfg)
 	for j := range credentials.Groups {
 		share, err := credentials.GroupShares[j].Get()

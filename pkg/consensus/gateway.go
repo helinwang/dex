@@ -57,9 +57,9 @@ func (i itemType) String() string {
 	}
 }
 
-// Networking is the component that enables the node to talk to its
-// peers over the network.
-type Networking struct {
+// gateway is the gateway through which the node talks with its peers
+// in the network.
+type gateway struct {
 	addr               unicastAddr
 	net                *network
 	v                  *validator
@@ -75,8 +75,8 @@ type Networking struct {
 	bpWaiters    map[Hash][]chan *BlockProposal
 }
 
-// NewNetworking creates a new networking component.
-func NewNetworking(net *network, chain *Chain) *Networking {
+// newGateway creates a new gateway
+func newGateway(net *network, chain *Chain) *gateway {
 	bCache, err := lru.New(1024)
 	if err != nil {
 		panic(err)
@@ -92,7 +92,7 @@ func NewNetworking(net *network, chain *Chain) *Networking {
 		panic(err)
 	}
 
-	n := &Networking{
+	n := &gateway{
 		net:                net,
 		v:                  newValidator(chain),
 		chain:              chain,
@@ -108,11 +108,11 @@ func NewNetworking(net *network, chain *Chain) *Networking {
 	return n
 }
 
-func (n *Networking) requestItem(addr unicastAddr, item Item) error {
+func (n *gateway) requestItem(addr unicastAddr, item Item) error {
 	return n.net.Send(addr, packet{Data: itemRequest(item)})
 }
 
-func (n *Networking) requestRandBeaconSig(ctx context.Context, addr unicastAddr, round uint64) (*RandBeaconSig, error) {
+func (n *gateway) requestRandBeaconSig(ctx context.Context, addr unicastAddr, round uint64) (*RandBeaconSig, error) {
 	v, ok := n.randBeaconSigCache.Get(round)
 	if ok {
 		return v.(*RandBeaconSig), nil
@@ -141,7 +141,7 @@ func (n *Networking) requestRandBeaconSig(ctx context.Context, addr unicastAddr,
 	}
 }
 
-func (n *Networking) requestBlock(ctx context.Context, addr unicastAddr, hash Hash) (*Block, error) {
+func (n *gateway) requestBlock(ctx context.Context, addr unicastAddr, hash Hash) (*Block, error) {
 	v, ok := n.blockCache.Get(hash)
 	if ok {
 		return v.(*Block), nil
@@ -174,7 +174,7 @@ func (n *Networking) requestBlock(ctx context.Context, addr unicastAddr, hash Ha
 	}
 }
 
-func (n *Networking) requestBlockProposal(ctx context.Context, addr unicastAddr, hash Hash) (*BlockProposal, error) {
+func (n *gateway) requestBlockProposal(ctx context.Context, addr unicastAddr, hash Hash) (*BlockProposal, error) {
 	v, ok := n.bpCache.Get(hash)
 	if ok {
 		return v.(*BlockProposal), nil
@@ -208,7 +208,7 @@ func (n *Networking) requestBlockProposal(ctx context.Context, addr unicastAddr,
 }
 
 // Start starts the networking component.
-func (n *Networking) Start(host string, port int, seedAddr string) error {
+func (n *gateway) Start(host string, port int, seedAddr string) error {
 	myAddr, err := n.net.Start(host, port)
 	if err != nil {
 		return err
@@ -223,7 +223,7 @@ func (n *Networking) Start(host string, port int, seedAddr string) error {
 	return n.net.ConnectSeed(seedAddr)
 }
 
-func (n *Networking) recvData() {
+func (n *gateway) recvData() {
 	for {
 		addr, pac := n.net.Recv()
 		fmt.Printf("recv %v, %T\n", addr.Addr, pac.Data)
@@ -255,22 +255,22 @@ func (n *Networking) recvData() {
 
 // TODO: don't broadcast when syncing.
 
-func (n *Networking) broadcast(item Item) {
+func (n *gateway) broadcast(item Item) {
 	n.net.Send(broadcast{}, packet{Data: item})
 }
 
-func (n *Networking) recvTxn(t []byte) {
+func (n *gateway) recvTxn(t []byte) {
 	broadcast := n.chain.TxnPool.Add(t)
 	if broadcast {
 		go n.broadcast(Item{T: txnItem, Hash: SHA3(t)})
 	}
 }
 
-func (n *Networking) recvSysTxn(t *SysTxn) {
+func (n *gateway) recvSysTxn(t *SysTxn) {
 	panic("not implemented")
 }
 
-func (n *Networking) recvRandBeaconSig(addr unicastAddr, r *RandBeaconSig) {
+func (n *gateway) recvRandBeaconSig(addr unicastAddr, r *RandBeaconSig) {
 	if !n.v.ValidateRandBeaconSig(r) {
 		log.Warn("failed to validate rand beacon sig", "round", r.Round, "hash", r.Hash())
 		return
@@ -295,7 +295,7 @@ func (n *Networking) recvRandBeaconSig(addr unicastAddr, r *RandBeaconSig) {
 	}
 }
 
-func (n *Networking) recvRandBeaconSigShare(addr unicastAddr, r *RandBeaconSigShare) {
+func (n *gateway) recvRandBeaconSigShare(addr unicastAddr, r *RandBeaconSigShare) {
 	groupID, valid := n.v.ValidateRandBeaconSigShare(r)
 
 	if !valid {
@@ -316,7 +316,7 @@ func (n *Networking) recvRandBeaconSigShare(addr unicastAddr, r *RandBeaconSigSh
 	go n.broadcast(Item{T: randBeaconSigShareItem, Round: r.Round, Hash: r.Hash()})
 }
 
-func (n *Networking) recvBlock(addr unicastAddr, b *Block) {
+func (n *gateway) recvBlock(addr unicastAddr, b *Block) {
 	// TODO: if not able to validate block, wait until random
 	// beacon syncer finished the corresponding round.
 	_, valid := n.v.ValidateBlock(b)
@@ -344,7 +344,7 @@ func (n *Networking) recvBlock(addr unicastAddr, b *Block) {
 	go n.broadcast(Item{T: blockItem, Hash: b.Hash()})
 }
 
-func (n *Networking) recvBlockProposal(addr unicastAddr, bp *BlockProposal) {
+func (n *gateway) recvBlockProposal(addr unicastAddr, bp *BlockProposal) {
 	weight, valid := n.v.ValidateBlockProposal(bp)
 	if !valid {
 		return
@@ -380,7 +380,7 @@ func (n *Networking) recvBlockProposal(addr unicastAddr, bp *BlockProposal) {
 	go n.broadcast(Item{T: blockProposalItem, Hash: bp.Hash()})
 }
 
-func (n *Networking) recvNtShare(addr unicastAddr, s *NtShare) {
+func (n *gateway) recvNtShare(addr unicastAddr, s *NtShare) {
 	log.Info("recv nt share", "hash", s.Hash())
 	groupID, valid := n.v.ValidateNtShare(s)
 	if !valid {
@@ -403,7 +403,7 @@ func (n *Networking) recvNtShare(addr unicastAddr, s *NtShare) {
 
 // TODO: fix lint
 // nolint: gocyclo
-func (n *Networking) recvInventory(addr unicastAddr, item Item) {
+func (n *gateway) recvInventory(addr unicastAddr, item Item) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 
@@ -459,7 +459,7 @@ func (n *Networking) recvInventory(addr unicastAddr, item Item) {
 
 // TODO: fix lint
 // nolint: gocyclo
-func (n *Networking) serveData(addr unicastAddr, item Item) {
+func (n *gateway) serveData(addr unicastAddr, item Item) {
 	switch item.T {
 	case txnItem:
 		txn := n.chain.TxnPool.Get(item.Hash)
