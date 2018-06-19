@@ -225,7 +225,6 @@ func (n *gateway) Start(host string, port int, seedAddr string) error {
 func (n *gateway) recvData() {
 	for {
 		addr, pac := n.net.Recv()
-		fmt.Printf("recv %v, %T\n", addr.Addr, pac.Data)
 		// see conn.go:init() for the list of possible data
 		// types
 		switch v := pac.Data.(type) {
@@ -244,7 +243,6 @@ func (n *gateway) recvData() {
 		case Item:
 			go n.recvInventory(addr, v)
 		case itemRequest:
-			fmt.Println("recv request", v)
 			go n.serveData(addr, Item(v))
 		default:
 			panic(fmt.Errorf("received unsupported data type: %T", pac.Data))
@@ -270,8 +268,14 @@ func (n *gateway) recvSysTxn(t *SysTxn) {
 }
 
 func (n *gateway) recvRandBeaconSig(addr unicastAddr, r *RandBeaconSig) {
-	if !n.v.ValidateRandBeaconSig(r) {
-		log.Warn("failed to validate rand beacon sig", "round", r.Round, "hash", r.Hash())
+	if r.Round == 0 {
+		log.Error("received RandBeaconSig of 0 round, should not happen")
+		return
+	}
+
+	n.chain.RandomBeacon.WaitUntil(r.Round - 1)
+	round := n.chain.RandomBeacon.Round()
+	if round > r.Round {
 		return
 	}
 
@@ -311,7 +315,6 @@ func (n *gateway) recvRandBeaconSigShare(addr unicastAddr, r *RandBeaconSigShare
 		return
 	}
 
-	fmt.Println("sig share round", r.Round)
 	go n.broadcast(Item{T: randBeaconSigShareItem, Round: r.Round, Hash: r.Hash()})
 }
 
@@ -334,7 +337,7 @@ func (n *gateway) recvBlock(addr unicastAddr, b *Block) {
 	n.blockWaiters[h] = nil
 	n.mu.Unlock()
 
-	err := n.syncer.SyncBlock(addr, h, b.Round)
+	_, err := n.syncer.SyncBlock(addr, h, b.Round)
 	if err != nil {
 		log.Warn("sync block error", "err", err)
 		return
@@ -344,11 +347,6 @@ func (n *gateway) recvBlock(addr unicastAddr, b *Block) {
 }
 
 func (n *gateway) recvBlockProposal(addr unicastAddr, bp *BlockProposal) {
-	weight, valid := n.v.ValidateBlockProposal(bp)
-	if !valid {
-		return
-	}
-
 	h := bp.Hash()
 	n.bpCache.Add(h, bp)
 
@@ -359,20 +357,9 @@ func (n *gateway) recvBlockProposal(addr unicastAddr, bp *BlockProposal) {
 	n.bpWaiters[h] = nil
 	n.mu.Unlock()
 
-	if bp.Round > 0 {
-		err := n.syncer.SyncBlock(addr, bp.PrevBlock, bp.Round-1)
-		if err != nil {
-			log.Warn("sync block error", "err", err)
-			return
-		}
-	} else {
-		log.Error("round 0 does should not have block proposal")
-		return
-	}
-
-	err := n.chain.addBP(bp, weight)
+	_, err := n.syncer.SyncBlockProposal(addr, h)
 	if err != nil {
-		log.Warn("add block proposal failed", "err", err)
+		log.Warn("sync block proposal error", "err", err)
 		return
 	}
 
@@ -381,8 +368,7 @@ func (n *gateway) recvBlockProposal(addr unicastAddr, bp *BlockProposal) {
 
 func (n *gateway) recvNtShare(addr unicastAddr, s *NtShare) {
 	log.Info("recv nt share", "hash", s.Hash())
-
-	round := n.chain.Height()
+	round := n.chain.Round()
 	if s.Round < round {
 		return
 	}

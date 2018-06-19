@@ -65,57 +65,6 @@ func (v *validator) ValidateBlock(b *Block) (float64, bool) {
 	return rankToWeight(rank), true
 }
 
-func (v *validator) ValidateBlockProposal(bp *BlockProposal) (float64, bool) {
-	// TODO: validate txns
-	v.chain.RandomBeacon.WaitUntil(bp.Round)
-	round := v.chain.Height()
-	if bp.Round != round {
-		if bp.Round > round {
-			log.Warn("received block proposal of higher round", "round", bp.Round, "my round", round)
-		} else {
-			log.Debug("received block proposal of lower round", "round", bp.Round, "my round", round)
-		}
-
-		return 0, false
-	}
-
-	if bp := v.chain.BlockProposal(bp.Hash()); bp != nil {
-		log.Warn("block proposal already received")
-		return 0, false
-	}
-
-	prev := v.chain.Block(bp.PrevBlock)
-	if prev == nil {
-		log.Warn("ValidateBlockProposal: prev block not found")
-		return 0, false
-	}
-
-	if prev.Round != bp.Round-1 {
-		log.Warn("ValidateBlockProposal: prev block round is not block proposal round - 1", "prev round", prev.Round, "round", bp.Round)
-		return 0, false
-	}
-
-	rank, err := v.chain.RandomBeacon.Rank(bp.Owner, bp.Round)
-	if err != nil {
-		log.Warn("error get rank", "err", err)
-		return 0, false
-	}
-
-	pk, ok := v.chain.LastFinalizedSysState.addrToPK[bp.Owner]
-	if !ok {
-		log.Warn("block proposal owner not found", "owner", bp.Owner)
-		return 0, false
-	}
-
-	if !bp.OwnerSig.Verify(pk, bp.Encode(false)) {
-		log.Warn("invalid block proposal signature", "block", bp.Hash())
-		return 0, false
-	}
-
-	weight := rankToWeight(rank)
-	return weight, true
-}
-
 // TODO: validator should not check round information, and signature
 // validation should be a method of the data type.
 func (v *validator) ValidateNtShare(n *NtShare) (int, bool) {
@@ -141,27 +90,6 @@ func (v *validator) ValidateNtShare(n *NtShare) (int, bool) {
 	// TODO: validate share signature is valid.
 	_ = sharePK
 	return nt, true
-}
-
-func (v *validator) ValidateRandBeaconSig(r *RandBeaconSig) bool {
-	// TODO: validate sig, owner, round, share
-	if r.Round == 0 {
-		log.Error("received RandBeaconSig of 0 round, should not happen")
-		return false
-	}
-
-	v.chain.RandomBeacon.WaitUntil(r.Round - 1)
-	round := v.chain.RandomBeacon.Round()
-	if round == r.Round {
-		panic("what?")
-	}
-
-	if r.Round < round {
-		log.Debug("received RandBeaconSig of lower round", "round", r.Round, "target depth", round)
-		return false
-	}
-
-	return true
 }
 
 func (v *validator) ValidateRandBeaconSigShare(r *RandBeaconSigShare) (int, bool) {

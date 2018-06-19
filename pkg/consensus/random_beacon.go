@@ -143,7 +143,7 @@ func (r *RandomBeacon) AddRandBeaconSig(s *RandBeaconSig) bool {
 		close(ch)
 		delete(r.roundWaitCh, round)
 	}
-	go r.n._StartRound(round)
+	go r.n.StartRound(round)
 	return true
 }
 

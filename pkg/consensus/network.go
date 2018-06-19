@@ -253,7 +253,6 @@ func (n *network) getAddrsFromSeed(ctx context.Context, addr string) (PK, []unic
 
 		addrs, ok := pac.Data.([]unicastAddr)
 		if !ok {
-			fmt.Printf("%T\n", pac.Data)
 			ch <- result{err: errors.New("the first packet should be of type []UnicastAddr")}
 			return
 		}
@@ -321,7 +320,6 @@ func (n *network) connect(addr unicastAddr) error {
 }
 
 func (n *network) readConn(addr unicastAddr, conn *conn) {
-	fmt.Println("read conn", addr.Addr)
 	for {
 		pac, err := conn.Read()
 		if err != nil {
@@ -330,7 +328,6 @@ func (n *network) readConn(addr unicastAddr, conn *conn) {
 			break
 		}
 
-		fmt.Printf("read conn recv %s, %T\n", addr.Addr, pac.Data)
 		switch v := pac.Data.(type) {
 		case []unicastAddr:
 			// TODO: update public node list

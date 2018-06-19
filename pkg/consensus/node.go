@@ -80,7 +80,7 @@ func (n *Node) Start(host string, port int, seedAddr string) error {
 
 // StartRound marks the start of the given round. It happens when the
 // random beacon signature for the given round is received.
-func (n *Node) _StartRound(round uint64) {
+func (n *Node) StartRound(round uint64) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 

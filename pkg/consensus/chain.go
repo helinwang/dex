@@ -218,8 +218,8 @@ func (c *Chain) round() uint64 {
 	return uint64(round)
 }
 
-// Height returns the current round.
-func (c *Chain) Height() uint64 {
+// Round returns the current round.
+func (c *Chain) Round() uint64 {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -427,6 +427,7 @@ func (c *Chain) addBlock(b *Block, bp *BlockProposal, s State, weight float64) e
 	log.Info("addBlock called", "hash", b.Hash(), "weight", weight)
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	beginRound := c.round()
 
 	h := b.Hash()
 	if _, ok := c.hashToBlock[h]; ok {
@@ -459,8 +460,8 @@ func (c *Chain) addBlock(b *Block, bp *BlockProposal, s State, weight float64) e
 			}
 		}
 
-		if removeIdx <= 0 {
-			log.Info("block's proposal not found on chain", "block", h)
+		if removeIdx < 0 {
+			log.Info("block's proposal not found on chain", "bp", b.BlockProposal, "b", b.Hash())
 		} else {
 			c.UnNotarizedNotOnFork = append(c.UnNotarizedNotOnFork[:removeIdx], c.UnNotarizedNotOnFork[removeIdx+1:]...)
 		}
@@ -485,6 +486,11 @@ func (c *Chain) addBlock(b *Block, bp *BlockProposal, s State, weight float64) e
 
 	_, leaderState, _ := c.leader()
 	go c.updater.Update(leaderState)
+
+	fmt.Println("**", round, b.Round)
+	if beginRound == b.Round && beginRound+1 == round {
+		go c.n.EndRound(beginRound)
+	}
 	return nil
 }
 
