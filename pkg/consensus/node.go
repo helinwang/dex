@@ -10,8 +10,6 @@ import (
 	"time"
 
 	log "github.com/helinwang/log15"
-
-	"github.com/dfinity/go-dfinity-crypto/bls"
 )
 
 // Node is a node in the consensus infrastructure.
@@ -40,7 +38,7 @@ type NodeCredentials struct {
 }
 
 type membership struct {
-	skShare bls.SecretKey
+	skShare SK
 	groupID int
 }
 
@@ -104,7 +102,7 @@ func (n *Node) _StartRound(round uint64) {
 				ntCancelCtx, n.cancelNotarize = context.WithCancel(context.Background())
 			}
 
-			notary := NewNotary(n.addr, n.sk.MustGet(), m.skShare, n.chain)
+			notary := NewNotary(n.addr, n.sk, m.skShare, n.chain)
 			inCh := make(chan *BlockProposal, 20)
 			n.notarizeChs = append(n.notarizeChs, inCh)
 			ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(n.cfg.BlockTime))
@@ -150,7 +148,7 @@ func (n *Node) EndRound(round uint64) {
 		go func() {
 			history := n.chain.RandomBeacon.History()
 			lastSigHash := SHA3(history[round].Sig)
-			s := signRandBeaconShare(n.sk.MustGet(), keyShare, round+1, lastSigHash)
+			s := signRandBeaconShare(n.sk, keyShare, round+1, lastSigHash)
 			n.net.recvRandBeaconSigShare(n.net.addr, s)
 		}()
 	}
@@ -179,11 +177,7 @@ func MakeNode(credentials NodeCredentials, cfg Config, genesis *Block, state Sta
 	networking := newGateway(net, chain)
 	node := NewNode(chain, credentials.SK, networking, cfg)
 	for j := range credentials.Groups {
-		share, err := credentials.GroupShares[j].Get()
-		if err != nil {
-			panic(err)
-		}
-
+		share := credentials.GroupShares[j]
 		m := membership{groupID: credentials.Groups[j], skShare: share}
 		node.memberships = append(node.memberships, m)
 	}

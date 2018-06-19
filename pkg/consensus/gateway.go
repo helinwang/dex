@@ -111,7 +111,7 @@ func (n *gateway) requestItem(addr unicastAddr, item Item) error {
 	return n.net.Send(addr, packet{Data: itemRequest(item)})
 }
 
-func (n *gateway) requestRandBeaconSig(ctx context.Context, addr unicastAddr, round uint64) (*RandBeaconSig, error) {
+func (n *gateway) RequestRandBeaconSig(ctx context.Context, addr unicastAddr, round uint64) (*RandBeaconSig, error) {
 	v, ok := n.randBeaconSigCache.Get(round)
 	if ok {
 		return v.(*RandBeaconSig), nil
@@ -140,7 +140,7 @@ func (n *gateway) requestRandBeaconSig(ctx context.Context, addr unicastAddr, ro
 	}
 }
 
-func (n *gateway) requestBlock(ctx context.Context, addr unicastAddr, hash Hash) (*Block, error) {
+func (n *gateway) RequestBlock(ctx context.Context, addr unicastAddr, hash Hash) (*Block, error) {
 	v, ok := n.blockCache.Get(hash)
 	if ok {
 		return v.(*Block), nil
@@ -173,7 +173,7 @@ func (n *gateway) requestBlock(ctx context.Context, addr unicastAddr, hash Hash)
 	}
 }
 
-func (n *gateway) requestBlockProposal(ctx context.Context, addr unicastAddr, hash Hash) (*BlockProposal, error) {
+func (n *gateway) RequestBlockProposal(ctx context.Context, addr unicastAddr, hash Hash) (*BlockProposal, error) {
 	v, ok := n.bpCache.Get(hash)
 	if ok {
 		return v.(*BlockProposal), nil
@@ -381,6 +381,7 @@ func (n *gateway) recvBlockProposal(addr unicastAddr, bp *BlockProposal) {
 
 func (n *gateway) recvNtShare(addr unicastAddr, s *NtShare) {
 	log.Info("recv nt share", "hash", s.Hash())
+
 	round := n.chain.Height()
 	if s.Round < round {
 		return

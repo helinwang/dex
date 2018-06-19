@@ -67,7 +67,7 @@ func (n *network) acceptPeerOrDisconnect(c net.Conn) {
 	var recv *connectRequest
 	switch v := pac.Data.(type) {
 	case *connectRequest:
-		if !v.ValidateSig() {
+		if !v.Sig.Verify(v.PK, v.ByteToSign()) {
 			log.Warn("connect request signature validation failed")
 			return
 		}
@@ -106,7 +106,8 @@ func (n *network) acceptPeerOrDisconnect(c net.Conn) {
 	// send a connect reuqest just to tell the other node about my
 	// public key.
 	req := &connectRequest{}
-	req.Sign(n.sk)
+	req.PK = n.sk.MustPK()
+	req.Sig = n.sk.Sign(req.ByteToSign())
 	conn.Write(packet{Data: req})
 
 	if recv.GetNodesOnly {
@@ -229,7 +230,8 @@ func (n *network) getAddrsFromSeed(ctx context.Context, addr string) (PK, []unic
 
 	conn := newConn(c)
 	req := &connectRequest{GetNodesOnly: true, Port: n.port}
-	req.Sign(n.sk)
+	req.PK = n.sk.MustPK()
+	req.Sig = n.sk.Sign(req.ByteToSign())
 	err = conn.Write(packet{Data: req})
 	if err != nil {
 		return nil, nil, err
@@ -268,7 +270,7 @@ func (n *network) getAddrsFromSeed(ctx context.Context, addr string) (PK, []unic
 			return
 		}
 
-		if !req.ValidateSig() {
+		if !req.Sig.Verify(req.PK, req.ByteToSign()) {
 			ch <- result{err: errors.New("peer signature validation failed")}
 			return
 		}
@@ -300,7 +302,8 @@ func (n *network) connect(addr unicastAddr) error {
 
 	conn := newConn(c)
 	req := &connectRequest{Port: n.port}
-	req.Sign(n.sk)
+	req.PK = n.sk.MustPK()
+	req.Sig = n.sk.Sign(req.ByteToSign())
 	err = conn.Write(packet{Data: req})
 	if err != nil {
 		return err
@@ -387,17 +390,13 @@ type connectRequest struct {
 	Port         uint16
 	GetNodesOnly bool
 	PK           PK
-	Sig          Sign
+	Sig          Sig
 }
 
 // TODO: create similar functions for other types that needs
 // signature.
 
-func (c *connectRequest) ValidateSig() bool {
-	return c.Sig.Verify(c.PK, c.msg())
-}
-
-func (c *connectRequest) msg() []byte {
+func (c *connectRequest) ByteToSign() []byte {
 	dup := *c
 	dup.Sig = nil
 	msg, err := rlp.EncodeToBytes(dup)
@@ -405,11 +404,6 @@ func (c *connectRequest) msg() []byte {
 		panic(err)
 	}
 	return msg
-}
-
-func (c *connectRequest) Sign(sk SK) {
-	c.PK = sk.MustPK()
-	c.Sig = sk.Sign(c.msg())
 }
 
 type ack struct {

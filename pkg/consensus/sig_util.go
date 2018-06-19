@@ -4,14 +4,14 @@ import (
 	"github.com/dfinity/go-dfinity-crypto/bls"
 )
 
-func recoverNtSig(shares []*NtShare) (bls.Sign, error) {
+func recoverNtSig(shares []*NtShare) (Sig, error) {
 	idVec := make([]bls.ID, len(shares))
 	signs := make([]bls.Sign, len(shares))
 	for i := range shares {
 		var sign bls.Sign
 		err := sign.Deserialize(shares[i].SigShare)
 		if err != nil {
-			return bls.Sign{}, err
+			return nil, err
 		}
 
 		signs[i] = sign
@@ -21,13 +21,13 @@ func recoverNtSig(shares []*NtShare) (bls.Sign, error) {
 	var sign bls.Sign
 	err := sign.Recover(signs, idVec)
 	if err != nil {
-		return bls.Sign{}, err
+		return nil, err
 	}
 
-	return sign, nil
+	return Sig(sign.Serialize()), nil
 }
 
-func recoverRandBeaconSig(shares map[Hash]*RandBeaconSigShare) (bls.Sign, error) {
+func recoverRandBeaconSig(shares map[Hash]*RandBeaconSigShare) (Sig, error) {
 	signs := make([]bls.Sign, len(shares))
 	idVec := make([]bls.ID, len(shares))
 	i := 0
@@ -35,7 +35,7 @@ func recoverRandBeaconSig(shares map[Hash]*RandBeaconSigShare) (bls.Sign, error)
 		var sign bls.Sign
 		err := sign.Deserialize(s.Share)
 		if err != nil {
-			return bls.Sign{}, err
+			return nil, err
 		}
 
 		signs[i] = sign
@@ -46,10 +46,10 @@ func recoverRandBeaconSig(shares map[Hash]*RandBeaconSigShare) (bls.Sign, error)
 	var sign bls.Sign
 	err := sign.Recover(signs, idVec)
 	if err != nil {
-		return bls.Sign{}, err
+		return nil, err
 	}
 
-	return sign, nil
+	return Sig(sign.Serialize()), nil
 }
 
 func randBeaconSigMsg(round uint64, lastSigHash Hash) []byte {
@@ -59,17 +59,16 @@ func randBeaconSigMsg(round uint64, lastSigHash Hash) []byte {
 	return rbs.Encode(false)
 }
 
-func signRandBeaconShare(sk, keyShare bls.SecretKey, round uint64, lastSigHash Hash) *RandBeaconSigShare {
+func signRandBeaconShare(sk, keyShare SK, round uint64, lastSigHash Hash) *RandBeaconSigShare {
 	msg := randBeaconSigMsg(round, lastSigHash)
-	share := keyShare.Sign(string(msg)).Serialize()
+	share := keyShare.Sign(msg)
 	s := &RandBeaconSigShare{
-		Owner:       SHA3(sk.GetPublicKey().Serialize()).Addr(),
+		Owner:       sk.MustPK().Addr(),
 		Round:       round,
 		LastSigHash: lastSigHash,
 		Share:       share,
 	}
 
-	sig := sk.Sign(string(s.Encode(false))).Serialize()
-	s.OwnerSig = sig
+	s.OwnerSig = sk.Sign(s.Encode(false))
 	return s
 }

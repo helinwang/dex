@@ -4,20 +4,18 @@ import (
 	"context"
 
 	log "github.com/helinwang/log15"
-
-	"github.com/dfinity/go-dfinity-crypto/bls"
 )
 
 // Notary notarizes blocks.
 type Notary struct {
 	owner Addr
-	sk    bls.SecretKey
-	share bls.SecretKey
+	sk    SK
+	share SK
 	chain *Chain
 }
 
 // NewNotary creates a new notary.
-func NewNotary(owner Addr, sk, share bls.SecretKey, chain *Chain) *Notary {
+func NewNotary(owner Addr, sk, share SK, chain *Chain) *Notary {
 	return &Notary{owner: owner, sk: sk, share: share, chain: chain}
 }
 
@@ -117,8 +115,8 @@ func (n *Notary) notarize(bp *BlockProposal) *NtShare {
 		StateRoot:     trans.StateHash(),
 	}
 
-	nts.SigShare = n.share.Sign(string(blk.Encode(false))).Serialize()
+	nts.SigShare = n.share.Sign(blk.Encode(false))
 	nts.Owner = n.owner
-	nts.Sig = n.sk.Sign(string(nts.Encode(false))).Serialize()
+	nts.Sig = n.sk.Sign(nts.Encode(false))
 	return nts
 }

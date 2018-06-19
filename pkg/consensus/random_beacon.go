@@ -103,14 +103,14 @@ func (r *RandomBeacon) AddRandBeaconSigShare(s *RandBeaconSigShare, groupID int)
 
 		// TODO: get last sig hash locally
 		msg := randBeaconSigMsg(s.Round, s.LastSigHash)
-		if !sig.Verify(&r.groups[groupID].PK, string(msg)) {
+		if !sig.Verify(r.groups[groupID].PK, msg) {
 			panic("impossible: random beacon group signature verification failed")
 		}
 
 		var rbs RandBeaconSig
 		rbs.Round = s.Round
 		rbs.LastSigHash = s.LastSigHash
-		rbs.Sig = sig.Serialize()
+		rbs.Sig = sig
 		return &rbs, true
 	}
 	return nil, true

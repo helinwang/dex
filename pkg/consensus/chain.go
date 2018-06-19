@@ -364,11 +364,11 @@ func (c *Chain) addNtShare(n *NtShare, groupID int) (*Block, bool) {
 		}
 
 		msg := b.Encode(false)
-		if !sig.Verify(&c.RandomBeacon.groups[groupID].PK, string(msg)) {
+		if !sig.Verify(c.RandomBeacon.groups[groupID].PK, msg) {
 			panic("impossible: group sig not valid")
 		}
 
-		b.NotarizationSig = sig.Serialize()
+		b.NotarizationSig = sig
 
 		delete(c.bpNeedNotarize, n.BP)
 		for _, share := range c.bpToNtShares[n.BP] {

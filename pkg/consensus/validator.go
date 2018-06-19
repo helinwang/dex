@@ -49,9 +49,8 @@ func (v *validator) ValidateBlock(b *Block) (float64, bool) {
 		return 0, false
 	}
 
-	msg := string(b.Encode(false))
 	_, _, nt := v.chain.RandomBeacon.Committees(b.Round)
-	success := sign.Verify(&v.chain.RandomBeacon.groups[nt].PK, msg)
+	success := b.NotarizationSig.Verify(v.chain.RandomBeacon.groups[nt].PK, b.Encode(false))
 	if !success {
 		log.Warn("validate block group sig failed", "group", nt, "block", b.Hash())
 		return 0, false
@@ -102,20 +101,13 @@ func (v *validator) ValidateBlockProposal(bp *BlockProposal) (float64, bool) {
 		return 0, false
 	}
 
-	var sign bls.Sign
-	err = sign.Deserialize(bp.OwnerSig)
-	if err != nil {
-		log.Error("error recover block proposal signature", "err", err)
-		return 0, false
-	}
-
 	pk, ok := v.chain.LastFinalizedSysState.addrToPK[bp.Owner]
 	if !ok {
 		log.Warn("block proposal owner not found", "owner", bp.Owner)
 		return 0, false
 	}
 
-	if !sign.Verify(&pk, string(bp.Encode(false))) {
+	if !bp.OwnerSig.Verify(pk, bp.Encode(false)) {
 		log.Warn("invalid block proposal signature", "block", bp.Hash())
 		return 0, false
 	}
@@ -135,20 +127,13 @@ func (v *validator) ValidateNtShare(n *NtShare) (int, bool) {
 		return 0, false
 	}
 
-	var sign bls.Sign
-	err := sign.Deserialize(n.Sig)
-	if err != nil {
-		log.Warn("valid nt sig error", "err", err)
-		return 0, false
-	}
-
 	pk, ok := v.chain.LastFinalizedSysState.addrToPK[n.Owner]
 	if !ok {
 		log.Warn("nt owner not found", "owner", n.Owner)
 		return 0, false
 	}
 
-	if !sign.Verify(&pk, string(n.Encode(false))) {
+	if !n.Sig.Verify(pk, n.Encode(false)) {
 		log.Warn("invalid nt signature", "nt", n.Hash())
 		return 0, false
 	}
@@ -211,34 +196,20 @@ func (v *validator) ValidateRandBeaconSigShare(r *RandBeaconSigShare) (int, bool
 		return 0, false
 	}
 
-	var sign bls.Sign
-	err := sign.Deserialize(r.OwnerSig)
-	if err != nil {
-		log.Warn("validate random beacon share sig error", "err", err)
-		return 0, false
-	}
-
 	pk, ok := v.chain.LastFinalizedSysState.addrToPK[r.Owner]
 	if !ok {
 		log.Warn("rancom beacon sig shareowner not found", "owner", r.Owner)
 		return 0, false
 	}
 
-	if !sign.Verify(&pk, string(r.Encode(false))) {
+	if !r.OwnerSig.Verify(pk, r.Encode(false)) {
 		log.Warn("invalid rand beacon share signature", "rand beacon share", r.Hash())
 		return 0, false
 	}
 
 	// TODO: validate share signature is valid.
-	var shareSign bls.Sign
-	err = shareSign.Deserialize(r.Share)
-	if err != nil {
-		log.Warn("decode random beacon sig share error", "err", err)
-		return 0, false
-	}
-
 	msg := randBeaconSigMsg(r.Round, r.LastSigHash)
-	if !shareSign.Verify(&sharePK, string(msg)) {
+	if !r.Share.Verify(sharePK, msg) {
 		log.Warn("validate random beacon sig share error")
 		return 0, false
 	}

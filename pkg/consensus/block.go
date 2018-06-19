@@ -48,7 +48,7 @@ type RandVal Hash
 type RandBeaconSig struct {
 	Round       uint64
 	LastSigHash Hash
-	Sig         []byte
+	Sig         Sig
 }
 
 // Encode encodes the random beacon signature.
@@ -76,8 +76,8 @@ type RandBeaconSigShare struct {
 	Owner       Addr
 	Round       uint64
 	LastSigHash Hash
-	Share       []byte
-	OwnerSig    []byte
+	Share       Sig
+	OwnerSig    Sig
 }
 
 // Encode encodes the random beacon signature share.
@@ -112,9 +112,9 @@ type NtShare struct {
 	Round    uint64
 	BP       Hash
 	Receipts Hash
-	SigShare []byte
+	SigShare Sig
 	Owner    Addr
-	Sig      Sign
+	Sig      Sig
 }
 
 // Encode encodes the notarization share.
@@ -146,7 +146,7 @@ type BlockProposal struct {
 	Owner     Addr
 	// The signature of the gob serialized BlockProposal with
 	// OwnerSig set to nil.
-	OwnerSig []byte
+	OwnerSig Sig
 }
 
 // Encode encodes the block proposal.
@@ -181,7 +181,7 @@ type Block struct {
 	SysTxns       []SysTxn
 	// The signature of the gob serialized block with
 	// NotarizationSig set to nil.
-	NotarizationSig []byte
+	NotarizationSig Sig
 	Receipts        Hash
 }
 

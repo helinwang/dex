@@ -4,15 +4,13 @@ import (
 	"bytes"
 	"encoding/gob"
 	"errors"
-
-	"github.com/dfinity/go-dfinity-crypto/bls"
 )
 
 // SysState is the system state, the system state can be changed by
 // the SysTxn of each block.
 type SysState struct {
-	nodeIDToPK map[int]bls.PublicKey
-	addrToPK   map[Addr]bls.PublicKey
+	nodeIDToPK map[int]PK
+	addrToPK   map[Addr]PK
 	idToGroup  map[int]*Group
 	groups     []*Group
 }
@@ -20,8 +18,8 @@ type SysState struct {
 // NewSysState creates a new system state.
 func NewSysState() *SysState {
 	return &SysState{
-		nodeIDToPK: make(map[int]bls.PublicKey),
-		addrToPK:   make(map[Addr]bls.PublicKey),
+		nodeIDToPK: make(map[int]PK),
+		addrToPK:   make(map[Addr]PK),
 		idToGroup:  make(map[int]*Group),
 	}
 }
@@ -81,43 +79,26 @@ func (s *SysState) Finalized() {
 }
 
 func (s *SysState) applyReadyJoinGroup(t ReadyJoinGroupTxn) error {
-	var pk bls.PublicKey
-	err := pk.Deserialize(t.PK)
-	if err != nil {
-		return err
-	}
-
-	addr := SHA3(pk.Serialize()).Addr()
-	s.nodeIDToPK[t.ID] = pk
-	s.addrToPK[addr] = pk
+	addr := t.PK.Addr()
+	s.nodeIDToPK[t.ID] = t.PK
+	s.addrToPK[addr] = t.PK
 	return nil
 }
 
 func (s *SysState) applyRegGroup(t RegGroupTxn) error {
-	var pk bls.PublicKey
-	err := pk.Deserialize(t.PK)
-	if err != nil {
-		return err
-	}
-
-	g := NewGroup(pk)
+	g := NewGroup(t.PK)
 	for _, id := range t.MemberIDs {
 		pk, ok := s.nodeIDToPK[id]
 		if !ok {
 			return errors.New("node not found")
 		}
 
-		addr := SHA3(pk.Serialize()).Addr()
+		addr := pk.Addr()
 		g.Members = append(g.Members, addr)
 	}
 
 	for i, addr := range g.Members {
-		pk, err := t.MemberVVec[i].Get()
-		if err != nil {
-			return err
-		}
-
-		g.MemberPK[addr] = pk
+		g.MemberPK[addr] = t.MemberVVec[i]
 	}
 
 	// TODO: parse vvec

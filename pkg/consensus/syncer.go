@@ -48,9 +48,9 @@ func newSyncer(v *validator, chain *Chain, requester requester) *syncer {
 }
 
 type requester interface {
-	requestBlock(ctx context.Context, addr unicastAddr, hash Hash) (*Block, error)
-	requestBlockProposal(ctx context.Context, addr unicastAddr, hash Hash) (*BlockProposal, error)
-	requestRandBeaconSig(ctx context.Context, addr unicastAddr, round uint64) (*RandBeaconSig, error)
+	RequestBlock(ctx context.Context, addr unicastAddr, hash Hash) (*Block, error)
+	RequestBlockProposal(ctx context.Context, addr unicastAddr, hash Hash) (*BlockProposal, error)
+	RequestRandBeaconSig(ctx context.Context, addr unicastAddr, round uint64) (*RandBeaconSig, error)
 }
 
 var errCanNotConnectToChain = errors.New("can not connect to chain")
@@ -80,7 +80,7 @@ func (s *syncer) SyncRandBeaconSig(addr unicastAddr, round uint64) (bool, error)
 	for s.chain.RandomBeacon.Round() < round {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 		defer cancel()
-		sig, err := s.requester.requestRandBeaconSig(ctx, addr, round)
+		sig, err := s.requester.RequestRandBeaconSig(ctx, addr, round)
 		if err != nil {
 			return false, err
 		}
@@ -130,14 +130,14 @@ func (s *syncer) syncBlockAndConnectToChain(addr unicastAddr, hash Hash, round u
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
 
-	b, err := s.requester.requestBlock(ctx, addr, hash)
+	b, err := s.requester.RequestBlock(ctx, addr, hash)
 	if err != nil {
 		return nil, err
 	}
 
 	bpCh := make(chan bpResult, 1)
 	go func() {
-		bp, err := s.requester.requestBlockProposal(ctx, addr, b.BlockProposal)
+		bp, err := s.requester.RequestBlockProposal(ctx, addr, b.BlockProposal)
 		bpCh <- bpResult{BP: bp, E: err}
 	}()
 

@@ -27,7 +27,7 @@ type SysTxn struct {
 // notary committe group.
 type ReadyJoinGroupTxn struct {
 	ID    int
-	PK    []byte
+	PK    PK
 	Proof []byte
 }
 
