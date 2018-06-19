@@ -283,7 +283,7 @@ func findPrevBlock(prevBlock Hash, ns []*notarized) (*notarized, int) {
 }
 
 func (c *Chain) addBP(bp *BlockProposal, weight float64) (bool, error) {
-	log.Info("addBP called", "hash", bp.Hash(), "weight", weight)
+	log.Debug("add block proposal to chain", "hash", bp.Hash(), "weight", weight)
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	h := bp.Hash()
@@ -313,7 +313,7 @@ func (c *Chain) addBP(bp *BlockProposal, weight float64) (bool, error) {
 }
 
 func (c *Chain) addNtShare(n *NtShare, groupID int) (b *Block, added, success bool) {
-	log.Info("addNtShare called", "hash", n.Hash(), "group", groupID)
+	log.Debug("add notarization share to chain", "hash", n.Hash(), "group", groupID)
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -430,7 +430,7 @@ func (c *Chain) blockToState(h Hash) State {
 
 func (c *Chain) addBlock(b *Block, bp *BlockProposal, s State, weight float64) (bool, error) {
 	// TODO: remove txn from the txn pool
-	log.Info("addBlock called", "hash", b.Hash(), "weight", weight)
+	log.Debug("add block to chain", "hash", b.Hash(), "weight", weight)
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	beginRound := c.round()

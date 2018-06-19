@@ -24,14 +24,12 @@ const (
 // if valid
 // 5. validate BP, then connect to the chain if validate
 type syncer struct {
-	v         *validator
 	chain     *Chain
 	requester requester
 }
 
-func newSyncer(v *validator, chain *Chain, requester requester) *syncer {
+func newSyncer(chain *Chain, requester requester) *syncer {
 	return &syncer{
-		v:         v,
 		chain:     chain,
 		requester: requester,
 	}
@@ -108,7 +106,7 @@ func (s *syncer) SyncBlock(addr unicastAddr, hash Hash, round uint64) (b *Block,
 	}
 
 	state = trans.Commit()
-	_, err = s.chain.addBlock(b, bp, state, weight)
+	broadcast, err = s.chain.addBlock(b, bp, state, weight)
 	if err != nil {
 		return
 	}

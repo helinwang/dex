@@ -103,7 +103,7 @@ func newGateway(net *network, chain *Chain) *gateway {
 		bpWaiters:          make(map[Hash][]chan *BlockProposal),
 	}
 
-	n.syncer = newSyncer(n.v, chain, n)
+	n.syncer = newSyncer(chain, n)
 	return n
 }
 
@@ -367,7 +367,6 @@ func (n *gateway) recvBlockProposal(addr unicastAddr, bp *BlockProposal) {
 }
 
 func (n *gateway) recvNtShare(addr unicastAddr, s *NtShare) {
-	log.Info("recv nt share", "hash", s.Hash())
 	round := n.chain.Round()
 	if s.Round < round {
 		return
@@ -414,12 +413,10 @@ func (n *gateway) recvInventory(addr unicastAddr, item Item) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 
-	log.Debug("recv inventory", "inventory", item)
-
 	switch item.T {
 	case txnItem:
 		if n.chain.TxnPool.NotSeen(item.Hash) {
-			log.Info("request TxnItem", "item", item)
+			log.Debug("request TxnItem", "item", item.Hash)
 			n.requestItem(addr, item)
 		}
 	case sysTxnItem:
@@ -429,21 +426,21 @@ func (n *gateway) recvInventory(addr unicastAddr, item Item) {
 			return
 		}
 
-		log.Info("request BlockItem", "item", item)
+		log.Debug("request BlockItem", "item", item.Hash)
 		n.requestItem(addr, item)
 	case blockProposalItem:
 		if bp := n.chain.BlockProposal(item.Hash); bp != nil {
 			return
 		}
 
-		log.Info("request BlockProposalItem", "item", item)
+		log.Debug("request BlockProposalItem", "item", item.Hash)
 		n.requestItem(addr, item)
 	case ntShareItem:
 		if nt := n.chain.NtShare(item.Hash); nt != nil {
 			return
 		}
 
-		log.Info("request NtShareItem", "item", item)
+		log.Debug("request NtShareItem", "item", item.Hash)
 		n.requestItem(addr, item)
 	case randBeaconSigShareItem:
 		if n.chain.RandomBeacon.Round()+1 != item.Round {
@@ -455,11 +452,11 @@ func (n *gateway) recvInventory(addr unicastAddr, item Item) {
 			return
 		}
 
-		log.Info("request RandBeaconShareItem", "item", item)
+		log.Debug("request RandBeaconShareItem", "item", item.Round)
 		n.requestItem(addr, item)
 	case randBeaconSigItem:
 		if n.chain.RandomBeacon.Round() < item.Round {
-			log.Info("request randBeaconSigItem", "item", item)
+			log.Debug("request randBeaconSigItem", "item", item.Round)
 			n.requestItem(addr, item)
 		}
 	}
@@ -472,7 +469,7 @@ func (n *gateway) serveData(addr unicastAddr, item Item) {
 	case txnItem:
 		txn := n.chain.TxnPool.Get(item.Hash)
 		if txn != nil {
-			log.Info("serving TxnItem", "item", item, "addr", addr.Addr)
+			log.Debug("serving TxnItem", "item", item.Hash, "addr", addr.Addr)
 			go n.net.Send(addr, packet{Data: txn})
 		}
 	case sysTxnItem:
@@ -483,7 +480,7 @@ func (n *gateway) serveData(addr unicastAddr, item Item) {
 			return
 		}
 
-		log.Info("serving BlockItem", "item", item, "addr", addr.Addr)
+		log.Debug("serving BlockItem", "item", item.Hash, "addr", addr.Addr)
 		go n.net.Send(addr, packet{Data: b})
 	case blockProposalItem:
 		bp := n.chain.BlockProposal(item.Hash)
@@ -491,7 +488,7 @@ func (n *gateway) serveData(addr unicastAddr, item Item) {
 			return
 		}
 
-		log.Info("serving BlockProposalItem", "item", item, "addr", addr.Addr)
+		log.Debug("serving BlockProposalItem", "item", item.Hash, "addr", addr.Addr)
 		go n.net.Send(addr, packet{Data: bp})
 	case ntShareItem:
 		nts := n.chain.NtShare(item.Hash)
@@ -499,7 +496,7 @@ func (n *gateway) serveData(addr unicastAddr, item Item) {
 			return
 		}
 
-		log.Info("serving NtShareItem", "item", item, "addr", addr.Addr)
+		log.Debug("serving NtShareItem", "item", item.Hash, "addr", addr.Addr)
 		go n.net.Send(addr, packet{Data: nts})
 	case randBeaconSigShareItem:
 		share := n.chain.RandomBeacon.GetShare(item.Hash)
@@ -507,7 +504,7 @@ func (n *gateway) serveData(addr unicastAddr, item Item) {
 			return
 		}
 
-		log.Info("serving RandBeaconShareItem", "item", item, "addr", addr.Addr)
+		log.Debug("serving RandBeaconShareItem", "round", item.Round, "addr", addr.Addr)
 		go n.net.Send(addr, packet{Data: share})
 	case randBeaconSigItem:
 		history := n.chain.RandomBeacon.History()
@@ -516,7 +513,7 @@ func (n *gateway) serveData(addr unicastAddr, item Item) {
 		}
 
 		r := history[item.Round]
-		log.Info("serving RandBeaconItem", "item", item, "addr", addr.Addr)
+		log.Debug("serving RandBeaconItem", "round", item.Round, "addr", addr.Addr)
 		go n.net.Send(addr, packet{Data: r})
 	}
 }

@@ -84,7 +84,7 @@ func (n *Node) StartRound(round uint64) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 
-	log.Debug("start round", "round", round, "addr", n.addr)
+	log.Info("start round", "round", round, "rand beacon", SHA3(n.chain.RandomBeacon.History()[round].Sig))
 
 	var ntCancelCtx context.Context
 	_, bp, nt := n.chain.RandomBeacon.Committees(round)
@@ -92,7 +92,7 @@ func (n *Node) StartRound(round uint64) {
 		if m.groupID == bp {
 			bp := n.chain.ProposeBlock(n.sk)
 			go func() {
-				log.Debug("proposing block", "addr", n.addr, "round", bp.Round, "hash", bp.Hash())
+				log.Debug("proposing block", "owner", n.addr, "round", bp.Round, "hash", bp.Hash())
 				n.net.recvBlockProposal(n.net.addr, bp)
 			}()
 		}
@@ -124,7 +124,7 @@ func (n *Node) EndRound(round uint64) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 
-	log.Debug("end round", "round", round, "addr", n.addr)
+	log.Info("end round", "round", round)
 
 	n.notarizeChs = nil
 	if n.cancelNotarize != nil {
