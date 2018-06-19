@@ -3,7 +3,6 @@ package consensus
 import (
 	"math"
 
-	"github.com/dfinity/go-dfinity-crypto/bls"
 	log "github.com/helinwang/log15"
 )
 
@@ -39,13 +38,6 @@ func (v *validator) ValidateBlock(b *Block) (float64, bool) {
 
 	if prev.Round != b.Round-1 {
 		log.Warn("ValidateBlock: prev block round is not block round - 1", "prev round", prev.Round, "round", b.Round)
-		return 0, false
-	}
-
-	var sign bls.Sign
-	err := sign.Deserialize(b.NotarizationSig)
-	if err != nil {
-		log.Warn("validate block sig error", "err", err)
 		return 0, false
 	}
 
@@ -93,22 +85,9 @@ func (v *validator) ValidateNtShare(n *NtShare) (int, bool) {
 }
 
 func (v *validator) ValidateRandBeaconSigShare(r *RandBeaconSigShare) (int, bool) {
-	if r.Round == 0 {
-		log.Error("received RandBeaconSig of 0 round, should not happen")
-		return 0, false
-	}
-
 	round := v.chain.RandomBeacon.Round()
 	if round == r.Round {
 		panic(r.Round)
-	}
-
-	v.chain.RandomBeacon.WaitUntil(r.Round - 1)
-
-	round = v.chain.RandomBeacon.Round()
-	if r.Round <= round {
-		log.Debug("received RandBeaconSigShare of lower or same round", "round", r.Round, "target depth", round)
-		return 0, false
 	}
 
 	if h := SHA3(v.chain.RandomBeacon.sigHistory[r.Round-1].Sig); h != r.LastSigHash {
@@ -135,7 +114,8 @@ func (v *validator) ValidateRandBeaconSigShare(r *RandBeaconSigShare) (int, bool
 		return 0, false
 	}
 
-	// TODO: validate share signature is valid.
+	// TODO: validate share signature is valid according to the
+	// member group public key share
 	msg := randBeaconSigMsg(r.Round, r.LastSigHash)
 	if !r.Share.Verify(sharePK, msg) {
 		log.Warn("validate random beacon sig share error")

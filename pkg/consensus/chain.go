@@ -10,7 +10,9 @@ import (
 	log "github.com/helinwang/log15"
 )
 
-var errChainDataAlreadyExists = errors.New("chain data already exists")
+const (
+	sysTxnNotImplemented = "system transaction not implemented, will be implemented when open participation is necessary, however the DEX is fully functional"
+)
 
 type unNotarized struct {
 	BP     Hash
@@ -280,20 +282,20 @@ func findPrevBlock(prevBlock Hash, ns []*notarized) (*notarized, int) {
 	return nil, 0
 }
 
-func (c *Chain) addBP(bp *BlockProposal, weight float64) error {
+func (c *Chain) addBP(bp *BlockProposal, weight float64) (bool, error) {
 	log.Info("addBP called", "hash", bp.Hash(), "weight", weight)
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	h := bp.Hash()
 
 	if _, ok := c.hashToBP[h]; ok {
-		return errChainDataAlreadyExists
+		return false, nil
 	}
 
 	notarized, _ := findPrevBlock(bp.PrevBlock, c.Fork)
 	if notarized == nil {
 		if c.Finalized[len(c.Finalized)-1] != bp.PrevBlock {
-			return fmt.Errorf("block proposal's parent not found: %x, round: %d", bp.PrevBlock, bp.Round)
+			return false, fmt.Errorf("block proposal's parent not found: %x, round: %d", bp.PrevBlock, bp.Round)
 		}
 	}
 
@@ -307,10 +309,10 @@ func (c *Chain) addBP(bp *BlockProposal, weight float64) error {
 	}
 	c.bpNeedNotarize[h] = true
 	go c.n.RecvBlockProposal(bp)
-	return nil
+	return true, nil
 }
 
-func (c *Chain) addNtShare(n *NtShare, groupID int) (*Block, bool) {
+func (c *Chain) addNtShare(n *NtShare, groupID int) (b *Block, added, success bool) {
 	log.Info("addNtShare called", "hash", n.Hash(), "group", groupID)
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -318,21 +320,26 @@ func (c *Chain) addNtShare(n *NtShare, groupID int) (*Block, bool) {
 	bp, ok := c.hashToBP[n.BP]
 	if !ok {
 		log.Warn("add nt share but block proposal not found")
-		return nil, false
+		success = false
+		return
 	}
 
 	if !c.bpNeedNotarize[n.BP] {
-		return nil, true
+		success = true
+		return
 	}
 
 	for _, s := range c.bpToNtShares[n.BP] {
 		if s.Owner == n.Owner {
 			log.Warn("notarization share from the owner already received")
-			return nil, true
+			success = true
+			return
 		}
 	}
 
 	c.bpToNtShares[n.BP] = append(c.bpToNtShares[n.BP], n)
+	added = true
+	success = true
 
 	if len(c.bpToNtShares[n.BP]) >= c.cfg.GroupThreshold {
 		sig, err := recoverNtSig(c.bpToNtShares[n.BP])
@@ -353,8 +360,7 @@ func (c *Chain) addNtShare(n *NtShare, groupID int) (*Block, bool) {
 
 		// TODO: make sure the fields (except signature and
 		// owner) of all nt shares are same
-
-		b := &Block{
+		b = &Block{
 			Owner:         bp.Owner,
 			Round:         bp.Round,
 			BlockProposal: bp.Hash(),
@@ -375,11 +381,11 @@ func (c *Chain) addNtShare(n *NtShare, groupID int) (*Block, bool) {
 			delete(c.hashToNtShare, share.Hash())
 		}
 		delete(c.bpToNtShares, n.BP)
-		return b, true
+		return
 	}
 
 	c.hashToNtShare[n.Hash()] = n
-	return nil, true
+	return
 }
 
 func getTransition(state State, txnData []byte, round uint64) (trans Transition, err error) {
@@ -422,7 +428,7 @@ func (c *Chain) blockToState(h Hash) State {
 	return c.unFinalizedState[h]
 }
 
-func (c *Chain) addBlock(b *Block, bp *BlockProposal, s State, weight float64) error {
+func (c *Chain) addBlock(b *Block, bp *BlockProposal, s State, weight float64) (bool, error) {
 	// TODO: remove txn from the txn pool
 	log.Info("addBlock called", "hash", b.Hash(), "weight", weight)
 	c.mu.Lock()
@@ -431,7 +437,7 @@ func (c *Chain) addBlock(b *Block, bp *BlockProposal, s State, weight float64) e
 
 	h := b.Hash()
 	if _, ok := c.hashToBlock[h]; ok {
-		return errChainDataAlreadyExists
+		return false, nil
 	}
 
 	nt := &notarized{Block: h, Weight: weight, BP: b.BlockProposal}
@@ -487,11 +493,10 @@ func (c *Chain) addBlock(b *Block, bp *BlockProposal, s State, weight float64) e
 	_, leaderState, _ := c.leader()
 	go c.updater.Update(leaderState)
 
-	fmt.Println("**", round, b.Round)
 	if beginRound == b.Round && beginRound+1 == round {
 		go c.n.EndRound(beginRound)
 	}
-	return nil
+	return true, nil
 }
 
 // must be called with mutex held

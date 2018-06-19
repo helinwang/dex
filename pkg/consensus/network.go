@@ -146,6 +146,20 @@ func (n *network) Start(host string, port int) (unicastAddr, error) {
 	return unicastAddr{Addr: addr, PKStr: string(n.sk.MustPK())}, nil
 }
 
+func dedup(nodes []unicastAddr) []unicastAddr {
+	m := make(map[string]bool)
+	r := make([]unicastAddr, 0, len(nodes))
+	for _, n := range nodes {
+		if m[n.PKStr] {
+			continue
+		}
+
+		m[n.PKStr] = true
+		r = append(r, n)
+	}
+	return r
+}
+
 func (n *network) ConnectSeed(addr string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), timeoutDur)
 	pk, nodes, err := n.getAddrsFromSeed(ctx, addr)
@@ -160,6 +174,7 @@ func (n *network) ConnectSeed(addr string) error {
 	} else if len(nodes) == 1 && nodes[0].PKStr == myPKStr {
 		nodes = append(nodes, unicastAddr{PKStr: string(pk), Addr: addr})
 	}
+	nodes = dedup(nodes)
 	perm := rand.Perm(len(nodes))
 
 	log.Info("received nodes", "count", len(nodes))

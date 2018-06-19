@@ -250,8 +250,6 @@ func (n *gateway) recvData() {
 	}
 }
 
-// TODO: don't broadcast when syncing.
-
 func (n *gateway) broadcast(item Item) {
 	n.net.Send(broadcast{}, packet{Data: item})
 }
@@ -264,7 +262,7 @@ func (n *gateway) recvTxn(t []byte) {
 }
 
 func (n *gateway) recvSysTxn(t *SysTxn) {
-	panic("not implemented")
+	panic(sysTxnNotImplemented)
 }
 
 func (n *gateway) recvRandBeaconSig(addr unicastAddr, r *RandBeaconSig) {
@@ -273,13 +271,8 @@ func (n *gateway) recvRandBeaconSig(addr unicastAddr, r *RandBeaconSig) {
 		return
 	}
 
-	n.chain.RandomBeacon.WaitUntil(r.Round - 1)
-	round := n.chain.RandomBeacon.Round()
-	if round > r.Round {
-		return
-	}
-
 	n.randBeaconSigCache.Add(r.Round, r)
+
 	n.mu.Lock()
 	for _, ch := range n.rbSigWaiters[r.Round] {
 		ch <- r
@@ -293,19 +286,28 @@ func (n *gateway) recvRandBeaconSig(addr unicastAddr, r *RandBeaconSig) {
 		return
 	}
 
+	// TODO: validate by checking group signature
+
 	if broadcast {
 		go n.broadcast(Item{T: randBeaconSigItem, Round: r.Round})
 	}
 }
 
 func (n *gateway) recvRandBeaconSigShare(addr unicastAddr, r *RandBeaconSigShare) {
+	if r.Round == 0 {
+		log.Error("received RandBeaconSigShare of 0 round, should not happen")
+		return
+	}
+
+	n.chain.RandomBeacon.WaitUntil(r.Round - 1)
+
 	groupID, valid := n.v.ValidateRandBeaconSigShare(r)
 
 	if !valid {
 		return
 	}
 
-	sig, success := n.chain.RandomBeacon.AddRandBeaconSigShare(r, groupID)
+	sig, broadcast, success := n.chain.RandomBeacon.AddRandBeaconSigShare(r, groupID)
 	if !success {
 		return
 	}
@@ -315,18 +317,12 @@ func (n *gateway) recvRandBeaconSigShare(addr unicastAddr, r *RandBeaconSigShare
 		return
 	}
 
-	go n.broadcast(Item{T: randBeaconSigShareItem, Round: r.Round, Hash: r.Hash()})
+	if broadcast {
+		go n.broadcast(Item{T: randBeaconSigShareItem, Round: r.Round, Hash: r.Hash()})
+	}
 }
 
 func (n *gateway) recvBlock(addr unicastAddr, b *Block) {
-	// TODO: if not able to validate block, wait until random
-	// beacon syncer finished the corresponding round.
-	_, valid := n.v.ValidateBlock(b)
-
-	if !valid {
-		return
-	}
-
 	h := b.Hash()
 	n.blockCache.Add(h, b)
 
@@ -337,13 +333,15 @@ func (n *gateway) recvBlock(addr unicastAddr, b *Block) {
 	n.blockWaiters[h] = nil
 	n.mu.Unlock()
 
-	_, err := n.syncer.SyncBlock(addr, h, b.Round)
+	_, broadcast, err := n.syncer.SyncBlock(addr, h, b.Round)
 	if err != nil {
 		log.Warn("sync block error", "err", err)
 		return
 	}
 
-	go n.broadcast(Item{T: blockItem, Hash: b.Hash()})
+	if broadcast {
+		go n.broadcast(Item{T: blockItem, Hash: b.Hash()})
+	}
 }
 
 func (n *gateway) recvBlockProposal(addr unicastAddr, bp *BlockProposal) {
@@ -357,13 +355,15 @@ func (n *gateway) recvBlockProposal(addr unicastAddr, bp *BlockProposal) {
 	n.bpWaiters[h] = nil
 	n.mu.Unlock()
 
-	_, err := n.syncer.SyncBlockProposal(addr, h)
+	_, broadcast, err := n.syncer.SyncBlockProposal(addr, h)
 	if err != nil {
 		log.Warn("sync block proposal error", "err", err)
 		return
 	}
 
-	go n.broadcast(Item{T: blockProposalItem, Hash: bp.Hash()})
+	if broadcast {
+		go n.broadcast(Item{T: blockProposalItem, Hash: bp.Hash()})
+	}
 }
 
 func (n *gateway) recvNtShare(addr unicastAddr, s *NtShare) {
@@ -373,15 +373,11 @@ func (n *gateway) recvNtShare(addr unicastAddr, s *NtShare) {
 		return
 	}
 
-	if s.Round > round {
-		n.chain.RandomBeacon.WaitUntil(s.Round)
-	}
-
 	if nts := n.chain.NtShare(s.Hash()); nts != nil {
 		return
 	}
 
-	bp, err := n.syncer.SyncBlockProposal(addr, s.BP)
+	bp, _, err := n.syncer.SyncBlockProposal(addr, s.BP)
 	if err != nil {
 		log.Error("error sync block proposal for nt share", "err", err)
 		return
@@ -397,7 +393,7 @@ func (n *gateway) recvNtShare(addr unicastAddr, s *NtShare) {
 		return
 	}
 
-	b, success := n.chain.addNtShare(s, groupID)
+	b, broadcast, success := n.chain.addNtShare(s, groupID)
 	if !success {
 		return
 	}
@@ -407,8 +403,9 @@ func (n *gateway) recvNtShare(addr unicastAddr, s *NtShare) {
 		return
 	}
 
-	// TODO: use multicast rather than broadcast
-	go n.broadcast(Item{T: ntShareItem, Hash: s.Hash()})
+	if broadcast {
+		go n.broadcast(Item{T: ntShareItem, Hash: s.Hash()})
+	}
 }
 
 // TODO: fix lint
@@ -417,7 +414,7 @@ func (n *gateway) recvInventory(addr unicastAddr, item Item) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 
-	log.Info("recv inventory", "inventory", item)
+	log.Debug("recv inventory", "inventory", item)
 
 	switch item.T {
 	case txnItem:
@@ -426,7 +423,7 @@ func (n *gateway) recvInventory(addr unicastAddr, item Item) {
 			n.requestItem(addr, item)
 		}
 	case sysTxnItem:
-		panic("not implemented")
+		panic(sysTxnNotImplemented)
 	case blockItem:
 		if b := n.chain.Block(item.Hash); b != nil {
 			return
@@ -440,10 +437,8 @@ func (n *gateway) recvInventory(addr unicastAddr, item Item) {
 		}
 
 		log.Info("request BlockProposalItem", "item", item)
-		// TODO: replace n.requestItem with syncer.Sync
 		n.requestItem(addr, item)
 	case ntShareItem:
-		// TODO: move all existance check to syncer.
 		if nt := n.chain.NtShare(item.Hash); nt != nil {
 			return
 		}
@@ -463,7 +458,10 @@ func (n *gateway) recvInventory(addr unicastAddr, item Item) {
 		log.Info("request RandBeaconShareItem", "item", item)
 		n.requestItem(addr, item)
 	case randBeaconSigItem:
-		go n.syncer.SyncRandBeaconSig(addr, item.Round)
+		if n.chain.RandomBeacon.Round() < item.Round {
+			log.Info("request randBeaconSigItem", "item", item)
+			n.requestItem(addr, item)
+		}
 	}
 }
 
@@ -474,18 +472,18 @@ func (n *gateway) serveData(addr unicastAddr, item Item) {
 	case txnItem:
 		txn := n.chain.TxnPool.Get(item.Hash)
 		if txn != nil {
-			log.Info("serving TxnItem", "item", item)
+			log.Info("serving TxnItem", "item", item, "addr", addr.Addr)
 			go n.net.Send(addr, packet{Data: txn})
 		}
 	case sysTxnItem:
-		panic("not implemented")
+		panic(sysTxnNotImplemented)
 	case blockItem:
 		b := n.chain.Block(item.Hash)
 		if b == nil {
 			return
 		}
 
-		log.Info("serving BlockItem", "item", item)
+		log.Info("serving BlockItem", "item", item, "addr", addr.Addr)
 		go n.net.Send(addr, packet{Data: b})
 	case blockProposalItem:
 		bp := n.chain.BlockProposal(item.Hash)
@@ -493,7 +491,7 @@ func (n *gateway) serveData(addr unicastAddr, item Item) {
 			return
 		}
 
-		log.Info("serving BlockProposalItem", "item", item)
+		log.Info("serving BlockProposalItem", "item", item, "addr", addr.Addr)
 		go n.net.Send(addr, packet{Data: bp})
 	case ntShareItem:
 		nts := n.chain.NtShare(item.Hash)
@@ -501,7 +499,7 @@ func (n *gateway) serveData(addr unicastAddr, item Item) {
 			return
 		}
 
-		log.Info("serving NtShareItem", "item", item)
+		log.Info("serving NtShareItem", "item", item, "addr", addr.Addr)
 		go n.net.Send(addr, packet{Data: nts})
 	case randBeaconSigShareItem:
 		share := n.chain.RandomBeacon.GetShare(item.Hash)
@@ -509,12 +507,16 @@ func (n *gateway) serveData(addr unicastAddr, item Item) {
 			return
 		}
 
-		log.Info("serving RandBeaconShareItem", "item", item)
+		log.Info("serving RandBeaconShareItem", "item", item, "addr", addr.Addr)
 		go n.net.Send(addr, packet{Data: share})
 	case randBeaconSigItem:
 		history := n.chain.RandomBeacon.History()
+		if item.Round >= uint64(len(history)) {
+			return
+		}
+
 		r := history[item.Round]
-		log.Info("serving RandBeaconItem", "item", item)
+		log.Info("serving RandBeaconItem", "item", item, "addr", addr.Addr)
 		go n.net.Send(addr, packet{Data: r})
 	}
 }

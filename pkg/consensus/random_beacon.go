@@ -74,7 +74,7 @@ func (r *RandomBeacon) GetShare(h Hash) *RandBeaconSigShare {
 
 // AddRandBeaconSigShare receives one share of the random beacon
 // signature.
-func (r *RandomBeacon) AddRandBeaconSigShare(s *RandBeaconSigShare, groupID int) (*RandBeaconSig, bool) {
+func (r *RandomBeacon) AddRandBeaconSigShare(s *RandBeaconSigShare, groupID int) (ret *RandBeaconSig, added, success bool) {
 	log.Info("AddRandBeaconSigShare", "groupID", groupID, "hash", s.Hash())
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -82,23 +82,26 @@ func (r *RandomBeacon) AddRandBeaconSigShare(s *RandBeaconSigShare, groupID int)
 	if round := r.round(); round+1 != s.Round {
 		if s.Round >= round+1 {
 			log.Warn("failed to add RandBeaconSigShare that has bigger round than round + 1", "round", s.Round, "round", round)
-			return nil, false
+			return
 		}
 
 		log.Debug("skipped the RandBeaconSigShare that has smaller round than round", "round", s.Round, "round", round)
-		return nil, true
+		return
 	}
 
 	if _, ok := r.curRoundShares[s.Hash()]; ok {
-		return nil, false
+		success = true
+		return
 	}
 
+	added = true
+	success = true
 	r.curRoundShares[s.Hash()] = s
 	if len(r.curRoundShares) >= r.cfg.GroupThreshold {
 		sig, err := recoverRandBeaconSig(r.curRoundShares)
 		if err != nil {
 			log.Error("fatal: recoverRandBeaconSig error", "err", err)
-			return nil, false
+			return
 		}
 
 		// TODO: get last sig hash locally
@@ -111,9 +114,11 @@ func (r *RandomBeacon) AddRandBeaconSigShare(s *RandBeaconSigShare, groupID int)
 		rbs.Round = s.Round
 		rbs.LastSigHash = s.LastSigHash
 		rbs.Sig = sig
-		return &rbs, true
+		ret = &rbs
+		return
 	}
-	return nil, true
+
+	return
 }
 
 // AddRandBeaconSig adds the random beacon signature.

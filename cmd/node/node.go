@@ -33,7 +33,7 @@ func decodeFromFile(path string, v interface{}) {
 
 func createNode(c consensus.NodeCredentials, genesis *consensus.Block, nativeCoinOwnerPK consensus.PK, u consensus.Updater) *consensus.Node {
 	cfg := consensus.Config{
-		BlockTime:      200 * time.Millisecond,
+		BlockTime:      time.Second,
 		GroupSize:      3,
 		GroupThreshold: 2,
 	}

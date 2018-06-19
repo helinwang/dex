@@ -4,10 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sync"
 	"time"
+)
 
-	log "github.com/helinwang/log15"
+const (
+	requestTimeout = time.Minute
 )
 
 // syncer downloads blocks and block proposals, validates them
@@ -23,10 +24,9 @@ import (
 // if valid
 // 5. validate BP, then connect to the chain if validate
 type syncer struct {
-	v                *validator
-	chain            *Chain
-	requester        requester
-	syncRandBeaconMu sync.Mutex
+	v         *validator
+	chain     *Chain
+	requester requester
 }
 
 func newSyncer(v *validator, chain *Chain, requester requester) *syncer {
@@ -45,81 +45,146 @@ type requester interface {
 
 var errCanNotConnectToChain = errors.New("can not connect to chain")
 
-func (s *syncer) SyncBlock(addr unicastAddr, hash Hash, round uint64) (*Block, error) {
-	b, _, err := s.syncBlockAndConnectToChain(addr, hash, round)
-	return b, err
-}
-
-func (s *syncer) SyncBlockProposal(addr unicastAddr, hash Hash) (*BlockProposal, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
-	defer cancel()
-
-	if bp := s.chain.BlockProposal(hash); bp != nil {
-		return bp, nil
+func (s *syncer) SyncBlock(addr unicastAddr, hash Hash, round uint64) (b *Block, broadcast bool, err error) {
+	b = s.chain.Block(hash)
+	if b != nil {
+		// already connected to the chain
+		return
 	}
 
-	bp, err := s.requester.RequestBlockProposal(ctx, addr, hash)
+	if round <= s.chain.FinalizedRound() {
+		err = errCanNotConnectToChain
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
+	b, err = s.requester.RequestBlock(ctx, addr, hash)
+	cancel()
 	if err != nil {
-		return nil, err
+		return
+	}
+
+	bp, _, err := s.SyncBlockProposal(addr, b.BlockProposal)
+	if err != nil {
+		return
+	}
+
+	var weight float64
+	s.chain.RandomBeacon.WaitUntil(b.Round)
+	prev := s.chain.Block(b.PrevBlock)
+	if prev == nil {
+		err = errors.New("impossible: prev block not found")
+		return
+	}
+
+	if prev.Round != b.Round-1 {
+		err = fmt.Errorf("invalid block, prev round: %d, cur round: %d", prev.Round, b.Round)
+		return
+	}
+
+	_, _, nt := s.chain.RandomBeacon.Committees(b.Round)
+	success := b.NotarizationSig.Verify(s.chain.RandomBeacon.groups[nt].PK, b.Encode(false))
+	if !success {
+		err = fmt.Errorf("validate block group sig failed, group:%d", nt)
+		return
+	}
+
+	rank, err := s.chain.RandomBeacon.Rank(b.Owner, b.Round)
+	if err != nil {
+		err = fmt.Errorf("error get rank, but group sig is valid: %v", err)
+		return
+	}
+	weight = rankToWeight(rank)
+
+	state := s.chain.BlockToState(b.PrevBlock)
+	trans, err := getTransition(state, bp.Data, bp.Round)
+	if err != nil {
+		return
+	}
+
+	if trans.StateHash() != b.StateRoot {
+		err = errors.New("invalid state root")
+		return
+	}
+
+	state = trans.Commit()
+	_, err = s.chain.addBlock(b, bp, state, weight)
+	if err != nil {
+		return
+	}
+
+	return
+}
+
+func (s *syncer) SyncBlockProposal(addr unicastAddr, hash Hash) (bp *BlockProposal, broadcast bool, err error) {
+	if bp = s.chain.BlockProposal(hash); bp != nil {
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
+	bp, err = s.requester.RequestBlockProposal(ctx, addr, hash)
+	cancel()
+	if err != nil {
+		return
 	}
 
 	var prev *Block
 	if bp.Round == 1 {
 		if bp.PrevBlock != s.chain.Genesis() {
-			return nil, errCanNotConnectToChain
+			err = errCanNotConnectToChain
+			return
 		}
 		prev = s.chain.Block(s.chain.Genesis())
 	} else {
-		prev, err = s.SyncBlock(addr, bp.PrevBlock, bp.Round-1)
+		prev, _, err = s.SyncBlock(addr, bp.PrevBlock, bp.Round-1)
 		if err != nil {
-			return nil, err
+			return
 		}
 	}
 
 	s.chain.RandomBeacon.WaitUntil(bp.Round)
 
 	if prev.Round != bp.Round-1 {
-		return nil, errors.New("prev block round is not block proposal round - 1")
+		err = errors.New("prev block round is not block proposal round - 1")
+		return
 	}
 
 	rank, err := s.chain.RandomBeacon.Rank(bp.Owner, bp.Round)
 	if err != nil {
-		return nil, err
+		return
 	}
 
 	pk, ok := s.chain.LastFinalizedSysState.addrToPK[bp.Owner]
 	if !ok {
-		return nil, errors.New("block proposal owner not found")
+		err = errors.New("block proposal owner not found")
+		return
 	}
 
 	if !bp.OwnerSig.Verify(pk, bp.Encode(false)) {
-		return nil, errors.New("invalid block proposal signature")
+		err = errors.New("invalid block proposal signature")
+		return
 	}
 
 	if bp.Round == s.chain.Round() {
-		err = s.chain.addBP(bp, rankToWeight(rank))
-		if err != nil && err != errChainDataAlreadyExists {
+		broadcast, err = s.chain.addBP(bp, rankToWeight(rank))
+		if err != nil {
 			panic(err)
 		}
 	}
 
-	return bp, nil
+	return
 }
 
 func (s *syncer) SyncRandBeaconSig(addr unicastAddr, round uint64) (bool, error) {
-	log.Info("SyncRandBeaconSig", "round", round)
 	if s.chain.RandomBeacon.Round() > round {
 		return false, nil
 	}
 
-	s.syncRandBeaconMu.Lock()
-	defer s.syncRandBeaconMu.Unlock()
-
 	var sigs []*RandBeaconSig
 	for s.chain.RandomBeacon.Round() < round {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
-		defer cancel()
+		ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
 		sig, err := s.requester.RequestRandBeaconSig(ctx, addr, round)
+		cancel()
 		if err != nil {
 			return false, err
 		}
@@ -140,88 +205,6 @@ func (s *syncer) SyncRandBeaconSig(addr unicastAddr, round uint64) (bool, error)
 	}
 
 	return true, nil
-}
-
-type tradesResult struct {
-	T *TrieBlob
-	E error
-}
-
-type bpResult struct {
-	BP *BlockProposal
-	E  error
-}
-
-func (s *syncer) syncBlockAndConnectToChain(addr unicastAddr, hash Hash, round uint64) (*Block, State, error) {
-	// TODO: validate block, get weight
-	// TODO: prevent syncing the same block concurrently
-
-	b := s.chain.Block(hash)
-	if b != nil {
-		// already connected to the chain
-		return b, s.chain.BlockToState(hash), nil
-	}
-
-	if round <= s.chain.FinalizedRound() {
-		return nil, nil, errCanNotConnectToChain
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
-	defer cancel()
-
-	b, err := s.requester.RequestBlock(ctx, addr, hash)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	bpCh := make(chan bpResult, 1)
-	go func() {
-		bp, err := s.requester.RequestBlockProposal(ctx, addr, b.BlockProposal)
-		bpCh <- bpResult{BP: bp, E: err}
-	}()
-
-	var state State
-
-	if round == 1 {
-		if b.PrevBlock != s.chain.Genesis() {
-			return nil, nil, errCanNotConnectToChain
-		}
-
-		state = s.chain.BlockToState(b.PrevBlock)
-	} else {
-		_, state, err = s.syncBlockAndConnectToChain(addr, b.PrevBlock, round-1)
-		if err != nil {
-			return nil, nil, err
-		}
-	}
-
-	bpr := <-bpCh
-	if bpr.E != nil {
-		return nil, nil, bpr.E
-	}
-
-	bp := bpr.BP
-	trans, err := getTransition(state, bp.Data, bp.Round)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	if trans.StateHash() != b.StateRoot {
-		return nil, nil, errors.New("invalid state root")
-	}
-
-	err = s.chain.addBP(bp, 0)
-	if err != nil && err != errChainDataAlreadyExists {
-		log.Error("syncer: add block proposal error", "err", err)
-	}
-
-	state = trans.Commit()
-	err = s.chain.addBlock(b, bp, state, 0)
-	if err != nil {
-		log.Error("syncer: add block error", "err", err)
-	}
-
-	return b, state, nil
 }
 
 /*
