@@ -148,7 +148,7 @@ func (n *Node) EndRound(round uint64) {
 		go func() {
 			history := n.chain.RandomBeacon.History()
 			lastSigHash := SHA3(history[round].Sig)
-			s := signRandBeaconShare(n.sk, keyShare, round+1, lastSigHash)
+			s := signRandBeaconSigShare(n.sk, keyShare, round+1, lastSigHash)
 			n.net.recvRandBeaconSigShare(n.net.addr, s)
 		}()
 	}

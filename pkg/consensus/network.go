@@ -366,7 +366,7 @@ func (n *network) Send(addr netAddr, p packet) error {
 		conn, ok := n.conns[v]
 		n.mu.Unlock()
 		if !ok {
-			log.Warn("sending to unknown address", "addr", addr)
+			log.Warn("sending to unknown address", "addr", v.Addr)
 			return errors.New("can not find the send address")
 		}
 

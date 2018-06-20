@@ -452,7 +452,7 @@ func (n *gateway) recvInventory(addr unicastAddr, item Item) {
 			return
 		}
 
-		log.Debug("request RandBeaconShareItem", "item", item.Round)
+		log.Debug("request RandBeaconSigShareItem", "item", item.Round)
 		n.requestItem(addr, item)
 	case randBeaconSigItem:
 		if n.chain.RandomBeacon.Round() < item.Round {
@@ -504,7 +504,7 @@ func (n *gateway) serveData(addr unicastAddr, item Item) {
 			return
 		}
 
-		log.Debug("serving RandBeaconShareItem", "round", item.Round, "addr", addr.Addr)
+		log.Debug("serving RandBeaconSigShareItem", "round", item.Round, "addr", addr.Addr)
 		go n.net.Send(addr, packet{Data: share})
 	case randBeaconSigItem:
 		history := n.chain.RandomBeacon.History()
@@ -513,7 +513,7 @@ func (n *gateway) serveData(addr unicastAddr, item Item) {
 		}
 
 		r := history[item.Round]
-		log.Debug("serving RandBeaconItem", "round", item.Round, "addr", addr.Addr)
+		log.Debug("serving RandBeaconSigItem", "round", item.Round, "addr", addr.Addr)
 		go n.net.Send(addr, packet{Data: r})
 	}
 }

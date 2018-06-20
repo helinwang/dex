@@ -59,7 +59,7 @@ func randBeaconSigMsg(round uint64, lastSigHash Hash) []byte {
 	return rbs.Encode(false)
 }
 
-func signRandBeaconShare(sk, keyShare SK, round uint64, lastSigHash Hash) *RandBeaconSigShare {
+func signRandBeaconSigShare(sk, keyShare SK, round uint64, lastSigHash Hash) *RandBeaconSigShare {
 	msg := randBeaconSigMsg(round, lastSigHash)
 	share := keyShare.Sign(msg)
 	s := &RandBeaconSigShare{

@@ -196,7 +196,7 @@ func (s *syncer) SyncRandBeaconSig(addr unicastAddr, round uint64) (bool, error)
 
 	for i := len(sigs) - 1; i >= 0; i-- {
 		sig := sigs[i]
-		success := s.chain.RandomBeacon.AddRandBeaconSig(sig)
+		success := s.chain.RandomBeacon.AddRandBeaconSig(sig, i == 0)
 		if !success {
 			return false, fmt.Errorf("failed to add rand beacon sig, round: %d, hash: %v", sig.Round, sig.Hash())
 		}

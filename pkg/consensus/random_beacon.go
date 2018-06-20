@@ -80,12 +80,7 @@ func (r *RandomBeacon) AddRandBeaconSigShare(s *RandBeaconSigShare, groupID int)
 	defer r.mu.Unlock()
 
 	if round := r.round(); round+1 != s.Round {
-		if s.Round >= round+1 {
-			log.Warn("failed to add RandBeaconSigShare that has bigger round than round + 1", "round", s.Round, "round", round)
-			return
-		}
-
-		log.Debug("skipped the RandBeaconSigShare that has smaller round than round", "round", s.Round, "round", round)
+		log.Debug("skipped the RandBeaconSigShare of different round than expected", "round", s.Round, "expected", round+1)
 		return
 	}
 
@@ -122,7 +117,7 @@ func (r *RandomBeacon) AddRandBeaconSigShare(s *RandBeaconSigShare, groupID int)
 }
 
 // AddRandBeaconSig adds the random beacon signature.
-func (r *RandomBeacon) AddRandBeaconSig(s *RandBeaconSig) bool {
+func (r *RandomBeacon) AddRandBeaconSig(s *RandBeaconSig, syncDone bool) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -148,7 +143,10 @@ func (r *RandomBeacon) AddRandBeaconSig(s *RandBeaconSig) bool {
 		close(ch)
 		delete(r.roundWaitCh, round)
 	}
-	go r.n.StartRound(round)
+
+	if syncDone {
+		go r.n.StartRound(round)
+	}
 	return true
 }
 
