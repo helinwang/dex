@@ -60,6 +60,10 @@ func TestStateSerialize(t *testing.T) {
 	}
 
 	var s0 State
-	s0.Deserialize(b)
+	err = s0.Deserialize(b)
+	if err != nil {
+		panic(err)
+	}
+
 	assert.Equal(t, []Token{nativeToken, token0, token1}, s0.Tokens())
 }

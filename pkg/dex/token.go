@@ -25,29 +25,18 @@ type TokenCache struct {
 	exists   map[TokenSymbol]bool
 }
 
-// TODO: when syncing, fill token cache from the state trie.
-func newTokenCache() *TokenCache {
-	return &TokenCache{
+func newTokenCache(s *State) *TokenCache {
+	c := &TokenCache{
 		idToInfo: make(map[TokenID]*TokenInfo),
 		exists:   make(map[TokenSymbol]bool),
 	}
-}
 
-func (t *TokenCache) Clone() *TokenCache {
-	idToInfo := make(map[TokenID]*TokenInfo)
-	for k, v := range t.idToInfo {
-		// v is a TokenInfo, which is immutable
-		idToInfo[k] = v
+	tokens := s.Tokens()
+	for _, t := range tokens {
+		c.idToInfo[t.ID] = &t.TokenInfo
+		c.exists[t.Symbol] = true
 	}
-	exists := make(map[TokenSymbol]bool)
-	for k, v := range t.exists {
-		exists[k] = v
-	}
-
-	return &TokenCache{
-		idToInfo: idToInfo,
-		exists:   exists,
-	}
+	return c
 }
 
 func (t *TokenCache) Exists(s TokenSymbol) bool {

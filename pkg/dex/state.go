@@ -46,9 +46,8 @@ func (m *MarketSymbol) Decode(b []byte) error {
 
 // State is the state of the DEX.
 type State struct {
-	tokenCache *TokenCache
-	state      *trie.Trie
-	db         *trie.Database
+	state *trie.Trie
+	db    *trie.Database
 }
 
 // TODO: add receipt for create, send, freeze, burn token.
@@ -66,9 +65,8 @@ func NewState(db *trie.Database) *State {
 	}
 
 	s := &State{
-		db:         db,
-		tokenCache: newTokenCache(),
-		state:      t,
+		db:    db,
+		state: t,
 	}
 
 	return s
@@ -247,7 +245,6 @@ func (s *State) Deserialize(b *consensus.TrieBlob) error {
 
 	s.state = t
 	s.db = db
-	s.tokenCache = newTokenCache()
 	return nil
 }
 
@@ -281,9 +278,8 @@ func (s *State) Transition(round uint64) consensus.Transition {
 	}
 
 	state := &State{
-		db:         s.db,
-		tokenCache: s.tokenCache.Clone(),
-		state:      trie,
+		db:    s.db,
+		state: trie,
 	}
 	return newTransition(state, round)
 }

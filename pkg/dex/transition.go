@@ -22,6 +22,7 @@ type Transition struct {
 	state           *State
 	orderBooks      map[MarketSymbol]*orderBook
 	dirtyOrderBooks map[MarketSymbol]bool
+	tokenCache      *TokenCache
 }
 
 func newTransition(s *State, round uint64) *Transition {
@@ -31,6 +32,7 @@ func newTransition(s *State, round uint64) *Transition {
 		expirations:     make(map[uint64][]orderExpiration),
 		orderBooks:      make(map[MarketSymbol]*orderBook),
 		dirtyOrderBooks: make(map[MarketSymbol]bool),
+		tokenCache:      newTokenCache(s),
 	}
 }
 
@@ -186,8 +188,8 @@ func (t *Transition) refundAfterCancel(owner *Account, cancel PendingOrder, mark
 		pendingQuant = cancel.Quant
 	} else {
 		token = market.Quote
-		quoteInfo := t.state.tokenCache.idToInfo[market.Quote]
-		baseInfo := t.state.tokenCache.idToInfo[market.Base]
+		quoteInfo := t.tokenCache.idToInfo[market.Quote]
+		baseInfo := t.tokenCache.idToInfo[market.Base]
 		pendingQuant = calcBaseSellQuant(cancel.Quant, quoteInfo.Decimals, cancel.Price, OrderPriceDecimals, baseInfo.Decimals)
 	}
 
@@ -210,13 +212,13 @@ func (t *Transition) placeOrder(owner *Account, txn PlaceOrderTxn, round uint64)
 		return false
 	}
 
-	baseInfo := t.state.tokenCache.Info(txn.Market.Base)
+	baseInfo := t.tokenCache.Info(txn.Market.Base)
 	if baseInfo == nil {
 		log.Error("trying to place order on nonexistent token", "token", txn.Market.Base)
 		return false
 	}
 
-	quoteInfo := t.state.tokenCache.Info(txn.Market.Quote)
+	quoteInfo := t.tokenCache.Info(txn.Market.Quote)
 	if quoteInfo == nil {
 		log.Error("trying to place order on nonexistent token", "token", txn.Market.Quote)
 		return false
@@ -369,7 +371,7 @@ func (t *Transition) placeOrder(owner *Account, txn PlaceOrderTxn, round uint64)
 }
 
 func (t *Transition) issueToken(owner *Account, txn IssueTokenTxn) bool {
-	if t.state.tokenCache.Exists(txn.Info.Symbol) {
+	if t.tokenCache.Exists(txn.Info.Symbol) {
 		log.Warn("token symbol already exists", "symbol", txn.Info.Symbol)
 		return false
 	}
@@ -382,7 +384,7 @@ func (t *Transition) issueToken(owner *Account, txn IssueTokenTxn) bool {
 	}
 
 	// TODO: fiture out how to pay fee.
-	id := TokenID(t.state.tokenCache.Size() + len(t.tokenCreations))
+	id := TokenID(t.tokenCache.Size() + len(t.tokenCreations))
 	token := Token{ID: id, TokenInfo: txn.Info}
 	t.tokenCreations = append(t.tokenCreations, token)
 	t.state.UpdateToken(token)
@@ -609,7 +611,7 @@ func (t *Transition) Commit() consensus.State {
 	t.finalizeState(t.round)
 	t.state.Commit()
 	for _, v := range t.tokenCreations {
-		t.state.tokenCache.Update(v.ID, &v.TokenInfo)
+		t.tokenCache.Update(v.ID, &v.TokenInfo)
 	}
 
 	return t.state

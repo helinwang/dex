@@ -128,7 +128,7 @@ func (r *RPCServer) tokens(_ int, t *TokenState) error {
 		return errors.New("waiting for reaching consensus")
 	}
 
-	t.Tokens = r.s.tokenCache.Tokens()
+	t.Tokens = r.s.Tokens()
 	return nil
 }
 
