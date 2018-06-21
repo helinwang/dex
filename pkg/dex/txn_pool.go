@@ -7,15 +7,13 @@ import (
 )
 
 type TxnPool struct {
-	mu    sync.Mutex
-	state *State
-	txns  map[consensus.Hash][]byte
+	mu   sync.Mutex
+	txns map[consensus.Hash][]byte
 }
 
-func NewTxnPool(state *State) *TxnPool {
+func NewTxnPool() *TxnPool {
 	return &TxnPool{
-		state: state,
-		txns:  make(map[consensus.Hash][]byte),
+		txns: make(map[consensus.Hash][]byte),
 	}
 }
 
@@ -25,11 +23,6 @@ func (t *TxnPool) Add(b []byte) (boardcast bool) {
 
 	hash := consensus.SHA3(b)
 	if t.txns[hash] != nil {
-		return false
-	}
-
-	_, _, _, valid := validateSigAndNonce(t.state, b)
-	if !valid {
 		return false
 	}
 

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/gob"
 
-	"github.com/dfinity/go-dfinity-crypto/bls"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/helinwang/dex/pkg/consensus"
 	log "github.com/helinwang/log15"
@@ -31,7 +30,7 @@ type Txn struct {
 	Owner      consensus.Addr
 	NonceIdx   uint8
 	NonceValue uint64
-	Sig        []byte
+	Sig        consensus.Sig
 }
 
 func validateSigAndNonce(state *State, b []byte) (txn *Txn, acc *Account, ready, valid bool) {
@@ -48,23 +47,7 @@ func validateSigAndNonce(state *State, b []byte) (txn *Txn, acc *Account, ready,
 		return
 	}
 
-	var pk bls.PublicKey
-	err = pk.Deserialize(acc.PK)
-	if err != nil {
-		log.Error("invalid account PK", "account", txn.Owner)
-		return
-	}
-
-	// TODO: add helper that deserialize sign which handles crash
-	// on nil.
-	var sign bls.Sign
-	err = sign.Deserialize(txn.Sig)
-	if err != nil {
-		log.Warn("txn signature deserialize failed", "err", err)
-		return
-	}
-
-	if !sign.Verify(&pk, string(txn.Encode(false))) {
+	if !txn.Sig.Verify(acc.PK, txn.Encode(false)) {
 		log.Warn("invalid txn signature")
 		return
 	}

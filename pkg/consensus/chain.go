@@ -36,7 +36,7 @@ type ChainStatus struct {
 }
 
 func (s *ChainStatus) InSync() bool {
-	return s.RandBeaconDepth >= s.Round && s.RandBeaconDepth <= s.Round+1
+	return s.Round >= s.RandBeaconDepth && s.Round <= s.RandBeaconDepth+1
 }
 
 // Chain is the blockchain.
