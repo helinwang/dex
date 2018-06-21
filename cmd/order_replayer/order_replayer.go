@@ -10,7 +10,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/dfinity/go-dfinity-crypto/bls"
 	"github.com/helinwang/dex/pkg/consensus"
 	"github.com/helinwang/dex/pkg/dex"
 )
@@ -36,11 +35,6 @@ func nonce(client *rpc.Client, addr consensus.Addr) (uint8, uint64, error) {
 }
 
 func main() {
-	err := bls.Init(int(bls.CurveFp254BNb))
-	if err != nil {
-		panic(err)
-	}
-
 	credentialPath := flag.String("c", "", "path to the node credential file")
 	orderPath := flag.String("order", "", "path to the order file to replay")
 	addr := flag.String("addr", ":12001", "node's wallet RPC endpoint")

@@ -12,7 +12,6 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"github.com/dfinity/go-dfinity-crypto/bls"
 	"github.com/helinwang/dex/pkg/consensus"
 	"github.com/helinwang/dex/pkg/dex"
 	"github.com/urfave/cli"
@@ -616,11 +615,6 @@ func placeOrder(c *cli.Context) error {
 }
 
 func main() {
-	err := bls.Init(int(bls.CurveFp254BNb))
-	if err != nil {
-		panic(err)
-	}
-
 	app := cli.NewApp()
 	app.Name = "DEX wallet"
 	app.Usage = ""

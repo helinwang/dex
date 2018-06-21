@@ -5,16 +5,10 @@ import (
 	"flag"
 	"fmt"
 
-	"github.com/dfinity/go-dfinity-crypto/bls"
 	"github.com/helinwang/dex/pkg/consensus"
 )
 
 func main() {
-	err := bls.Init(int(bls.CurveFp254BNb))
-	if err != nil {
-		panic(err)
-	}
-
 	c := flag.String("c", "", "path to the node credential file")
 	flag.Parse()
 

@@ -41,11 +41,6 @@ func makeShares(t int, idVec []bls.ID, rand consensus.Rand) (bls.PublicKey, []bl
 }
 
 func main() {
-	err := bls.Init(int(bls.CurveFp254BNb))
-	if err != nil {
-		panic(err)
-	}
-
 	var numNode int
 	var numGroup int
 	var groupSize int

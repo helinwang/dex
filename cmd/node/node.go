@@ -9,7 +9,6 @@ import (
 	"math/rand"
 	"time"
 
-	"github.com/dfinity/go-dfinity-crypto/bls"
 	"github.com/ethereum/go-ethereum/ethdb"
 
 	"github.com/ethereum/go-ethereum/trie"
@@ -47,11 +46,6 @@ func createNode(c consensus.NodeCredentials, genesis *consensus.Block, nativeCoi
 func main() {
 	rand.Seed(time.Now().UnixNano())
 	// log15.Root().SetHandler(log15.LvlFilterHandler(log15.LvlWarn, log15.StdoutHandler))
-	err := bls.Init(int(bls.CurveFp254BNb))
-	if err != nil {
-		panic(err)
-	}
-
 	nativeCoinOwnerPK := flag.String("genesis-coin-owner-pk", "", "base64 encoded pre-mined native coin owner PK at the genesis")
 	c := flag.String("c", "", "path to the node credential file")
 	host := flag.String("host", "127.0.0.1", "node address to listen connection on")

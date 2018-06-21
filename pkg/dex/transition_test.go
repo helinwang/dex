@@ -10,10 +10,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func init() {
-	bls.Init(int(bls.CurveFp254BNb))
-}
-
 func createAccount(s *State, quant uint64) (consensus.SK, consensus.Addr) {
 	var acc Account
 	var sk bls.SecretKey
