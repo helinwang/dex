@@ -2,6 +2,12 @@ package consensus
 
 import "github.com/dfinity/go-dfinity-crypto/bls"
 
+func RandSK() SK {
+	var sk bls.SecretKey
+	sk.SetByCSPRNG()
+	return SK(sk.GetLittleEndian())
+}
+
 // PK is a serialized public key.
 type PK []byte
 

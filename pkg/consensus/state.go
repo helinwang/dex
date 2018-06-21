@@ -20,6 +20,8 @@ type Transition interface {
 type State interface {
 	Hash() Hash
 	Transition(round uint64) Transition
+	Serialize() (*TrieBlob, error)
+	Deserialize(*TrieBlob) error
 }
 
 // TxnPool is the pool that stores the received transactions.

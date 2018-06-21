@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
 	"github.com/helinwang/dex/pkg/consensus"
@@ -122,15 +123,6 @@ func encodePath(str []byte) []byte {
 	return nibbles
 }
 
-func decodePath(b []byte) []byte {
-	n := len(b) / 2
-	r := make([]byte, n)
-	for i := 0; i < 2*n; i += 2 {
-		r[i/2] = b[i]*16 + b[i+1]
-	}
-	return r
-}
-
 func (s *State) UpdateToken(token Token) {
 	path := tokenPath(token.ID)
 
@@ -196,18 +188,18 @@ func (s *State) saveOrderBook(m MarketSymbol, book *orderBook) {
 	s.state.Update(path, b)
 }
 
-// Markets returns the trading markets.
-func (s *State) Markets() []MarketSymbol {
-	prefix := marketPath(nil)
-	prefix = encodePath(prefix)
+// Tokens returns all issued tokens
+func (s *State) Tokens() []Token {
+	prefix := encodePath(tokenPrefix)
 	iter := s.state.NodeIterator(prefix)
 
-	var r []MarketSymbol
+	var r []Token
 	hasNext := true
 	foundPrefix := false
+
 	for ; hasNext; hasNext = iter.Next(true) {
 		if err := iter.Error(); err != nil {
-			log.Error("error iterating pending orders trie", "err", err)
+			log.Error("error iterating state trie's tokens", "err", err)
 			break
 		}
 
@@ -225,22 +217,42 @@ func (s *State) Markets() []MarketSymbol {
 		}
 		foundPrefix = true
 
-		// extract the encodedMarket from the trie path
-		marketBytes := decodePath(path[len(prefix):])
-		// last byte is the shard index, remove
-		marketBytes = marketBytes[:len(marketBytes)-1]
-		var m MarketSymbol
-		err := m.Decode(marketBytes)
+		var token Token
+		err := rlp.DecodeBytes(iter.LeafBlob(), &token)
 		if err != nil {
 			panic(err)
 		}
-		r = append(r, m)
+
+		r = append(r, token)
 	}
 	return r
 }
 
+func (s *State) Serialize() (*consensus.TrieBlob, error) {
+	return serializeTrie(s.state, s.db, s.db.DiskDB())
+}
+
+func (s *State) Deserialize(b *consensus.TrieBlob) error {
+	memDB := ethdb.NewMemDatabase()
+	err := b.Fill(memDB)
+	if err != nil {
+		return err
+	}
+
+	db := trie.NewDatabase(memDB)
+	t, err := trie.New(common.Hash(b.Root), db)
+	if err != nil {
+		return err
+	}
+
+	s.state = t
+	s.db = db
+	s.tokenCache = newTokenCache()
+	return nil
+}
+
 // IssueNativeToken issues the native token, it is only called in
-// during the chain creation.
+// during the genesis block creation.
 func (s *State) IssueNativeToken(owner consensus.PK) consensus.State {
 	issueTokenTxn := IssueTokenTxn{Info: BNBInfo}
 	trans := s.Transition(0).(*Transition)
