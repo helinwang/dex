@@ -17,14 +17,14 @@ func getMasterSecretKey(sk bls.SecretKey, k int, rand consensus.Rand) ([]bls.Sec
 	msk := make([]bls.SecretKey, k)
 	msk[0] = sk
 	for i := 1; i < k; i++ {
-		msk[i] = rand.SK()
+		msk[i] = rand.SK().MustGet()
 		rand = rand.Derive(rand[:])
 	}
 	return msk, rand
 }
 
 func makeShares(t int, idVec []bls.ID, rand consensus.Rand) (bls.PublicKey, []bls.SecretKey, consensus.Rand) {
-	sk := rand.SK()
+	sk := rand.SK().MustGet()
 	rand = rand.Derive(rand[:])
 
 	msk, rand := getMasterSecretKey(sk, t, rand)
@@ -59,23 +59,23 @@ func main() {
 	rand := consensus.Rand(consensus.SHA3([]byte(seed)))
 	nodeDir := path.Join(outDir, "nodes")
 
-	err = os.MkdirAll(nodeDir, os.ModePerm)
+	err := os.MkdirAll(nodeDir, os.ModePerm)
 	if err != nil {
 		panic(err)
 	}
 
 	var sysTxns []consensus.SysTxn
-	nodePKs := make([]bls.PublicKey, numNode)
+	nodePKs := make([]consensus.PK, numNode)
 	nodes := make([]consensus.NodeCredentials, numNode)
 	for i := 0; i < numNode; i++ {
 		sk := rand.SK()
-		nodePKs[i] = *sk.GetPublicKey()
-		nodes[i].SK = sk.GetLittleEndian()
+		nodePKs[i] = sk.MustPK()
+		nodes[i].SK = sk
 		rand = rand.Derive(rand[:])
 
 		txn := consensus.ReadyJoinGroupTxn{
 			ID: i,
-			PK: nodePKs[i].Serialize(),
+			PK: nodePKs[i],
 		}
 		sysTxns = append(sysTxns, consensus.SysTxn{
 			Type: consensus.ReadyJoinGroup,
@@ -90,7 +90,7 @@ func main() {
 		idVec := make([]bls.ID, groupSize)
 		for i := range idVec {
 			pk := nodePKs[perm[i]]
-			idVec[i] = consensus.SHA3(pk.Serialize()).Addr().ID()
+			idVec[i] = pk.Addr().ID()
 		}
 		var groupPK bls.PublicKey
 		var shares []bls.SecretKey
