@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 )
 
@@ -26,13 +27,38 @@ const (
 type syncer struct {
 	chain     *Chain
 	requester requester
+
+	mu               sync.Mutex
+	pendingSyncBlock map[Hash][]chan syncBlockResult
+	pendingSyncBP    map[Hash][]chan syncBPResult
+	pendingSyncRB    map[uint64][]chan syncRBResult
 }
 
 func newSyncer(chain *Chain, requester requester) *syncer {
 	return &syncer{
-		chain:     chain,
-		requester: requester,
+		chain:            chain,
+		requester:        requester,
+		pendingSyncBlock: make(map[Hash][]chan syncBlockResult),
+		pendingSyncBP:    make(map[Hash][]chan syncBPResult),
+		pendingSyncRB:    make(map[uint64][]chan syncRBResult),
 	}
+}
+
+type syncBlockResult struct {
+	b         *Block
+	broadcast bool
+	err       error
+}
+
+type syncBPResult struct {
+	bp        *BlockProposal
+	broadcast bool
+	err       error
+}
+
+type syncRBResult struct {
+	broadcast bool
+	err       error
 }
 
 type requester interface {
@@ -44,6 +70,30 @@ type requester interface {
 var errCanNotConnectToChain = errors.New("can not connect to chain")
 
 func (s *syncer) SyncBlock(addr unicastAddr, hash Hash, round uint64) (b *Block, broadcast bool, err error) {
+	s.mu.Lock()
+	chs := s.pendingSyncBlock[hash]
+	ch := make(chan syncBlockResult, 1)
+	chs = append(chs, ch)
+	s.pendingSyncBlock[hash] = chs
+	if len(chs) == 1 {
+		go func() {
+			b, broadcast, err := s.syncBlock(addr, hash, round)
+			result := syncBlockResult{b: b, broadcast: broadcast, err: err}
+			s.mu.Lock()
+			for _, ch := range s.pendingSyncBlock[hash] {
+				ch <- result
+			}
+			delete(s.pendingSyncBlock, hash)
+			s.mu.Unlock()
+		}()
+	}
+	s.mu.Unlock()
+
+	r := <-ch
+	return r.b, r.broadcast, r.err
+}
+
+func (s *syncer) syncBlock(addr unicastAddr, hash Hash, round uint64) (b *Block, broadcast bool, err error) {
 	b = s.chain.Block(hash)
 	if b != nil {
 		// already connected to the chain
@@ -115,6 +165,30 @@ func (s *syncer) SyncBlock(addr unicastAddr, hash Hash, round uint64) (b *Block,
 }
 
 func (s *syncer) SyncBlockProposal(addr unicastAddr, hash Hash) (bp *BlockProposal, broadcast bool, err error) {
+	s.mu.Lock()
+	chs := s.pendingSyncBP[hash]
+	ch := make(chan syncBPResult, 1)
+	chs = append(chs, ch)
+	s.pendingSyncBP[hash] = chs
+	if len(chs) == 1 {
+		go func() {
+			bp, broadcast, err := s.syncBlockProposal(addr, hash)
+			result := syncBPResult{bp: bp, broadcast: broadcast, err: err}
+			s.mu.Lock()
+			for _, ch := range s.pendingSyncBP[hash] {
+				ch <- result
+			}
+			delete(s.pendingSyncBP, hash)
+			s.mu.Unlock()
+		}()
+	}
+	s.mu.Unlock()
+
+	r := <-ch
+	return r.bp, r.broadcast, r.err
+}
+
+func (s *syncer) syncBlockProposal(addr unicastAddr, hash Hash) (bp *BlockProposal, broadcast bool, err error) {
 	if bp = s.chain.BlockProposal(hash); bp != nil {
 		return
 	}
@@ -174,32 +248,56 @@ func (s *syncer) SyncBlockProposal(addr unicastAddr, hash Hash) (bp *BlockPropos
 }
 
 func (s *syncer) SyncRandBeaconSig(addr unicastAddr, round uint64) (bool, error) {
-	if s.chain.RandomBeacon.Round() > round {
+	return s.syncRandBeaconSig(addr, round, true)
+}
+
+func (s *syncer) syncRandBeaconSig(addr unicastAddr, round uint64, syncDone bool) (bool, error) {
+	s.mu.Lock()
+	chs := s.pendingSyncRB[round]
+	ch := make(chan syncRBResult, 1)
+	chs = append(chs, ch)
+	s.pendingSyncRB[round] = chs
+	if len(chs) == 1 {
+		go func() {
+			broadcast, err := s.syncRandBeaconSigImpl(addr, round, syncDone)
+			result := syncRBResult{broadcast: broadcast, err: err}
+			s.mu.Lock()
+			for _, ch := range s.pendingSyncRB[round] {
+				ch <- result
+			}
+			delete(s.pendingSyncRB, round)
+			s.mu.Unlock()
+		}()
+	}
+	s.mu.Unlock()
+
+	r := <-ch
+	return r.broadcast, r.err
+}
+
+func (s *syncer) syncRandBeaconSigImpl(addr unicastAddr, round uint64, syncDone bool) (bool, error) {
+	if s.chain.RandomBeacon.Round() >= round {
 		return false, nil
 	}
 
-	var sigs []*RandBeaconSig
-	for s.chain.RandomBeacon.Round() < round {
-		ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
-		sig, err := s.requester.RequestRandBeaconSig(ctx, addr, round)
-		cancel()
+	if s.chain.RandomBeacon.Round()+1 < round {
+		_, err := s.syncRandBeaconSig(addr, round-1, false)
 		if err != nil {
 			return false, err
 		}
-		sigs = append(sigs, sig)
-		if sig.Round > 0 {
-			round = sig.Round - 1
-		} else {
-			panic("syncing rand beacon sig of 0 round, should never happen")
-		}
 	}
 
-	for i := len(sigs) - 1; i >= 0; i-- {
-		sig := sigs[i]
-		success := s.chain.RandomBeacon.AddRandBeaconSig(sig, i == 0)
-		if !success {
-			return false, fmt.Errorf("failed to add rand beacon sig, round: %d, hash: %v", sig.Round, sig.Hash())
-		}
+	ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
+	sig, err := s.requester.RequestRandBeaconSig(ctx, addr, round)
+	cancel()
+	if err != nil {
+		return false, err
+	}
+
+	success := s.chain.RandomBeacon.AddRandBeaconSig(sig, syncDone)
+	if !success {
+		return false, fmt.Errorf("failed to add rand beacon sig, round: %d, hash: %v", sig.Round, sig.Hash())
+
 	}
 
 	return true, nil

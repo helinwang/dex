@@ -86,10 +86,6 @@ func (v *validator) ValidateNtShare(n *NtShare) (int, bool) {
 
 func (v *validator) ValidateRandBeaconSigShare(r *RandBeaconSigShare) (int, bool) {
 	round := v.chain.RandomBeacon.Round()
-	if round == r.Round {
-		panic(r.Round)
-	}
-
 	if h := SHA3(v.chain.RandomBeacon.sigHistory[r.Round-1].Sig); h != r.LastSigHash {
 		log.Warn("validate random beacon share last sig error", "hash", r.LastSigHash, "expected", h)
 		return 0, false

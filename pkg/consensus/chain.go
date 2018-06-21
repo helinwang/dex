@@ -500,13 +500,6 @@ func (c *Chain) addBlock(b *Block, bp *BlockProposal, s State, weight float64) (
 }
 
 // must be called with mutex held
-func (c *Chain) releaseBPs(s []*unNotarized) {
-	for _, e := range s {
-		delete(c.hashToBP, e.BP)
-	}
-}
-
-// must be called with mutex held
 func (c *Chain) finalize(round uint64) {
 	depth := round
 	var count uint64
@@ -517,7 +510,8 @@ func (c *Chain) finalize(round uint64) {
 
 	depth -= count
 
-	c.releaseBPs(c.UnNotarizedNotOnFork)
+	// TODO: release finalized from memory, since its persisted on
+	// disk, peers can still ask for them.
 	c.UnNotarizedNotOnFork = nil
 
 	if depth == 0 {
