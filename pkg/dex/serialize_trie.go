@@ -9,7 +9,7 @@ type getter interface {
 	Get(key []byte) ([]byte, error)
 }
 
-func serializeTrie(t *trie.Trie, db *trie.Database, getter getter) (blob *consensus.TrieBlob, err error) {
+func serializeTrie(t *trie.Trie, db *trie.Database, getter getter) (blob consensus.TrieBlob, err error) {
 	root, err := t.Commit(nil)
 	if err != nil {
 		return
@@ -26,7 +26,7 @@ func serializeTrie(t *trie.Trie, db *trie.Database, getter getter) (blob *consen
 		return
 	}
 
-	blob = &consensus.TrieBlob{Data: make(map[consensus.Hash][]byte)}
+	blob = consensus.TrieBlob{Data: make(map[consensus.Hash][]byte)}
 	hasNext := true
 	for ; hasNext; hasNext = iter.Next(true) {
 		if iter.Error() != nil {

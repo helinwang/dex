@@ -2,15 +2,18 @@ package main
 
 import (
 	"bytes"
-	"encoding/base64"
 	"encoding/gob"
 	"flag"
 	"fmt"
+	"io/ioutil"
+	"log"
 	"os"
 	"path"
+	"strings"
 
 	"github.com/dfinity/go-dfinity-crypto/bls"
 	"github.com/helinwang/dex/pkg/consensus"
+	"github.com/helinwang/dex/pkg/dex"
 )
 
 func getMasterSecretKey(sk bls.SecretKey, k int, rand consensus.Rand) ([]bls.SecretKey, consensus.Rand) {
@@ -40,6 +43,42 @@ func makeShares(t int, idVec []bls.ID, rand consensus.Rand) (bls.PublicKey, []bl
 	return *sk.GetPublicKey(), skShares, rand
 }
 
+func loadCredentials(dir string) ([]consensus.PK, error) {
+	var r []consensus.PK
+	files, err := ioutil.ReadDir(dir)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for _, f := range files {
+		if f.IsDir() {
+			continue
+		}
+
+		if !strings.HasPrefix(f.Name(), "node-") {
+			continue
+		}
+
+		path := path.Join(dir, f.Name())
+		b, err := ioutil.ReadFile(path)
+		if err != nil {
+			return nil, err
+		}
+
+		dec := gob.NewDecoder(bytes.NewReader(b))
+		var c consensus.NodeCredentials
+		err = dec.Decode(&c)
+		if err != nil {
+			fmt.Printf("error decode credential from file: %s, err: %v, skip\n", path, err)
+			continue
+		}
+
+		r = append(r, c.SK.MustPK())
+	}
+
+	return r, nil
+}
+
 func main() {
 	var numNode int
 	var numGroup int
@@ -47,19 +86,32 @@ func main() {
 	var threshold int
 	var outDir string
 	var seed string
+	var distributeTo string
 
 	flag.IntVar(&numNode, "N", 30, "number of nodes registered in the genesis block")
 	flag.IntVar(&numGroup, "g", 20, "number of groups registered in the genesis block")
-	flag.IntVar(&groupSize, "n", 5, "group size")
-	flag.IntVar(&threshold, "t", 3, "group threshold size")
-	flag.StringVar(&outDir, "d", "./credentials", "output directoy name")
+	flag.IntVar(&groupSize, "n", 3, "group size")
+	flag.IntVar(&threshold, "t", 2, "group threshold size")
+	flag.StringVar(&outDir, "dir", "./genesis", "output directoy name")
+	flag.StringVar(&distributeTo, "distribute-to", "./credentials", "the native token (and the optionally created tokens) will be evenly distributed to all credentials in this folder")
 	flag.StringVar(&seed, "seed", "dex-genesis-group", "random seed")
 	flag.Parse()
+
+	owners, err := loadCredentials(distributeTo)
+	if err != nil {
+		fmt.Printf("error loading credentials to which the tokens will be distributed to, err: %v\n", err)
+		return
+	}
+
+	if len(owners) == 0 {
+		fmt.Println("no credential loaded, please specify the credentials to which the tokens will be distributed to")
+		return
+	}
 
 	rand := consensus.Rand(consensus.SHA3([]byte(seed)))
 	nodeDir := path.Join(outDir, "nodes")
 
-	err := os.MkdirAll(nodeDir, os.ModePerm)
+	err = os.MkdirAll(nodeDir, os.ModePerm)
 	if err != nil {
 		panic(err)
 	}
@@ -109,7 +161,7 @@ func main() {
 
 		txn := consensus.RegGroupTxn{
 			ID:         i,
-			PK:         groupPK.Serialize(),
+			PK:         consensus.PK(groupPK.Serialize()),
 			MemberIDs:  perm,
 			MemberVVec: memberVVec,
 		}
@@ -128,8 +180,19 @@ func main() {
 		Data: gobEncode(l),
 	})
 
-	genesis := &consensus.Block{
-		SysTxns: sysTxns,
+	state := dex.CreateGenesisState(owners, nil)
+	stateBlob, err := state.Serialize()
+	if err != nil {
+		panic(err)
+	}
+
+	genesisBlock := consensus.Block{
+		StateRoot: state.Hash(),
+		SysTxns:   sysTxns,
+	}
+	genesis := consensus.Genesis{
+		Block: genesisBlock,
+		State: stateBlob,
 	}
 	f, err := os.Create(path.Join(outDir, "genesis.gob"))
 	if err != nil {
@@ -160,13 +223,6 @@ func main() {
 			panic(err)
 		}
 	}
-
-	nativeCoinOwnerSK, err := nodes[0].SK.Get()
-	if err != nil {
-		panic(err)
-	}
-
-	fmt.Println(base64.StdEncoding.EncodeToString(nativeCoinOwnerSK.GetPublicKey().Serialize()))
 }
 
 func gobEncode(v interface{}) []byte {

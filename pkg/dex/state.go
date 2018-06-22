@@ -46,8 +46,9 @@ func (m *MarketSymbol) Decode(b []byte) error {
 
 // State is the state of the DEX.
 type State struct {
-	state *trie.Trie
-	db    *trie.Database
+	state  *trie.Trie
+	db     *trie.Database
+	diskDB ethdb.Database
 }
 
 // TODO: add receipt for create, send, freeze, burn token.
@@ -58,15 +59,52 @@ var BNBInfo = TokenInfo{
 	TotalUnits: 200000000 * 100000000,
 }
 
-func NewState(db *trie.Database) *State {
+func CreateGenesisState(recipients []consensus.PK, additionalTokens []TokenInfo) *State {
+	memDB := ethdb.NewMemDatabase()
+	s := NewState(memDB)
+	tokens := make([]Token, len(additionalTokens)+1)
+
+	var tokenID TokenID
+	tokens[0] = Token{ID: tokenID, TokenInfo: BNBInfo}
+	tokenID++
+
+	for i, t := range additionalTokens {
+		token := Token{ID: tokenID, TokenInfo: t}
+		tokenID++
+		tokens[i+1] = token
+	}
+
+	for _, t := range tokens {
+		s.UpdateToken(t)
+	}
+
+	for _, pk := range recipients {
+		account := &Account{
+			PK:       pk,
+			Balances: make(map[TokenID]*Balance),
+		}
+
+		for _, t := range tokens {
+			avg := t.TotalUnits / uint64(len(recipients))
+			account.Balances[t.ID] = &Balance{Available: avg}
+		}
+		s.UpdateAccount(account)
+	}
+
+	return s
+}
+
+func NewState(diskDB ethdb.Database) *State {
+	db := trie.NewDatabase(diskDB)
 	t, err := trie.New(common.Hash{}, db)
 	if err != nil {
 		panic(err)
 	}
 
 	s := &State{
-		db:    db,
-		state: t,
+		diskDB: diskDB,
+		db:     db,
+		state:  t,
 	}
 
 	return s
@@ -226,18 +264,17 @@ func (s *State) Tokens() []Token {
 	return r
 }
 
-func (s *State) Serialize() (*consensus.TrieBlob, error) {
+func (s *State) Serialize() (consensus.TrieBlob, error) {
 	return serializeTrie(s.state, s.db, s.db.DiskDB())
 }
 
-func (s *State) Deserialize(b *consensus.TrieBlob) error {
-	memDB := ethdb.NewMemDatabase()
-	err := b.Fill(memDB)
+func (s *State) Deserialize(b consensus.TrieBlob) error {
+	err := b.Fill(s.diskDB)
 	if err != nil {
 		return err
 	}
 
-	db := trie.NewDatabase(memDB)
+	db := trie.NewDatabase(s.diskDB)
 	t, err := trie.New(common.Hash(b.Root), db)
 	if err != nil {
 		return err
@@ -246,18 +283,6 @@ func (s *State) Deserialize(b *consensus.TrieBlob) error {
 	s.state = t
 	s.db = db
 	return nil
-}
-
-// IssueNativeToken issues the native token, it is only called in
-// during the genesis block creation.
-func (s *State) IssueNativeToken(owner consensus.PK) consensus.State {
-	issueTokenTxn := IssueTokenTxn{Info: BNBInfo}
-	trans := s.Transition(0).(*Transition)
-	o := &Account{
-		PK: owner,
-	}
-	trans.issueToken(o, issueTokenTxn)
-	return trans.Commit()
 }
 
 // Hash returns the state root hash of the state trie.

@@ -5,7 +5,6 @@ import (
 
 	"github.com/dfinity/go-dfinity-crypto/bls"
 	"github.com/ethereum/go-ethereum/ethdb"
-	"github.com/ethereum/go-ethereum/trie"
 	"github.com/helinwang/dex/pkg/consensus"
 	"github.com/stretchr/testify/assert"
 )
@@ -23,7 +22,7 @@ func createAccount(s *State, quant uint64) (consensus.SK, consensus.Addr) {
 }
 
 func TestSendToken(t *testing.T) {
-	s := NewState(trie.NewDatabase(ethdb.NewMemDatabase()))
+	s := NewState(ethdb.NewMemDatabase())
 	sk, addr := createAccount(s, 100)
 
 	// check balance not changed before commiting the txn
@@ -51,7 +50,7 @@ func TestSendToken(t *testing.T) {
 }
 
 func TestFreezeToken(t *testing.T) {
-	s := NewState(trie.NewDatabase(ethdb.NewMemDatabase()))
+	s := NewState(ethdb.NewMemDatabase())
 	sk, addr := createAccount(s, 100)
 
 	// check balance not changed before commiting the txn
@@ -77,15 +76,14 @@ func TestFreezeToken(t *testing.T) {
 
 func TestTransitionNotCommitToDB(t *testing.T) {
 	memDB := ethdb.NewMemDatabase()
-	db := trie.NewDatabase(memDB)
-	s := NewState(db)
+	s := NewState(memDB)
 	sk, addr := createAccount(s, 100)
 	h, err := s.state.Commit(nil)
 	if err != nil {
 		panic(err)
 	}
 
-	err = db.Commit(h, false)
+	err = s.db.Commit(h, false)
 	if err != nil {
 		panic(err)
 	}
@@ -118,20 +116,6 @@ func TestTransitionNotCommitToDB(t *testing.T) {
 	assert.Equal(t, 1, int(newAcc.Balances[0].Available))
 }
 
-func TestIssueNativeToken(t *testing.T) {
-	pk := consensus.RandSK().MustPK()
-	s := NewState(trie.NewDatabase(ethdb.NewMemDatabase()))
-	s = s.IssueNativeToken(pk).(*State)
-	cache := newTokenCache(s)
-
-	assert.True(t, cache.Exists(BNBInfo.Symbol))
-	assert.Equal(t, &BNBInfo, cache.Info(0))
-
-	acc := s.Account(pk.Addr())
-	assert.Equal(t, BNBInfo.TotalUnits, acc.Balances[0].Available)
-	assert.Equal(t, uint64(0), acc.Balances[0].Pending)
-}
-
 func TestIssueToken(t *testing.T) {
 	var btcInfo = TokenInfo{
 		Symbol:     "BTC",
@@ -139,7 +123,7 @@ func TestIssueToken(t *testing.T) {
 		TotalUnits: 21000000 * 100000000,
 	}
 
-	s := NewState(trie.NewDatabase(ethdb.NewMemDatabase()))
+	s := NewState(ethdb.NewMemDatabase())
 	s.UpdateToken(Token{ID: 0, TokenInfo: BNBInfo})
 	sk, addr := createAccount(s, 100)
 	trans := s.Transition(1)
@@ -158,7 +142,7 @@ func TestIssueToken(t *testing.T) {
 }
 
 func TestOrderAlreadyExpired(t *testing.T) {
-	s := NewState(trie.NewDatabase(ethdb.NewMemDatabase()))
+	s := NewState(ethdb.NewMemDatabase())
 	s.UpdateToken(Token{ID: 0, TokenInfo: BNBInfo})
 	sk, addr := createAccount(s, 100)
 	order := PlaceOrderTxn{
@@ -179,7 +163,7 @@ func TestOrderAlreadyExpired(t *testing.T) {
 }
 
 func TestOrderExpire(t *testing.T) {
-	s := NewState(trie.NewDatabase(ethdb.NewMemDatabase()))
+	s := NewState(ethdb.NewMemDatabase())
 	s.UpdateToken(Token{ID: 0, TokenInfo: BNBInfo})
 	sk, addr := createAccount(s, 100)
 	order := PlaceOrderTxn{
@@ -207,7 +191,7 @@ func TestOrderExpire(t *testing.T) {
 }
 
 func TestPlaceOrder(t *testing.T) {
-	s := NewState(trie.NewDatabase(ethdb.NewMemDatabase()))
+	s := NewState(ethdb.NewMemDatabase())
 	s.UpdateToken(Token{ID: 0, TokenInfo: BNBInfo})
 	sk, addr := createAccount(s, 100)
 	order := PlaceOrderTxn{

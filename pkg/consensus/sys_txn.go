@@ -39,7 +39,7 @@ type ReadyJoinGroupTxn struct {
 // succeeds, a RegGroupTxn transaction will be submitted.
 type RegGroupTxn struct {
 	ID         int
-	PK         []byte
+	PK         PK
 	MemberIDs  []int
 	MemberVVec []PK
 }

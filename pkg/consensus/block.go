@@ -169,6 +169,11 @@ func (bp *BlockProposal) Hash() Hash {
 	return SHA3(bp.Encode(true))
 }
 
+type Genesis struct {
+	Block Block
+	State TrieBlob
+}
+
 // Block is generated from a block proposal collaboratively by the
 // notarization committee, it is notarized by the notarization
 // signature.

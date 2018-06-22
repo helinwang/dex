@@ -5,7 +5,6 @@ import (
 	"unsafe"
 
 	"github.com/ethereum/go-ethereum/ethdb"
-	"github.com/ethereum/go-ethereum/trie"
 	"github.com/helinwang/dex/pkg/consensus"
 	"github.com/stretchr/testify/assert"
 )
@@ -35,7 +34,7 @@ func TestMarketEncodeDecode(t *testing.T) {
 
 func TestStateTokens(t *testing.T) {
 	memDB := ethdb.NewMemDatabase()
-	s := NewState(trie.NewDatabase(memDB))
+	s := NewState(memDB)
 	token0 := Token{ID: 1, TokenInfo: TokenInfo{Symbol: "BNB", Decimals: 8, TotalUnits: 10000000000}}
 	token1 := Token{ID: 2, TokenInfo: TokenInfo{Symbol: "BTC", Decimals: 8, TotalUnits: 10000000000}}
 	s.UpdateToken(token0)
@@ -44,12 +43,10 @@ func TestStateTokens(t *testing.T) {
 }
 
 func TestStateSerialize(t *testing.T) {
-	memDB := ethdb.NewMemDatabase()
-	s := NewState(trie.NewDatabase(memDB))
-	s = s.IssueNativeToken(consensus.RandSK().MustPK()).(*State)
-	nativeToken := Token{ID: 0, TokenInfo: BNBInfo}
 	token0 := Token{ID: 1, TokenInfo: TokenInfo{Symbol: "BTC", Decimals: 8, TotalUnits: 10000000000}}
 	token1 := Token{ID: 2, TokenInfo: TokenInfo{Symbol: "ETH", Decimals: 8, TotalUnits: 10000000000}}
+	s := CreateGenesisState([]consensus.PK{consensus.RandSK().MustPK()}, []TokenInfo{token0.TokenInfo, token1.TokenInfo})
+	nativeToken := Token{ID: 0, TokenInfo: BNBInfo}
 	s.UpdateToken(token0)
 	s.UpdateToken(token1)
 	assert.Equal(t, []Token{nativeToken, token0, token1}, s.Tokens())
@@ -59,7 +56,7 @@ func TestStateSerialize(t *testing.T) {
 		panic(err)
 	}
 
-	var s0 State
+	s0 := NewState(ethdb.NewMemDatabase())
 	err = s0.Deserialize(b)
 	if err != nil {
 		panic(err)

@@ -209,6 +209,9 @@ func quantToStr(quant uint64, decimals int) string {
 
 	intPart := str[:len(str)-decimals]
 	rest := str[len(str)-decimals:]
+	if len(rest) == 0 {
+		rest = "0"
+	}
 	return intPart + "." + rest
 }
 
@@ -681,7 +684,7 @@ func main() {
 		},
 	}
 
-	err = app.Run(os.Args)
+	err := app.Run(os.Args)
 	if err != nil {
 		fmt.Printf("command failed with error: %v\n", err)
 	}
