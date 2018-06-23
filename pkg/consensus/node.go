@@ -61,11 +61,12 @@ func NewNode(chain *Chain, sk SK, net *gateway, cfg Config) *Node {
 
 	addr := pk.Addr()
 	n := &Node{
-		addr:  addr,
-		cfg:   cfg,
-		sk:    sk,
-		chain: chain,
-		net:   net,
+		addr:        addr,
+		cfg:         cfg,
+		sk:          sk,
+		chain:       chain,
+		net:         net,
+		bpForNotary: make(map[uint64][]*BlockProposal),
 	}
 	chain.n = n
 	return n

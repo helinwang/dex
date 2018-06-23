@@ -457,7 +457,8 @@ func (c *Chain) addBlock(b *Block, bp *BlockProposal, s State, weight float64) (
 		}
 
 		if removeIdx < 0 {
-			panic("should never happen: prev block found but the block proposal is not its child")
+			c.graphviz(10)
+			panic(fmt.Errorf("should never happen: prev block %v found but the block proposal %v is not its child", bp.PrevBlock, bp.Hash()))
 		}
 		nt.parent = prev
 		prev.blockChildren = append(prev.blockChildren, nt)

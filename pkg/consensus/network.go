@@ -376,9 +376,9 @@ func (n *network) Send(addr netAddr, p packet) error {
 			n.mu.Lock()
 			if conn, ok = n.conns[v]; ok {
 				delete(n.conns, v)
+				conn.Close()
 			}
 			n.mu.Unlock()
-			conn.Close()
 			return err
 		}
 	case broadcast:
