@@ -70,7 +70,7 @@ type Updater interface {
 // NewChain creates a new chain.
 func NewChain(genesis *Block, genesisState State, seed Rand, cfg Config, txnPool TxnPool, u Updater) *Chain {
 	if genesisState.Hash() != genesis.StateRoot {
-		panic(fmt.Errorf("genesis state hash and block state root does not match, state hash: %x, blocks state root: %x", genesisState.Hash(), genesis.StateRoot))
+		panic(fmt.Errorf("genesis state hash and block state root does not match, state hash: %v, blocks state root: %v", genesisState.Hash(), genesis.StateRoot))
 	}
 
 	sysState := NewSysState()
@@ -239,13 +239,30 @@ func (c *Chain) Leader() (*Block, State, *SysState) {
 	return c.leader()
 }
 
-func findPrevBlockNode(prevBlock Hash, bs []*blockNode) (*blockNode, int) {
-	for i, block := range bs {
-		if block.Block == prevBlock {
-			return block, i
+func findPrevBlockNode(bp, prevBlock Hash, fork []*blockNode) (*blockNode, int) {
+	for _, branch := range fork {
+		n, idx := findPrevBlockNodeImpl(bp, prevBlock, branch)
+		if n != nil {
+			return n, idx
+		}
+	}
+
+	return nil, 0
+}
+
+func findPrevBlockNodeImpl(bp, prevBlock Hash, prev *blockNode) (*blockNode, int) {
+	if prev.Block == prevBlock {
+		for i, blockNode := range prev.bpChildren {
+			if blockNode.BP == bp {
+				return prev, i
+			}
 		}
 
-		n, idx := findPrevBlockNode(prevBlock, block.blockChildren)
+		return prev, -1
+	}
+
+	for _, blockNode := range prev.blockChildren {
+		n, idx := findPrevBlockNodeImpl(bp, prevBlock, blockNode)
 		if n != nil {
 			return n, idx
 		}
@@ -264,10 +281,11 @@ func (c *Chain) addBP(bp *BlockProposal, weight float64) (bool, error) {
 		return false, nil
 	}
 
-	prevBlockNode, _ := findPrevBlockNode(bp.PrevBlock, c.fork)
+	prevBlockNode, _ := findPrevBlockNode(h, bp.PrevBlock, c.fork)
 	if prevBlockNode == nil {
 		if c.finalized[len(c.finalized)-1] != bp.PrevBlock {
-			return false, fmt.Errorf("block proposal's parent not found: %x, round: %d", bp.PrevBlock, bp.Round)
+			fmt.Println(c.graphviz(10))
+			return false, fmt.Errorf("block proposal's parent not found: %v, round: %d", bp.PrevBlock, bp.Round)
 		}
 	}
 
@@ -431,9 +449,13 @@ func (c *Chain) addBlock(b *Block, bp *BlockProposal, s State, weight float64) (
 			c.bpNotOnFork = append(c.bpNotOnFork[:removeIdx], c.bpNotOnFork[removeIdx+1:]...)
 		}
 	} else {
-		prev, removeIdx := findPrevBlockNode(bp.PrevBlock, c.fork)
+		prev, removeIdx := findPrevBlockNode(bp.Hash(), bp.PrevBlock, c.fork)
 		if prev == nil {
 			panic("should never happen: can not find prev block, it should be already synced")
+		}
+
+		if removeIdx < 0 {
+			panic("should never happen: prev block found but the block proposal is not its child")
 		}
 		prev.blockChildren = append(prev.blockChildren, nt)
 		prev.bpChildren = append(prev.bpChildren[:removeIdx], prev.bpChildren[removeIdx+1:]...)
@@ -442,15 +464,6 @@ func (c *Chain) addBlock(b *Block, bp *BlockProposal, s State, weight float64) (
 	c.hashToBlock[h] = b
 	delete(c.bpNeedNotarize, b.BlockProposal)
 	delete(c.bpToNtShares, b.BlockProposal)
-
-	round := c.round()
-	// when round n is started, round n - 3 can be finalized. See
-	// corollary 9.19 in https://arxiv.org/abs/1805.04548
-	if round > 3 {
-		// TODO: use less aggressive finalize block count
-		// (currently 3).
-		c.finalize(round - 3)
-	}
 
 	if len(bp.Data) > 0 {
 		var txns [][]byte
@@ -465,19 +478,27 @@ func (c *Chain) addBlock(b *Block, bp *BlockProposal, s State, weight float64) (
 	}
 
 	_, leaderState, _ := c.leader()
-	go c.updater.Update(leaderState)
 
+	round := c.round()
 	if beginRound == b.Round && beginRound+1 == round {
+		// when round n ended, round n - 2 can be finalized. See
+		// corollary 9.19 in https://arxiv.org/abs/1805.04548
+		if beginRound > 2 {
+			// TODO: use less aggressive finalize block count
+			// (currently 2).
+			c.finalize(beginRound - 2)
+		}
+
 		go c.n.EndRound(beginRound)
 	}
+	go c.updater.Update(leaderState)
 	return true, nil
 }
 
 // must be called with mutex held
 func (c *Chain) finalize(round uint64) {
 	depth := round
-	var count uint64
-	count += uint64(len(c.finalized))
+	count := uint64(len(c.finalized))
 	if depth < count {
 		return
 	}
@@ -516,8 +537,7 @@ func (c *Chain) finalize(round uint64) {
 	panic("not under normal operation, not implemented")
 }
 
-// Graphviz returns the Graphviz dot formate encoded chain
-// visualization.
+// Graphviz returns the Graphviz format encoded chain visualization.
 //
 // only maxFinalized number of blocks will be shown, the rest will be
 // hidden to save graph space.

@@ -98,7 +98,7 @@ func (r *RPCServer) walletState(addr consensus.Addr, w *WalletState) error {
 
 	acc := r.s.Account(addr)
 	if acc == nil {
-		return fmt.Errorf("account %x does not exist", addr[:])
+		return fmt.Errorf("account %v does not exist", addr)
 	}
 
 	keys := make([]TokenID, len(acc.Balances))
@@ -176,7 +176,7 @@ func (r *RPCServer) nonce(addr consensus.Addr, slot *NonceSlot) error {
 
 	acc := r.s.Account(addr)
 	if acc == nil {
-		return fmt.Errorf("account %x does not exist", addr[:])
+		return fmt.Errorf("account %v does not exist", addr)
 	}
 
 	if len(acc.NonceVec) > 0 {

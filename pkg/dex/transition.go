@@ -348,8 +348,8 @@ func (t *Transition) placeOrder(owner *Account, txn PlaceOrderTxn, round uint64)
 				}
 			}
 
-			if sellSideBalance.Pending < soldQuant {
-				panic(fmt.Errorf("insufficient pending balance, owner: %s, pending %d, executed: %d", exec.Owner.Hex(), sellSideBalance.Pending, soldQuant))
+			if sellSideBalance.Pending < soldQuant+refund {
+				panic(fmt.Errorf("insufficient pending balance, owner: %s, pending %d, executed: %d, refund: %d, taker: %t", exec.Owner.Hex(), sellSideBalance.Pending, soldQuant, refund, exec.Taker))
 			}
 
 			sellSideBalance.Pending -= (soldQuant + refund)
