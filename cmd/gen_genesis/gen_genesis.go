@@ -1,14 +1,17 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/gob"
 	"flag"
 	"fmt"
 	"io/ioutil"
 	"log"
+	"math"
 	"os"
 	"path"
+	"strconv"
 	"strings"
 
 	"github.com/dfinity/go-dfinity-crypto/bls"
@@ -87,7 +90,47 @@ func main() {
 	outDir := flag.String("dir", "./genesis", "output directoy name")
 	distributeTo := flag.String("distribute-to", "./credentials", "the native token (and the optionally created tokens) will be evenly distributed to all credentials in this folder")
 	seed := flag.String("seed", "dex-genesis-group", "random seed")
+	additionalTokenPath := flag.String("tokens", "", "path to the file which contains additional tokens to evenly distribute, each row is in format SYMBOL,QUANTITY,DECIMALS. BNB does not have to be in this file, it's distributed by default")
 	flag.Parse()
+
+	var additionalTokens []dex.TokenInfo
+	if *additionalTokenPath != "" {
+		b, err := ioutil.ReadFile(*additionalTokenPath)
+		if err != nil {
+			fmt.Printf("error loading additional token file: %v\n", err)
+			return
+		}
+
+		s := bufio.NewScanner(bytes.NewReader(b))
+		for s.Scan() {
+			ss := strings.Split(s.Text(), ",")
+			if len(ss) != 3 {
+				fmt.Println("additional token file's format is not correct, each row should be SYMBOL,QUANTITY,DECIMALS")
+				return
+			}
+
+			symbol := ss[0]
+			quant, err := strconv.ParseFloat(ss[1], 64)
+			if err != nil {
+				fmt.Printf("error parses quantity in additional token file: %v\n", err)
+				return
+			}
+
+			decimals, err := strconv.ParseUint(ss[2], 10, 8)
+			if err != nil {
+				fmt.Printf("error parses decimals in additional token file: %v\n", err)
+				return
+			}
+
+			quantUnits := uint64(quant * math.Pow10(int(decimals)))
+			additionalTokens = append(additionalTokens, dex.TokenInfo{Symbol: dex.TokenSymbol(symbol), Decimals: uint8(decimals), TotalUnits: quantUnits})
+		}
+
+		if s.Err() != nil {
+			fmt.Printf("error reading additional token file: %v\n", err)
+			return
+		}
+	}
 
 	owners, err := loadCredentials(*distributeTo)
 	if err != nil {
@@ -172,7 +215,7 @@ func main() {
 		Data: gobEncode(l),
 	})
 
-	state := dex.CreateGenesisState(owners, nil)
+	state := dex.CreateGenesisState(owners, additionalTokens)
 	stateBlob, err := state.Serialize()
 	if err != nil {
 		panic(err)
