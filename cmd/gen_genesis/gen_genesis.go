@@ -80,24 +80,16 @@ func loadCredentials(dir string) ([]consensus.PK, error) {
 }
 
 func main() {
-	var numNode int
-	var numGroup int
-	var groupSize int
-	var threshold int
-	var outDir string
-	var seed string
-	var distributeTo string
-
-	flag.IntVar(&numNode, "N", 30, "number of nodes registered in the genesis block")
-	flag.IntVar(&numGroup, "g", 20, "number of groups registered in the genesis block")
-	flag.IntVar(&groupSize, "n", 3, "group size")
-	flag.IntVar(&threshold, "t", 2, "group threshold size")
-	flag.StringVar(&outDir, "dir", "./genesis", "output directoy name")
-	flag.StringVar(&distributeTo, "distribute-to", "./credentials", "the native token (and the optionally created tokens) will be evenly distributed to all credentials in this folder")
-	flag.StringVar(&seed, "seed", "dex-genesis-group", "random seed")
+	numNode := flag.Int("N", 30, "number of nodes registered in the genesis block")
+	numGroup := flag.Int("g", 20, "number of groups registered in the genesis block")
+	groupSize := flag.Int("n", 3, "group size")
+	threshold := flag.Int("t", 2, "group threshold size")
+	outDir := flag.String("dir", "./genesis", "output directoy name")
+	distributeTo := flag.String("distribute-to", "./credentials", "the native token (and the optionally created tokens) will be evenly distributed to all credentials in this folder")
+	seed := flag.String("seed", "dex-genesis-group", "random seed")
 	flag.Parse()
 
-	owners, err := loadCredentials(distributeTo)
+	owners, err := loadCredentials(*distributeTo)
 	if err != nil {
 		fmt.Printf("error loading credentials to which the tokens will be distributed to, err: %v\n", err)
 		return
@@ -108,8 +100,8 @@ func main() {
 		return
 	}
 
-	rand := consensus.Rand(consensus.SHA3([]byte(seed)))
-	nodeDir := path.Join(outDir, "nodes")
+	rand := consensus.Rand(consensus.SHA3([]byte(*seed)))
+	nodeDir := path.Join(*outDir, "nodes")
 
 	err = os.MkdirAll(nodeDir, os.ModePerm)
 	if err != nil {
@@ -117,9 +109,9 @@ func main() {
 	}
 
 	var sysTxns []consensus.SysTxn
-	nodePKs := make([]consensus.PK, numNode)
-	nodes := make([]consensus.NodeCredentials, numNode)
-	for i := 0; i < numNode; i++ {
+	nodePKs := make([]consensus.PK, *numNode)
+	nodes := make([]consensus.NodeCredentials, *numNode)
+	for i := 0; i < *numNode; i++ {
 		sk := rand.SK()
 		nodePKs[i] = sk.MustPK()
 		nodes[i].SK = sk
@@ -135,18 +127,18 @@ func main() {
 		})
 	}
 
-	groupIDs := make([]int, numGroup)
+	groupIDs := make([]int, *numGroup)
 	for i := range groupIDs {
-		perm := rand.Perm(groupSize, numNode)
+		perm := rand.Perm(*groupSize, *numNode)
 		rand = rand.Derive(rand[:])
-		idVec := make([]bls.ID, groupSize)
+		idVec := make([]bls.ID, *groupSize)
 		for i := range idVec {
 			pk := nodePKs[perm[i]]
 			idVec[i] = pk.Addr().ID()
 		}
 		var groupPK bls.PublicKey
 		var shares []bls.SecretKey
-		groupPK, shares, rand = makeShares(threshold, idVec, rand)
+		groupPK, shares, rand = makeShares(*threshold, idVec, rand)
 		groupIDs[i] = i
 
 		memberVVec := make([]consensus.PK, len(shares))
@@ -194,7 +186,7 @@ func main() {
 		Block: genesisBlock,
 		State: stateBlob,
 	}
-	f, err := os.Create(path.Join(outDir, "genesis.gob"))
+	f, err := os.Create(path.Join(*outDir, "genesis.gob"))
 	if err != nil {
 		panic(err)
 	}

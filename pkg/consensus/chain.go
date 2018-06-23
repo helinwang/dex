@@ -473,6 +473,7 @@ func (c *Chain) addBlock(b *Block, bp *BlockProposal, s State, weight float64) (
 	} else {
 		prev, removeIdx := findPrevBlock(bp.PrevBlock, c.Fork)
 		prev.NtChildren = append(prev.NtChildren, nt)
+		// TODO: fix crash: slice index out of range
 		prev.NonNtChildren = append(prev.NonNtChildren[:removeIdx], prev.NonNtChildren[removeIdx+1:]...)
 	}
 
