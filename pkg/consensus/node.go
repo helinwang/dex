@@ -27,6 +27,9 @@ type Node struct {
 	// the memberships of different groups
 	memberships    []membership
 	notarizeChs    []chan *BlockProposal
+	bpForNotary    map[uint64][]*BlockProposal
+	round          uint64
+	roundEnd       bool
 	cancelNotarize func()
 }
 
@@ -85,7 +88,8 @@ func (n *Node) StartRound(round uint64) {
 	defer n.mu.Unlock()
 
 	log.Info("start round", "round", round, "rand beacon", SHA3(n.chain.RandomBeacon.History()[round].Sig))
-
+	n.round = round
+	n.roundEnd = false
 	var ntCancelCtx context.Context
 	_, bp, nt := n.chain.RandomBeacon.Committees(round)
 	for _, m := range n.memberships {
@@ -116,6 +120,17 @@ func (n *Node) StartRound(round uint64) {
 			}()
 		}
 	}
+
+	if bps := n.bpForNotary[round]; len(bps) > 0 {
+		if len(n.notarizeChs) > 0 {
+			for _, ch := range n.notarizeChs {
+				for _, bp := range bps {
+					ch <- bp
+				}
+			}
+		}
+		delete(n.bpForNotary, round)
+	}
 }
 
 // EndRound marks the end of the given round. It happens when the
@@ -125,7 +140,7 @@ func (n *Node) EndRound(round uint64) {
 	defer n.mu.Unlock()
 
 	log.Info("end round", "round", round)
-
+	n.roundEnd = true
 	n.notarizeChs = nil
 	if n.cancelNotarize != nil {
 		n.cancelNotarize()
@@ -156,9 +171,16 @@ func (n *Node) EndRound(round uint64) {
 
 // RecvBlockProposal tells the node that a valid block proposal of the
 // current round is received.
-func (n *Node) RecvBlockProposal(bp *BlockProposal) {
+func (n *Node) recvBPForNotary(bp *BlockProposal) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
+
+	if bp.Round < n.round {
+		return
+	} else if bp.Round > n.round || (n.round == bp.Round && len(n.notarizeChs) == 0 && !n.roundEnd) {
+		n.bpForNotary[n.round] = append(n.bpForNotary[n.round], bp)
+		return
+	}
 
 	for _, ch := range n.notarizeChs {
 		ch <- bp

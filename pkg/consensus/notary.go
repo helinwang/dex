@@ -2,6 +2,7 @@ package consensus
 
 import (
 	"context"
+	"math"
 
 	log "github.com/helinwang/log15"
 )
@@ -28,11 +29,10 @@ func NewNotary(owner Addr, sk, share SK, chain *Chain) *Notary {
 // nolint: gocyclo
 func (n *Notary) Notarize(ctx, cancel context.Context, bCh chan *BlockProposal, onNotarize func(*NtShare)) {
 	var bestRankBPs []*BlockProposal
-	var bestRank int
+	bestRank := math.MaxInt32
 	for {
 		select {
 		case <-ctx.Done():
-
 			for _, bp := range bestRankBPs {
 				s := n.notarize(bp)
 				if s != nil {

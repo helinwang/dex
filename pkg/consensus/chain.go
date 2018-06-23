@@ -308,7 +308,7 @@ func (c *Chain) addBP(bp *BlockProposal, weight float64) (bool, error) {
 		c.UnNotarizedNotOnFork = append(c.UnNotarizedNotOnFork, u)
 	}
 	c.bpNeedNotarize[h] = true
-	go c.n.RecvBlockProposal(bp)
+	go c.n.recvBPForNotary(bp)
 	return true, nil
 }
 
@@ -429,7 +429,6 @@ func (c *Chain) blockToState(h Hash) State {
 }
 
 func (c *Chain) addBlock(b *Block, bp *BlockProposal, s State, weight float64) (bool, error) {
-	// TODO: remove txn from the txn pool
 	log.Debug("add block to chain", "hash", b.Hash(), "weight", weight)
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -488,6 +487,18 @@ func (c *Chain) addBlock(b *Block, bp *BlockProposal, s State, weight float64) (
 		// TODO: use less aggressive finalize block count
 		// (currently 3).
 		c.finalize(round - 3)
+	}
+
+	if len(bp.Data) > 0 {
+		var txns [][]byte
+		err := rlp.DecodeBytes(bp.Data, &txns)
+		if err != nil {
+			return false, fmt.Errorf("impossible: notarized block contains invalid txn data: %v", err)
+		}
+
+		for _, txn := range txns {
+			c.TxnPool.Remove(SHA3(txn))
+		}
 	}
 
 	_, leaderState, _ := c.leader()
@@ -554,7 +565,7 @@ func (c *Chain) Graphviz(maxFinalized int) string {
 		arrow = " -> "
 		begin = `digraph chain {
 rankdir=LR;
-size="8,5"`
+size="12,8"`
 		end = `}
 `
 		finalizedNode   = `node [shape = rect, style=filled, color = chartreuse2];`
