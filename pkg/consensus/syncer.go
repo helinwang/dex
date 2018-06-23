@@ -118,7 +118,7 @@ func (s *syncer) syncBlock(addr unicastAddr, hash Hash, round uint64) (b *Block,
 	}
 
 	var weight float64
-	s.chain.RandomBeacon.WaitUntil(b.Round)
+	s.chain.randomBeacon.WaitUntil(b.Round)
 	prev := s.chain.Block(b.PrevBlock)
 	if prev == nil {
 		err = errors.New("impossible: prev block not found")
@@ -130,14 +130,14 @@ func (s *syncer) syncBlock(addr unicastAddr, hash Hash, round uint64) (b *Block,
 		return
 	}
 
-	_, _, nt := s.chain.RandomBeacon.Committees(b.Round)
-	success := b.NotarizationSig.Verify(s.chain.RandomBeacon.groups[nt].PK, b.Encode(false))
+	_, _, nt := s.chain.randomBeacon.Committees(b.Round)
+	success := b.NotarizationSig.Verify(s.chain.randomBeacon.groups[nt].PK, b.Encode(false))
 	if !success {
 		err = fmt.Errorf("validate block group sig failed, group:%d", nt)
 		return
 	}
 
-	rank, err := s.chain.RandomBeacon.Rank(b.Owner, b.Round)
+	rank, err := s.chain.randomBeacon.Rank(b.Owner, b.Round)
 	if err != nil {
 		err = fmt.Errorf("error get rank, but group sig is valid: %v", err)
 		return
@@ -214,19 +214,19 @@ func (s *syncer) syncBlockProposal(addr unicastAddr, hash Hash) (bp *BlockPropos
 		}
 	}
 
-	s.chain.RandomBeacon.WaitUntil(bp.Round)
+	s.chain.randomBeacon.WaitUntil(bp.Round)
 
 	if prev.Round != bp.Round-1 {
 		err = errors.New("prev block round is not block proposal round - 1")
 		return
 	}
 
-	rank, err := s.chain.RandomBeacon.Rank(bp.Owner, bp.Round)
+	rank, err := s.chain.randomBeacon.Rank(bp.Owner, bp.Round)
 	if err != nil {
 		return
 	}
 
-	pk, ok := s.chain.LastFinalizedSysState.addrToPK[bp.Owner]
+	pk, ok := s.chain.lastFinalizedSysState.addrToPK[bp.Owner]
 	if !ok {
 		err = errors.New("block proposal owner not found")
 		return
@@ -276,11 +276,11 @@ func (s *syncer) syncRandBeaconSig(addr unicastAddr, round uint64, syncDone bool
 }
 
 func (s *syncer) syncRandBeaconSigImpl(addr unicastAddr, round uint64, syncDone bool) (bool, error) {
-	if s.chain.RandomBeacon.Round() >= round {
+	if s.chain.randomBeacon.Round() >= round {
 		return false, nil
 	}
 
-	if s.chain.RandomBeacon.Round()+1 < round {
+	if s.chain.randomBeacon.Round()+1 < round {
 		_, err := s.syncRandBeaconSig(addr, round-1, false)
 		if err != nil {
 			return false, err
@@ -294,7 +294,7 @@ func (s *syncer) syncRandBeaconSigImpl(addr unicastAddr, round uint64, syncDone 
 		return false, err
 	}
 
-	success := s.chain.RandomBeacon.AddRandBeaconSig(sig, syncDone)
+	success := s.chain.randomBeacon.AddRandBeaconSig(sig, syncDone)
 	if !success {
 		return false, fmt.Errorf("failed to add rand beacon sig, round: %d, hash: %v", sig.Round, sig.Hash())
 

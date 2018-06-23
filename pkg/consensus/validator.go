@@ -24,7 +24,7 @@ func rankToWeight(rank int) float64 {
 
 func (v *validator) ValidateBlock(b *Block) (float64, bool) {
 	// TODO: validate txns
-	v.chain.RandomBeacon.WaitUntil(b.Round)
+	v.chain.randomBeacon.WaitUntil(b.Round)
 	if b := v.chain.Block(b.Hash()); b != nil {
 		log.Warn("block already received")
 		return 0, false
@@ -41,14 +41,14 @@ func (v *validator) ValidateBlock(b *Block) (float64, bool) {
 		return 0, false
 	}
 
-	_, _, nt := v.chain.RandomBeacon.Committees(b.Round)
-	success := b.NotarizationSig.Verify(v.chain.RandomBeacon.groups[nt].PK, b.Encode(false))
+	_, _, nt := v.chain.randomBeacon.Committees(b.Round)
+	success := b.NotarizationSig.Verify(v.chain.randomBeacon.groups[nt].PK, b.Encode(false))
 	if !success {
 		log.Warn("validate block group sig failed", "group", nt, "block", b.Hash())
 		return 0, false
 	}
 
-	rank, err := v.chain.RandomBeacon.Rank(b.Owner, b.Round)
+	rank, err := v.chain.randomBeacon.Rank(b.Owner, b.Round)
 	if err != nil {
 		log.Error("error get rank, but group sig is valid", "err", err)
 		return 0, false
@@ -60,15 +60,15 @@ func (v *validator) ValidateBlock(b *Block) (float64, bool) {
 // TODO: validator should not check round information, and signature
 // validation should be a method of the data type.
 func (v *validator) ValidateNtShare(n *NtShare) (int, bool) {
-	_, _, nt := v.chain.RandomBeacon.Committees(n.Round)
-	group := v.chain.RandomBeacon.groups[nt]
+	_, _, nt := v.chain.randomBeacon.Committees(n.Round)
+	group := v.chain.randomBeacon.groups[nt]
 	sharePK, ok := group.MemberPK[n.Owner]
 	if !ok {
 		log.Warn("ValidateNtShare: nt owner not a member of the nt cmte")
 		return 0, false
 	}
 
-	pk, ok := v.chain.LastFinalizedSysState.addrToPK[n.Owner]
+	pk, ok := v.chain.lastFinalizedSysState.addrToPK[n.Owner]
 	if !ok {
 		log.Warn("nt owner not found", "owner", n.Owner)
 		return 0, false
@@ -85,21 +85,21 @@ func (v *validator) ValidateNtShare(n *NtShare) (int, bool) {
 }
 
 func (v *validator) ValidateRandBeaconSigShare(r *RandBeaconSigShare) (int, bool) {
-	round := v.chain.RandomBeacon.Round()
-	if h := SHA3(v.chain.RandomBeacon.sigHistory[r.Round-1].Sig); h != r.LastSigHash {
+	round := v.chain.randomBeacon.Round()
+	if h := SHA3(v.chain.randomBeacon.sigHistory[r.Round-1].Sig); h != r.LastSigHash {
 		log.Warn("validate random beacon share last sig error", "hash", r.LastSigHash, "expected", h)
 		return 0, false
 	}
 
-	rb, _, _ := v.chain.RandomBeacon.Committees(round)
-	group := v.chain.RandomBeacon.groups[rb]
+	rb, _, _ := v.chain.randomBeacon.Committees(round)
+	group := v.chain.randomBeacon.groups[rb]
 	sharePK, ok := group.MemberPK[r.Owner]
 	if !ok {
 		log.Warn("ValidateRandBeaconSigShare: owner not a member of the rb cmte")
 		return 0, false
 	}
 
-	pk, ok := v.chain.LastFinalizedSysState.addrToPK[r.Owner]
+	pk, ok := v.chain.lastFinalizedSysState.addrToPK[r.Owner]
 	if !ok {
 		log.Warn("rancom beacon sig shareowner not found", "owner", r.Owner)
 		return 0, false

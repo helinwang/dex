@@ -87,11 +87,11 @@ func (n *Node) StartRound(round uint64) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 
-	log.Info("start round", "round", round, "rand beacon", SHA3(n.chain.RandomBeacon.History()[round].Sig))
+	log.Info("start round", "round", round, "rand beacon", SHA3(n.chain.randomBeacon.History()[round].Sig))
 	n.round = round
 	n.roundEnd = false
 	var ntCancelCtx context.Context
-	_, bp, nt := n.chain.RandomBeacon.Committees(round)
+	_, bp, nt := n.chain.randomBeacon.Committees(round)
 	for _, m := range n.memberships {
 		if m.groupID == bp {
 			bp := n.chain.ProposeBlock(n.sk)
@@ -146,7 +146,7 @@ func (n *Node) EndRound(round uint64) {
 		n.cancelNotarize()
 	}
 
-	rb, _, _ := n.chain.RandomBeacon.Committees(round)
+	rb, _, _ := n.chain.randomBeacon.Committees(round)
 	for _, m := range n.memberships {
 		if m.groupID != rb {
 			continue
@@ -161,7 +161,7 @@ func (n *Node) EndRound(round uint64) {
 		// signature.
 		keyShare := m.skShare
 		go func() {
-			history := n.chain.RandomBeacon.History()
+			history := n.chain.randomBeacon.History()
 			lastSigHash := SHA3(history[round].Sig)
 			s := signRandBeaconSigShare(n.sk, keyShare, round+1, lastSigHash)
 			n.net.recvRandBeaconSigShare(n.net.addr, s)
@@ -212,7 +212,7 @@ func MakeNode(credentials NodeCredentials, cfg Config, genesis Genesis, state St
 		m := membership{groupID: credentials.Groups[j], skShare: share}
 		node.memberships = append(node.memberships, m)
 	}
-	node.chain.RandomBeacon.n = node
+	node.chain.randomBeacon.n = node
 	return node
 }
 

@@ -14,23 +14,23 @@ func (m *myUpdater) Update(State) {
 
 func TestGraphviz(t *testing.T) {
 	chain := NewChain(&Block{}, nil, Rand{}, Config{}, nil, &myUpdater{})
-	chain.Finalized = append(chain.Finalized, Hash{1})
-	chain.Finalized = append(chain.Finalized, Hash{2})
-	chain.Finalized = append(chain.Finalized, Hash{3})
-	chain.Finalized = append(chain.Finalized, Hash{4})
-	chain.UnNotarizedNotOnFork = append(chain.UnNotarizedNotOnFork, &unNotarized{BP: Hash{5}})
-	chain.UnNotarizedNotOnFork = append(chain.UnNotarizedNotOnFork, &unNotarized{BP: Hash{6}})
-	fork0 := &notarized{Block: Hash{7}}
-	fork01 := &notarized{Block: Hash{8}}
-	fork02 := &notarized{Block: Hash{9}}
-	fork02.NonNtChildren = []*unNotarized{&unNotarized{BP: Hash{10}}, &unNotarized{BP: Hash{11}}}
-	fork0.NtChildren = []*notarized{fork01, fork02}
-	fork1 := &notarized{Block: Hash{12}}
-	fork11 := &notarized{Block: Hash{13}}
-	fork1.NtChildren = []*notarized{fork11}
+	chain.finalized = append(chain.finalized, Hash{1})
+	chain.finalized = append(chain.finalized, Hash{2})
+	chain.finalized = append(chain.finalized, Hash{3})
+	chain.finalized = append(chain.finalized, Hash{4})
+	chain.bpNotOnFork = append(chain.bpNotOnFork, &bpNode{BP: Hash{5}})
+	chain.bpNotOnFork = append(chain.bpNotOnFork, &bpNode{BP: Hash{6}})
+	fork0 := &blockNode{Block: Hash{7}}
+	fork01 := &blockNode{Block: Hash{8}}
+	fork02 := &blockNode{Block: Hash{9}}
+	fork02.bpChildren = []*bpNode{&bpNode{BP: Hash{10}}, &bpNode{BP: Hash{11}}}
+	fork0.blockChildren = []*blockNode{fork01, fork02}
+	fork1 := &blockNode{Block: Hash{12}}
+	fork11 := &blockNode{Block: Hash{13}}
+	fork1.blockChildren = []*blockNode{fork11}
 
-	chain.Fork = append(chain.Fork, fork0)
-	chain.Fork = append(chain.Fork, fork1)
+	chain.fork = append(chain.fork, fork0)
+	chain.fork = append(chain.fork, fork1)
 	assert.Equal(t, `digraph chain {
 rankdir=LR;
 size="12,8"

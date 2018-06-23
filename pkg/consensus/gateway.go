@@ -255,7 +255,7 @@ func (n *gateway) broadcast(item Item) {
 }
 
 func (n *gateway) recvTxn(t []byte) {
-	broadcast := n.chain.TxnPool.Add(t)
+	broadcast := n.chain.txnPool.Add(t)
 	if broadcast {
 		go n.broadcast(Item{T: txnItem, Hash: SHA3(t)})
 	}
@@ -299,7 +299,7 @@ func (n *gateway) recvRandBeaconSigShare(addr unicastAddr, r *RandBeaconSigShare
 		return
 	}
 
-	n.chain.RandomBeacon.WaitUntil(r.Round - 1)
+	n.chain.randomBeacon.WaitUntil(r.Round - 1)
 
 	groupID, valid := n.v.ValidateRandBeaconSigShare(r)
 
@@ -307,7 +307,7 @@ func (n *gateway) recvRandBeaconSigShare(addr unicastAddr, r *RandBeaconSigShare
 		return
 	}
 
-	sig, broadcast, success := n.chain.RandomBeacon.AddRandBeaconSigShare(r, groupID)
+	sig, broadcast, success := n.chain.randomBeacon.AddRandBeaconSigShare(r, groupID)
 	if !success {
 		return
 	}
@@ -415,7 +415,7 @@ func (n *gateway) recvInventory(addr unicastAddr, item Item) {
 
 	switch item.T {
 	case txnItem:
-		if n.chain.TxnPool.NotSeen(item.Hash) {
+		if n.chain.txnPool.NotSeen(item.Hash) {
 			log.Debug("request TxnItem", "item", item.Hash)
 			n.requestItem(addr, item)
 		}
@@ -443,11 +443,11 @@ func (n *gateway) recvInventory(addr unicastAddr, item Item) {
 		log.Debug("request NtShareItem", "item", item.Hash)
 		n.requestItem(addr, item)
 	case randBeaconSigShareItem:
-		if n.chain.RandomBeacon.Round()+1 != item.Round {
+		if n.chain.randomBeacon.Round()+1 != item.Round {
 			return
 		}
 
-		share := n.chain.RandomBeacon.GetShare(item.Hash)
+		share := n.chain.randomBeacon.GetShare(item.Hash)
 		if share != nil {
 			return
 		}
@@ -455,7 +455,7 @@ func (n *gateway) recvInventory(addr unicastAddr, item Item) {
 		log.Debug("request RandBeaconSigShareItem", "item", item.Round)
 		n.requestItem(addr, item)
 	case randBeaconSigItem:
-		if n.chain.RandomBeacon.Round() < item.Round {
+		if n.chain.randomBeacon.Round() < item.Round {
 			log.Debug("request randBeaconSigItem", "item", item.Round)
 			n.requestItem(addr, item)
 		}
@@ -467,7 +467,7 @@ func (n *gateway) recvInventory(addr unicastAddr, item Item) {
 func (n *gateway) serveData(addr unicastAddr, item Item) {
 	switch item.T {
 	case txnItem:
-		txn := n.chain.TxnPool.Get(item.Hash)
+		txn := n.chain.txnPool.Get(item.Hash)
 		if txn != nil {
 			log.Debug("serving TxnItem", "item", item.Hash, "addr", addr.Addr)
 			go n.net.Send(addr, packet{Data: txn})
@@ -499,7 +499,7 @@ func (n *gateway) serveData(addr unicastAddr, item Item) {
 		log.Debug("serving NtShareItem", "item", item.Hash, "addr", addr.Addr)
 		go n.net.Send(addr, packet{Data: nts})
 	case randBeaconSigShareItem:
-		share := n.chain.RandomBeacon.GetShare(item.Hash)
+		share := n.chain.randomBeacon.GetShare(item.Hash)
 		if share == nil {
 			return
 		}
@@ -507,7 +507,7 @@ func (n *gateway) serveData(addr unicastAddr, item Item) {
 		log.Debug("serving RandBeaconSigShareItem", "round", item.Round, "addr", addr.Addr)
 		go n.net.Send(addr, packet{Data: share})
 	case randBeaconSigItem:
-		history := n.chain.RandomBeacon.History()
+		history := n.chain.randomBeacon.History()
 		if item.Round >= uint64(len(history)) {
 			return
 		}
