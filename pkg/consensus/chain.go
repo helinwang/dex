@@ -24,6 +24,8 @@ type blockNode struct {
 	BP     Hash
 	Weight float64
 
+	// parent is nil if its parent is finalized
+	parent        *blockNode
 	blockChildren []*blockNode
 	bpChildren    []*bpNode
 }
@@ -457,6 +459,7 @@ func (c *Chain) addBlock(b *Block, bp *BlockProposal, s State, weight float64) (
 		if removeIdx < 0 {
 			panic("should never happen: prev block found but the block proposal is not its child")
 		}
+		nt.parent = prev
 		prev.blockChildren = append(prev.blockChildren, nt)
 		prev.bpChildren = append(prev.bpChildren[:removeIdx], prev.bpChildren[removeIdx+1:]...)
 	}
@@ -481,8 +484,9 @@ func (c *Chain) addBlock(b *Block, bp *BlockProposal, s State, weight float64) (
 
 	round := c.round()
 	if beginRound == b.Round && beginRound+1 == round {
-		// when round n ended, round n - 2 can be finalized. See
-		// corollary 9.19 in https://arxiv.org/abs/1805.04548
+		// when round n ended, round n - 2 can be
+		// finalized. See corollary 9.19 in page 15 of
+		// https://arxiv.org/abs/1805.04548
 		if beginRound > 2 {
 			// TODO: use less aggressive finalize block count
 			// (currently 2).
@@ -495,46 +499,111 @@ func (c *Chain) addBlock(b *Block, bp *BlockProposal, s State, weight float64) (
 	return true, nil
 }
 
+func widthAtDepth(n *blockNode, d int) int {
+	if d == 0 {
+		return len(n.blockChildren)
+	}
+
+	width := 0
+	for _, child := range n.blockChildren {
+		width += widthAtDepth(child, d-1)
+	}
+	return width
+}
+
+func forkWidth(fork []*blockNode, depth int) int {
+	if depth == 0 {
+		return len(fork)
+	}
+
+	width := 0
+	for _, branch := range fork {
+		width += widthAtDepth(branch, depth-1)
+	}
+	return width
+}
+
+func nodeAtDepth(n *blockNode, d int) *blockNode {
+	if d == 0 {
+		if len(n.blockChildren) == 0 {
+			return nil
+		}
+
+		return n.blockChildren[0]
+	}
+
+	for _, child := range n.blockChildren {
+		r := nodeAtDepth(child, d-1)
+		if r != nil {
+			return r
+		}
+	}
+
+	return nil
+}
+
+func nodeAtDepthInFork(fork []*blockNode, depth int) *blockNode {
+	if depth == 0 {
+		return fork[0]
+	}
+
+	for _, branch := range fork {
+		r := nodeAtDepth(branch, depth-1)
+		if r != nil {
+			return r
+		}
+	}
+
+	return nil
+}
+
 // must be called with mutex held
 func (c *Chain) finalize(round uint64) {
-	depth := round
 	count := uint64(len(c.finalized))
-	if depth < count {
+	if round < count {
 		return
 	}
 
-	depth -= count
+	depth := int(round - count)
 
 	// TODO: release finalized state/bp/block from memory, since
 	// its persisted on disk, peers can still ask for them.
 
-	if depth == 0 {
-		if len(c.fork) > 1 {
-			// more than one block in the finalized round,
-			// wait for next time to determin which fork
-			// is finalized.
-			return
-		}
-
-		f := c.fork[0]
-		c.finalized = append(c.finalized, f.Block)
-		// TODO: compact not used state
-		c.lastFinalizedState = c.unFinalizedState[f.Block]
-		delete(c.unFinalizedState, f.Block)
-		c.fork = f.blockChildren
-		c.bpNotOnFork = f.bpChildren
+	if forkWidth(c.fork, depth) > 1 {
+		// more than one block in the finalized round,
+		// wait for next time to determin which fork
+		// is finalized.
 		return
 	}
 
-	// TODO: add to history if condition met
+	root := nodeAtDepthInFork(c.fork, depth)
+	for i := depth; i > 0; i-- {
+		root = root.parent
+	}
 
-	// TODO: delete removed states from map
+	found := false
+	for _, b := range c.fork {
+		if b == root {
+			found = true
+			break
+		}
+	}
 
-	// TODO: handle condition of not normal operation. E.g, remove
-	// the peer of the finalized parents
+	if !found {
+		panic("should not happen: the node to be finalized is not on fork")
+	}
 
-	fmt.Println(c.graphviz(10))
-	panic("not under normal operation, not implemented")
+	c.finalized = append(c.finalized, root.Block)
+	c.lastFinalizedState = c.unFinalizedState[root.Block]
+	delete(c.unFinalizedState, root.Block)
+	c.fork = root.blockChildren
+	c.bpNotOnFork = root.bpChildren
+
+	for i := range c.fork {
+		c.fork[i].parent = nil
+	}
+
+	// TODO: delete the state/block/bp of the removed branches from the map
 }
 
 // Graphviz returns the Graphviz format encoded chain visualization.

@@ -69,3 +69,24 @@ block_0c00 -> block_0d00
 }
 `, chain.Graphviz(0))
 }
+
+func TestForkTraversal(t *testing.T) {
+	fork := make([]*blockNode, 2)
+	fork[0] = &blockNode{}
+	fork[1] = &blockNode{}
+	assert.Equal(t, 2, forkWidth(fork, 0))
+	fork[0].blockChildren = make([]*blockNode, 1)
+	fork[0].blockChildren[0] = &blockNode{}
+	fork[1].blockChildren = make([]*blockNode, 2)
+	fork[1].blockChildren[0] = &blockNode{}
+	fork[1].blockChildren[1] = &blockNode{}
+	assert.Equal(t, 3, forkWidth(fork, 1))
+	fork[0].blockChildren[0].blockChildren = make([]*blockNode, 2)
+	fork[0].blockChildren[0].blockChildren[0] = &blockNode{}
+	fork[0].blockChildren[0].blockChildren[1] = &blockNode{}
+	assert.Equal(t, 2, forkWidth(fork, 2))
+
+	n := &blockNode{Weight: 1}
+	fork[0].blockChildren[0].blockChildren[0].blockChildren = []*blockNode{n}
+	assert.Equal(t, n, nodeAtDepthInFork(fork, 3))
+}
