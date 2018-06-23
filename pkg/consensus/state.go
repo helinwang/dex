@@ -1,5 +1,13 @@
 package consensus
 
+// State is the blockchain state.
+type State interface {
+	Hash() Hash
+	Transition(round uint64) Transition
+	Serialize() (TrieBlob, error)
+	Deserialize(TrieBlob) error
+}
+
 // Transition is the transition from one State to another State.
 type Transition interface {
 	// Record records a transition to the state transition.
@@ -14,14 +22,6 @@ type Transition interface {
 	// StateHash returns the state root hash of the state after
 	// applying the transition.
 	StateHash() Hash
-}
-
-// State is the blockchain state.
-type State interface {
-	Hash() Hash
-	Transition(round uint64) Transition
-	Serialize() (TrieBlob, error)
-	Deserialize(TrieBlob) error
 }
 
 // TxnPool is the pool that stores the received transactions.

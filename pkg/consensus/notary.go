@@ -96,12 +96,12 @@ func (n *Notary) notarize(bp *BlockProposal) *NtShare {
 		panic("TODO")
 	}
 
-	state := n.chain.BlockToState(bp.PrevBlock)
+	state := n.chain.BlockState(bp.PrevBlock)
 	if state == nil {
 		panic("TODO")
 	}
 
-	trans, err := getTransition(state, bp.Data, bp.Round)
+	trans, err := recordTxns(state, bp.Data, bp.Round)
 	if err != nil {
 		panic("TODO: " + err.Error())
 	}

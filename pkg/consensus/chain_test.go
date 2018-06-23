@@ -12,8 +12,26 @@ type myUpdater struct {
 func (m *myUpdater) Update(State) {
 }
 
+type myState struct {
+}
+
+func (s *myState) Hash() Hash {
+	return Hash{}
+}
+func (s *myState) Transition(round uint64) Transition {
+	return nil
+}
+
+func (s *myState) Serialize() (TrieBlob, error) {
+	return TrieBlob{}, nil
+}
+
+func (s *myState) Deserialize(TrieBlob) error {
+	return nil
+}
+
 func TestGraphviz(t *testing.T) {
-	chain := NewChain(&Block{}, nil, Rand{}, Config{}, nil, &myUpdater{})
+	chain := NewChain(&Block{}, &myState{}, Rand{}, Config{}, nil, &myUpdater{})
 	chain.finalized = append(chain.finalized, Hash{1})
 	chain.finalized = append(chain.finalized, Hash{2})
 	chain.finalized = append(chain.finalized, Hash{3})

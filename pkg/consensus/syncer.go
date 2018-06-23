@@ -144,8 +144,8 @@ func (s *syncer) syncBlock(addr unicastAddr, hash Hash, round uint64) (b *Block,
 	}
 	weight = rankToWeight(rank)
 
-	state := s.chain.BlockToState(b.PrevBlock)
-	trans, err := getTransition(state, bp.Data, bp.Round)
+	state := s.chain.BlockState(b.PrevBlock)
+	trans, err := recordTxns(state, bp.Data, bp.Round)
 	if err != nil {
 		return
 	}

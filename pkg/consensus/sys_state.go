@@ -42,9 +42,9 @@ func (s *SysTransition) Txns() []SysTxn {
 	return s.txns
 }
 
-// Apply applies the recorded transactions and creates a new system
+// Commit commits the recorded transactions and creates a new system
 // state.
-func (s *SysTransition) Apply() *SysState {
+func (s *SysTransition) Commit() *SysState {
 	// TODO: this is assuming that there will be no more sys txn
 	// after genesis. This is not true after we support open
 	// participation though DKG.
@@ -66,16 +66,6 @@ func (s *SysTransition) Clear() *SysState {
 // Transition returns the system state transition
 func (s *SysState) Transition() *SysTransition {
 	return &SysTransition{s: s}
-}
-
-// Finalized marks the system state as finalized.
-//
-// System state references its parent state, only records the diff
-// state, to save memory. All finalized system state execept the last
-// one will never be used, so they can be squashed into the last
-// finalized system state.
-func (s *SysState) Finalized() {
-	// TODO
 }
 
 func (s *SysState) applyReadyJoinGroup(t ReadyJoinGroupTxn) error {

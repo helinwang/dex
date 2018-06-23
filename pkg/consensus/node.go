@@ -199,10 +199,6 @@ func MakeNode(credentials NodeCredentials, cfg Config, genesis Genesis, state St
 		panic(err)
 	}
 
-	if state.Hash() != genesis.Block.StateRoot {
-		panic(fmt.Errorf("genesis state hash and block state root does not match, state hash: %x, blocks state root: %x", state.Hash(), genesis.Block.StateRoot))
-	}
-
 	chain := NewChain(&genesis.Block, state, randSeed, cfg, txnPool, u)
 	net := newNetwork(credentials.SK)
 	networking := newGateway(net, chain)
