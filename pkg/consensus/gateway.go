@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	lru "github.com/hashicorp/golang-lru"
 	log "github.com/helinwang/log15"
@@ -69,10 +70,11 @@ type gateway struct {
 	randBeaconSigCache *lru.Cache
 	syncer             *syncer
 
-	mu           sync.Mutex
-	rbSigWaiters map[uint64][]chan *RandBeaconSig
-	blockWaiters map[Hash][]chan *Block
-	bpWaiters    map[Hash][]chan *BlockProposal
+	mu             sync.Mutex
+	rbSigWaiters   map[uint64][]chan *RandBeaconSig
+	blockWaiters   map[Hash][]chan *Block
+	bpWaiters      map[Hash][]chan *BlockProposal
+	requestingItem map[Item]bool
 }
 
 func newGateway(net *network, chain *Chain) *gateway {
@@ -101,6 +103,7 @@ func newGateway(net *network, chain *Chain) *gateway {
 		rbSigWaiters:       make(map[uint64][]chan *RandBeaconSig),
 		blockWaiters:       make(map[Hash][]chan *Block),
 		bpWaiters:          make(map[Hash][]chan *BlockProposal),
+		requestingItem:     make(map[Item]bool),
 	}
 
 	n.syncer = newSyncer(chain, n)
@@ -108,6 +111,16 @@ func newGateway(net *network, chain *Chain) *gateway {
 }
 
 func (n *gateway) requestItem(addr unicastAddr, item Item) error {
+	if n.requestingItem[item] {
+		return nil
+	}
+
+	n.requestingItem[item] = true
+	time.AfterFunc(2*time.Second, func() {
+		n.mu.Lock()
+		delete(n.requestingItem, item)
+		n.mu.Unlock()
+	})
 	return n.net.Send(addr, packet{Data: itemRequest(item)})
 }
 
