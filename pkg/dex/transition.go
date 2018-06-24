@@ -457,6 +457,7 @@ func (t *Transition) finalizeState(round uint64) {
 		// make order book dirty.
 		t.saveDirtyOrderBooks()
 		t.releaseTokens()
+		t.state.CommitCache()
 		t.finalized = true
 	}
 }

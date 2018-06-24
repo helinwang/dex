@@ -50,8 +50,10 @@ type State struct {
 	db     *trie.Database
 	diskDB ethdb.Database
 
-	mu    sync.Mutex
-	state *trie.Trie
+	mu           sync.Mutex
+	state        *trie.Trie
+	accountCache map[consensus.Addr]*Account
+	accountDirty map[consensus.Addr]bool
 }
 
 // TODO: add receipt for create, send, freeze, burn token.
@@ -97,6 +99,16 @@ func CreateGenesisState(recipients []consensus.PK, additionalTokens []TokenInfo)
 	return s
 }
 
+func newState(state *trie.Trie, db *trie.Database, diskDB ethdb.Database) *State {
+	return &State{
+		diskDB:       diskDB,
+		db:           db,
+		state:        state,
+		accountCache: make(map[consensus.Addr]*Account),
+		accountDirty: make(map[consensus.Addr]bool),
+	}
+}
+
 func NewState(diskDB ethdb.Database) *State {
 	db := trie.NewDatabase(diskDB)
 	t, err := trie.New(common.Hash{}, db)
@@ -104,13 +116,7 @@ func NewState(diskDB ethdb.Database) *State {
 		panic(err)
 	}
 
-	s := &State{
-		diskDB: diskDB,
-		db:     db,
-		state:  t,
-	}
-
-	return s
+	return newState(t, db, diskDB)
 }
 
 var (
@@ -158,6 +164,19 @@ func encodePath(str []byte) []byte {
 	return nibbles
 }
 
+func (s *State) CommitCache() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for addr, dirty := range s.accountDirty {
+		if !dirty {
+			continue
+		}
+
+		s.updateAccount(s.accountCache[addr])
+	}
+}
+
 func (s *State) UpdateToken(token Token) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -174,9 +193,14 @@ func (s *State) UpdateToken(token Token) {
 }
 
 func (s *State) UpdateAccount(acc *Account) {
+	addr := acc.PK.Addr()
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.accountDirty[addr] = true
+	s.accountCache[addr] = acc
+	s.mu.Unlock()
+}
 
+func (s *State) updateAccount(acc *Account) {
 	addr := acc.PK.Addr()
 	b, err := rlp.EncodeToBytes(acc)
 	if err != nil {
@@ -190,6 +214,11 @@ func (s *State) Account(addr consensus.Addr) *Account {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	cache := s.accountCache[addr]
+	if cache != nil {
+		return cache
+	}
+
 	acc := s.state.Get(accountAddrToPath(addr))
 	if acc == nil {
 		return nil
@@ -198,10 +227,11 @@ func (s *State) Account(addr consensus.Addr) *Account {
 	var account Account
 	err := rlp.DecodeBytes(acc, &account)
 	if err != nil {
-		log.Error("decode account error", "err", err, "b", acc)
+		log.Error("decode account error", "err", err)
 		return nil
 	}
 
+	s.accountCache[addr] = &account
 	return &account
 }
 
@@ -322,11 +352,7 @@ func (s *State) Transition(round uint64) consensus.Transition {
 		panic(err)
 	}
 
-	state := &State{
-		db:     s.db,
-		state:  trie,
-		diskDB: s.diskDB,
-	}
+	state := newState(trie, s.db, s.diskDB)
 	return newTransition(state, round)
 }
 

@@ -6,6 +6,7 @@ type State interface {
 	Transition(round uint64) Transition
 	Serialize() (TrieBlob, error)
 	Deserialize(TrieBlob) error
+	CommitCache()
 }
 
 // Transition is the transition from one State to another State.
