@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/dave/stablegob"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/rlp"
@@ -178,9 +179,13 @@ func (s *State) UpdateAccount(acc *Account) {
 	defer s.mu.Unlock()
 
 	addr := acc.PK.Addr()
-	b, err := rlp.EncodeToBytes(acc)
+	b := stableGobEncode(acc)
+
+	var de Account
+	dec := stablegob.NewDecoder(bytes.NewReader(b))
+	err := dec.Decode(&de)
 	if err != nil {
-		panic(err)
+		log.Error("123 decode account error", "err", err)
 	}
 
 	s.state.Update(accountAddrToPath(addr), b)
@@ -196,9 +201,10 @@ func (s *State) Account(addr consensus.Addr) *Account {
 	}
 
 	var account Account
-	err := rlp.DecodeBytes(acc, &account)
+	dec := stablegob.NewDecoder(bytes.NewReader(acc))
+	err := dec.Decode(&account)
 	if err != nil {
-		log.Error("decode account error", "err", err, "b", acc)
+		log.Error("decode account error", "err", err)
 		return nil
 	}
 

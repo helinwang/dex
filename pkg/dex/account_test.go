@@ -1,9 +1,10 @@
 package dex
 
 import (
+	"bytes"
+	"encoding/gob"
 	"testing"
 
-	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/helinwang/dex/pkg/consensus"
 	"github.com/stretchr/testify/assert"
 )
@@ -13,8 +14,8 @@ func TestAccountEncodeDecode(t *testing.T) {
 		PK:       consensus.PK{1, 2, 3},
 		NonceVec: []uint64{4, 5},
 		Balances: map[TokenID]*Balance{
-			0: &Balance{Available: 100, Pending: 20, Frozen: []Frozen{}},
-			5: &Balance{Available: 1<<64 - 1, Pending: 1, Frozen: []Frozen{}},
+			0: &Balance{Available: 100, Pending: 20},
+			5: &Balance{Available: 1<<64 - 1, Pending: 1},
 		},
 		PendingOrders: []PendingOrder{
 			{
@@ -22,16 +23,13 @@ func TestAccountEncodeDecode(t *testing.T) {
 				Executed: 4,
 				Order:    Order{Price: 5}},
 		},
-		ExecutionReports: []ExecutionReport{},
 	}
 
-	b, err := rlp.EncodeToBytes(&a)
-	if err != nil {
-		panic(err)
-	}
+	b := stableGobEncode(a)
 
 	var a1 Account
-	err = rlp.DecodeBytes(b, &a1)
+	dec := gob.NewDecoder(bytes.NewReader(b))
+	err := dec.Decode(&a1)
 	if err != nil {
 		panic(err)
 	}
@@ -62,10 +60,7 @@ func TestAccountHashDeterministic(t *testing.T) {
 
 	var lastHash consensus.Hash
 	for i := 0; i < 30; i++ {
-		b, err := rlp.EncodeToBytes(&a)
-		if err != nil {
-			panic(err)
-		}
+		b := stableGobEncode(a)
 		h := consensus.SHA3(b)
 		if i > 0 {
 			assert.Equal(t, lastHash, h)
