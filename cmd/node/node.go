@@ -41,7 +41,7 @@ func createNode(c consensus.NodeCredentials, genesis consensus.Genesis, u consen
 
 func main() {
 	rand.Seed(time.Now().UnixNano())
-	// log15.Root().SetHandler(log15.LvlFilterHandler(log15.LvlWarn, log15.StdoutHandler))
+	lvl := flag.String("lvl", "info", "log level, possible values: debug, info, warn, error, crit")
 	c := flag.String("c", "./genesis", "path to the node credential file")
 	host := flag.String("host", "127.0.0.1", "node address to listen connection on")
 	port := flag.Int("port", 11001, "node address to listen connection on")
@@ -50,6 +50,12 @@ func main() {
 	rpcAddr := flag.String("rpc-addr", ":12001", "rpc address used to serve wallet RPC calls")
 	flag.Parse()
 
+	l, err := log15.LvlFromString(*lvl)
+	if err != nil {
+		panic(err)
+	}
+
+	log15.Root().SetHandler(log15.LvlFilterHandler(l, log15.StdoutHandler))
 	var genesis consensus.Genesis
 	decodeFromFile(*g, &genesis)
 

@@ -1,6 +1,7 @@
 package consensus
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -123,13 +124,20 @@ func (c *Chain) ChainStatus() ChainStatus {
 }
 
 // ProposeBlock proposes a new block.
-func (c *Chain) ProposeBlock(sk SK) *BlockProposal {
+func (c *Chain) ProposeBlock(ctx context.Context, sk SK) *BlockProposal {
+	log.Debug("propose block")
 	txns := c.txnPool.Txns()
 	block, state, _ := c.Leader()
 	round := block.Round + 1
-
 	trans := state.Transition(round)
+loop:
 	for _, txn := range txns {
+		select {
+		case <-ctx.Done():
+			break loop
+		default:
+		}
+
 		valid, _ := trans.Record(txn)
 		if !valid {
 			// TODO: handle "lost" txn due to reorg.

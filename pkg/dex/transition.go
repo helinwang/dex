@@ -315,7 +315,7 @@ func (t *Transition) placeOrder(owner *Account, txn PlaceOrderTxn, round uint64)
 			}
 
 			if !orderFound {
-				panic(fmt.Errorf("impossible: can not find matched order %d, market: %v", exec.ID, txn.Market))
+				panic(fmt.Errorf("impossible: can not find matched order %d, market: %v, executed order: %v", exec.ID, txn.Market, exec))
 			}
 
 			if removeIdx >= 0 {
@@ -333,9 +333,17 @@ func (t *Transition) placeOrder(owner *Account, txn PlaceOrderTxn, round uint64)
 				buySideBalance = acc.Balances[txn.Market.Quote]
 				soldQuant = exec.Quant
 				boughtQuant = calcBaseSellQuant(exec.Quant, quoteInfo.Decimals, exec.Price, OrderPriceDecimals, baseInfo.Decimals)
-				if exec.Taker {
-					refund = exec.Price - orderPrice
+
+				if sellSideBalance.Pending < soldQuant {
+					panic(fmt.Errorf("insufficient pending balance, owner: %s, pending %d, executed: %d, refund: %d, taker: %t, sellSideBalance: %d, buySideBalance: %d, soldQuant: %d, boughtQuant: %d", exec.Owner.Hex(), sellSideBalance.Pending, soldQuant, refund, exec.Taker, sellSideBalance, buySideBalance, soldQuant, boughtQuant))
 				}
+
+				sellSideBalance.Pending -= soldQuant
+
+				if buySideBalance == nil {
+					buySideBalance = &Balance{}
+				}
+				buySideBalance.Available += boughtQuant
 			} else {
 				// bought, deduct quote pending
 				// balance, add base available balance
@@ -346,19 +354,19 @@ func (t *Transition) placeOrder(owner *Account, txn PlaceOrderTxn, round uint64)
 				if exec.Taker {
 					refund = calcBaseSellQuant(exec.Quant, quoteInfo.Decimals, orderPrice-exec.Price, OrderPriceDecimals, baseInfo.Decimals)
 				}
-			}
 
-			if sellSideBalance.Pending < soldQuant+refund {
-				panic(fmt.Errorf("insufficient pending balance, owner: %s, pending %d, executed: %d, refund: %d, taker: %t", exec.Owner.Hex(), sellSideBalance.Pending, soldQuant, refund, exec.Taker))
-			}
+				if sellSideBalance.Pending < soldQuant+refund {
+					panic(fmt.Errorf("insufficient pending balance, owner: %s, pending %d, executed: %d, refund: %d, taker: %t, sellSideBalance: %d, buySideBalance: %d, soldQuant: %d, boughtQuant: %d", exec.Owner.Hex(), sellSideBalance.Pending, soldQuant, refund, exec.Taker, sellSideBalance, buySideBalance, soldQuant, boughtQuant))
+				}
 
-			sellSideBalance.Pending -= (soldQuant + refund)
-			sellSideBalance.Available += refund
+				sellSideBalance.Pending -= (soldQuant + refund)
+				sellSideBalance.Available += refund
 
-			if buySideBalance == nil {
-				buySideBalance = &Balance{}
+				if buySideBalance == nil {
+					buySideBalance = &Balance{}
+				}
+				buySideBalance.Available += boughtQuant
 			}
-			buySideBalance.Available += boughtQuant
 		}
 
 		for _, acc := range addrToAcc {
@@ -455,7 +463,7 @@ func (t *Transition) finalizeState(round uint64) {
 
 func (t *Transition) recordOrderExpirations() {
 	for expireHeight, ids := range t.expirations {
-		t.state.addOrderExpirations(expireHeight, ids)
+		t.state.AddOrderExpirations(expireHeight, ids)
 	}
 }
 
@@ -497,7 +505,7 @@ func (t *Transition) removeFilledOrderFromExpiration() {
 
 		// remove filled order's expiration from the saved
 		// expiration from disk.
-		t.state.removeOrderExpirations(height, filled)
+		t.state.RemoveOrderExpirations(height, filled)
 	}
 }
 
@@ -507,7 +515,7 @@ func (t *Transition) removeFilledOrderFromExpiration() {
 func (t *Transition) releaseTokens() {
 
 	// release the tokens that will be released next round
-	tokens := t.state.getFreezeTokens(t.round + 1)
+	tokens := t.state.GetFreezeTokens(t.round + 1)
 	addrToAcc := make(map[consensus.Addr]*Account)
 	for _, token := range tokens {
 		acc, ok := addrToAcc[token.Addr]
@@ -536,7 +544,7 @@ func (t *Transition) releaseTokens() {
 
 func (t *Transition) expireOrders() {
 	// expire orders whose expiration is the next round
-	orders := t.state.getOrderExpirations(t.round + 1)
+	orders := t.state.GetOrderExpirations(t.round + 1)
 	addrToAcc := make(map[consensus.Addr]*Account)
 	for _, o := range orders {
 		t.getOrderBook(o.ID.Market).Cancel(o.ID.ID)
@@ -598,7 +606,7 @@ func (t *Transition) freezeToken(acc *Account, txn FreezeTokenTxn) bool {
 	b.Available -= txn.Quant
 	b.Frozen = append(b.Frozen, frozen)
 	t.state.UpdateAccount(acc)
-	t.state.freezeToken(txn.AvailableRound, freezeToken{Addr: acc.PK.Addr(), TokenID: txn.TokenID, Quant: txn.Quant})
+	t.state.FreezeToken(txn.AvailableRound, freezeToken{Addr: acc.PK.Addr(), TokenID: txn.TokenID, Quant: txn.Quant})
 	return true
 }
 
@@ -609,7 +617,6 @@ func (t *Transition) StateHash() consensus.Hash {
 
 func (t *Transition) Commit() consensus.State {
 	t.finalizeState(t.round)
-	t.state.Commit()
 	for _, v := range t.tokenCreations {
 		t.tokenCache.Update(v.ID, &v.TokenInfo)
 	}

@@ -93,9 +93,15 @@ func (n *Node) StartRound(round uint64) {
 	n.roundEnd = false
 	var ntCancelCtx context.Context
 	_, bp, nt := n.chain.randomBeacon.Committees(round)
+
+	// at most spend blockTime / 2 for proposing block, to avoid
+	// the case that there are too many transactions to be
+	// included in the block proposal
+	proposeBlockCtx, cancelProposeBlock := context.WithTimeout(context.Background(), n.cfg.BlockTime/2)
+	defer cancelProposeBlock()
 	for _, m := range n.memberships {
 		if m.groupID == bp {
-			bp := n.chain.ProposeBlock(n.sk)
+			bp := n.chain.ProposeBlock(proposeBlockCtx, n.sk)
 			go func() {
 				log.Debug("proposing block", "owner", n.addr, "round", bp.Round, "hash", bp.Hash())
 				n.net.recvBlockProposal(n.net.addr, bp)

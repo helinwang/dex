@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"sync"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethdb"
@@ -46,9 +47,11 @@ func (m *MarketSymbol) Decode(b []byte) error {
 
 // State is the state of the DEX.
 type State struct {
-	state  *trie.Trie
 	db     *trie.Database
 	diskDB ethdb.Database
+
+	mu    sync.Mutex
+	state *trie.Trie
 }
 
 // TODO: add receipt for create, send, freeze, burn token.
@@ -110,10 +113,6 @@ func NewState(diskDB ethdb.Database) *State {
 	return s
 }
 
-func (s *State) Commit() {
-	s.state.Commit(nil)
-}
-
 var (
 	accountPrefix         = []byte{0}
 	marketPrefix          = []byte{1}
@@ -160,6 +159,9 @@ func encodePath(str []byte) []byte {
 }
 
 func (s *State) UpdateToken(token Token) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	path := tokenPath(token.ID)
 
 	b, err := rlp.EncodeToBytes(token)
@@ -172,6 +174,9 @@ func (s *State) UpdateToken(token Token) {
 }
 
 func (s *State) UpdateAccount(acc *Account) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	addr := acc.PK.Addr()
 	b, err := rlp.EncodeToBytes(acc)
 	if err != nil {
@@ -182,6 +187,9 @@ func (s *State) UpdateAccount(acc *Account) {
 }
 
 func (s *State) Account(addr consensus.Addr) *Account {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	acc := s.state.Get(accountAddrToPath(addr))
 	if acc == nil {
 		return nil
@@ -199,6 +207,9 @@ func (s *State) Account(addr consensus.Addr) *Account {
 
 // loadOrderBook deserializes the order from the state trie.
 func (s *State) loadOrderBook(m MarketSymbol) *orderBook {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	path := marketPath(m.Encode())
 	b := s.state.Get(path)
 	if b == nil {
@@ -226,6 +237,9 @@ func (s *State) saveOrderBook(m MarketSymbol, book *orderBook) {
 
 // Tokens returns all issued tokens
 func (s *State) Tokens() []Token {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	prefix := encodePath(tokenPrefix)
 	iter := s.state.NodeIterator(prefix)
 
@@ -287,11 +301,17 @@ func (s *State) Deserialize(b consensus.TrieBlob) error {
 
 // Hash returns the state root hash of the state trie.
 func (s *State) Hash() consensus.Hash {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	return consensus.Hash(s.state.Hash())
 }
 
 // Transition returns the state change transition.
 func (s *State) Transition(round uint64) consensus.Transition {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	root, err := s.state.Commit(nil)
 	if err != nil {
 		panic(err)
@@ -303,8 +323,9 @@ func (s *State) Transition(round uint64) consensus.Transition {
 	}
 
 	state := &State{
-		db:    s.db,
-		state: trie,
+		db:     s.db,
+		state:  trie,
+		diskDB: s.diskDB,
 	}
 	return newTransition(state, round)
 }
@@ -312,6 +333,13 @@ func (s *State) Transition(round uint64) consensus.Transition {
 type orderExpiration struct {
 	ID    OrderID
 	Owner consensus.Addr
+}
+
+func (s *State) GetOrderExpirations(round uint64) []orderExpiration {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return s.getOrderExpirations(round)
 }
 
 func (s *State) getOrderExpirations(round uint64) []orderExpiration {
@@ -327,7 +355,10 @@ func (s *State) getOrderExpirations(round uint64) []orderExpiration {
 	return all
 }
 
-func (s *State) addOrderExpirations(round uint64, ids []orderExpiration) {
+func (s *State) AddOrderExpirations(round uint64, ids []orderExpiration) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	all := s.getOrderExpirations(round)
 	all = append(all, ids...)
 	b, err := rlp.EncodeToBytes(all)
@@ -339,7 +370,10 @@ func (s *State) addOrderExpirations(round uint64, ids []orderExpiration) {
 	s.state.Update(path, b)
 }
 
-func (s *State) removeOrderExpirations(round uint64, ids map[OrderID]bool) {
+func (s *State) RemoveOrderExpirations(round uint64, ids map[OrderID]bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	all := s.getOrderExpirations(round)
 	newExps := make([]orderExpiration, 0, len(all))
 	for _, exp := range all {
@@ -362,6 +396,13 @@ type freezeToken struct {
 	Quant   uint64
 }
 
+func (s *State) GetFreezeTokens(round uint64) []freezeToken {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return s.getFreezeTokens(round)
+}
+
 func (s *State) getFreezeTokens(round uint64) []freezeToken {
 	path := freezeAtRoundToPath(round)
 	b := s.state.Get(path)
@@ -378,7 +419,10 @@ func (s *State) getFreezeTokens(round uint64) []freezeToken {
 	return all
 }
 
-func (s *State) freezeToken(round uint64, f freezeToken) {
+func (s *State) FreezeToken(round uint64, f freezeToken) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	all := s.getFreezeTokens(round)
 	all = append(all, f)
 	b, err := rlp.EncodeToBytes(all)

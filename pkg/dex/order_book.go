@@ -92,29 +92,7 @@ func (o *orderBook) Limit(order Order) (id uint64, executions []orderExecution) 
 		for o.askMin != nil && order.Price >= o.askMin.Price {
 			entry := o.askMin.ListHead
 			for entry != nil {
-				if entry.Quant < order.Quant {
-					if entry.Quant > 0 {
-						order.Quant -= entry.Quant
-						execA := orderExecution{
-							Owner:    order.Owner,
-							ID:       id,
-							SellSide: false,
-							Quant:    entry.Quant,
-							Price:    o.askMin.Price,
-							Taker:    true,
-						}
-
-						execB := orderExecution{
-							Owner:    entry.Owner,
-							ID:       entry.ID,
-							SellSide: true,
-							Quant:    entry.Quant,
-							Price:    o.askMin.Price,
-							Taker:    false,
-						}
-						executions = append(executions, execA, execB)
-					}
-				} else {
+				if entry.Quant >= order.Quant {
 					// order is filled
 					execA := orderExecution{
 						Owner:    order.Owner,
@@ -144,6 +122,29 @@ func (o *orderBook) Limit(order Order) (id uint64, executions []orderExecution) 
 						}
 					}
 					return
+				}
+
+				if entry.Quant > 0 {
+					order.Quant -= entry.Quant
+					execA := orderExecution{
+						Owner:    order.Owner,
+						ID:       id,
+						SellSide: false,
+						Quant:    entry.Quant,
+						Price:    o.askMin.Price,
+						Taker:    true,
+					}
+
+					execB := orderExecution{
+						Owner:    entry.Owner,
+						ID:       entry.ID,
+						SellSide: true,
+						Quant:    entry.Quant,
+						Price:    o.askMin.Price,
+						Taker:    false,
+					}
+					executions = append(executions, execA, execB)
+					entry.Quant = 0
 				}
 				entry = entry.Next
 			}
@@ -198,28 +199,7 @@ func (o *orderBook) Limit(order Order) (id uint64, executions []orderExecution) 
 		for o.bidMax != nil && order.Price <= o.bidMax.Price {
 			entry := o.bidMax.ListHead
 			for entry != nil {
-				if entry.Quant < order.Quant {
-					order.Quant -= entry.Quant
-
-					execA := orderExecution{
-						Owner:    order.Owner,
-						ID:       id,
-						SellSide: true,
-						Quant:    entry.Quant,
-						Price:    o.bidMax.Price,
-						Taker:    true,
-					}
-
-					execB := orderExecution{
-						Owner:    entry.Owner,
-						ID:       entry.ID,
-						SellSide: false,
-						Quant:    entry.Quant,
-						Price:    o.bidMax.Price,
-						Taker:    false,
-					}
-					executions = append(executions, execA, execB)
-				} else {
+				if entry.Quant >= order.Quant {
 					// order is filled
 					execA := orderExecution{
 						Owner:    order.Owner,
@@ -249,6 +229,29 @@ func (o *orderBook) Limit(order Order) (id uint64, executions []orderExecution) 
 						}
 					}
 					return
+				}
+
+				if entry.Quant > 0 {
+					order.Quant -= entry.Quant
+					execA := orderExecution{
+						Owner:    order.Owner,
+						ID:       id,
+						SellSide: true,
+						Quant:    entry.Quant,
+						Price:    o.bidMax.Price,
+						Taker:    true,
+					}
+
+					execB := orderExecution{
+						Owner:    entry.Owner,
+						ID:       entry.ID,
+						SellSide: false,
+						Quant:    entry.Quant,
+						Price:    o.bidMax.Price,
+						Taker:    false,
+					}
+					executions = append(executions, execA, execB)
+					entry.Quant = 0
 				}
 				entry = entry.Next
 			}
