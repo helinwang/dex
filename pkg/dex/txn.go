@@ -52,26 +52,26 @@ func validateSigAndNonce(state *State, b []byte) (txn *Txn, acc *Account, ready,
 		return
 	}
 
-	if int(txn.NonceIdx) >= len(acc.NonceVec) {
-		if txn.NonceValue > 0 {
-			ready = false
-			valid = true
-			return
-		}
+	// if int(txn.NonceIdx) >= len(acc.NonceVec) {
+	// 	if txn.NonceValue > 0 {
+	// 		ready = false
+	// 		valid = true
+	// 		return
+	// 	}
 
-		ready = true
-		valid = true
-		return
-	}
+	// 	ready = true
+	// 	valid = true
+	// 	return
+	// }
 
-	if acc.NonceVec[txn.NonceIdx] < txn.NonceValue {
-		ready = false
-		valid = true
-		return
-	} else if acc.NonceVec[txn.NonceIdx] > txn.NonceValue {
-		valid = false
-		return
-	}
+	// if acc.NonceVec[txn.NonceIdx] < txn.NonceValue {
+	// 	ready = false
+	// 	valid = true
+	// 	return
+	// } else if acc.NonceVec[txn.NonceIdx] > txn.NonceValue {
+	// 	valid = false
+	// 	return
+	// }
 
 	ready = true
 	valid = true
