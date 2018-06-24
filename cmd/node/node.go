@@ -6,6 +6,8 @@ import (
 	"flag"
 	"io/ioutil"
 	"math/rand"
+	"os"
+	"runtime/pprof"
 	"time"
 
 	"github.com/ethereum/go-ethereum/ethdb"
@@ -41,6 +43,7 @@ func createNode(c consensus.NodeCredentials, genesis consensus.Genesis, u consen
 
 func main() {
 	rand.Seed(time.Now().UnixNano())
+	profileDur := flag.Duration("profile-dur", 0, "profile duration")
 	lvl := flag.String("lvl", "info", "log level, possible values: debug, info, warn, error, crit")
 	c := flag.String("c", "./genesis", "path to the node credential file")
 	host := flag.String("host", "127.0.0.1", "node address to listen connection on")
@@ -49,6 +52,22 @@ func main() {
 	g := flag.String("genesis", "", "path to the genesis block file")
 	rpcAddr := flag.String("rpc-addr", ":12001", "rpc address used to serve wallet RPC calls")
 	flag.Parse()
+
+	if *profileDur > 0 {
+		go func() {
+			f, err := os.Create("profile.prof")
+			if err != nil {
+				panic(err)
+			}
+
+			err = pprof.StartCPUProfile(f)
+			if err != nil {
+				panic(err)
+			}
+
+			time.AfterFunc(*profileDur, pprof.StopCPUProfile)
+		}()
+	}
 
 	l, err := log15.LvlFromString(*lvl)
 	if err != nil {
