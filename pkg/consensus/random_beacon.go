@@ -197,8 +197,7 @@ func (r *RandomBeacon) Rank(addr Addr, round uint64) (int, error) {
 	}
 
 	r.mu.Lock()
-	i := round - 1
-	bp := r.nextBPCmteHistory[i]
+	bp := r.nextBPCmteHistory[round]
 	g := r.groups[bp]
 	idx := -1
 	for i := range g.Members {
@@ -213,7 +212,7 @@ func (r *RandomBeacon) Rank(addr Addr, round uint64) (int, error) {
 		return 0, errors.New("addr not in the current block proposal committee")
 	}
 
-	perm := r.nextBPRandHistory[i].Perm(idx+1, len(g.Members))
+	perm := r.nextBPRandHistory[round].Perm(idx+1, len(g.Members))
 	r.mu.Unlock()
 	return perm[idx], nil
 }

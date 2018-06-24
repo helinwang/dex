@@ -18,6 +18,10 @@ type myState struct {
 func (s *myState) Hash() Hash {
 	return Hash{}
 }
+
+func (s *myState) CommitCache() {
+}
+
 func (s *myState) Transition(round uint64) Transition {
 	return nil
 }

@@ -85,13 +85,12 @@ func (v *validator) ValidateNtShare(n *NtShare) (int, bool) {
 }
 
 func (v *validator) ValidateRandBeaconSigShare(r *RandBeaconSigShare) (int, bool) {
-	round := v.chain.randomBeacon.Round()
 	if h := SHA3(v.chain.randomBeacon.sigHistory[r.Round-1].Sig); h != r.LastSigHash {
 		log.Warn("validate random beacon share last sig error", "hash", r.LastSigHash, "expected", h)
 		return 0, false
 	}
 
-	rb, _, _ := v.chain.randomBeacon.Committees(round)
+	rb, _, _ := v.chain.randomBeacon.Committees(r.Round - 1)
 	group := v.chain.randomBeacon.groups[rb]
 	sharePK, ok := group.MemberPK[r.Owner]
 	if !ok {

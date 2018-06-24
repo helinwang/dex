@@ -88,11 +88,11 @@ func (n *Node) StartRound(round uint64) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 
-	log.Info("start round", "round", round, "rand beacon", SHA3(n.chain.randomBeacon.History()[round].Sig))
 	n.round = round
 	n.roundEnd = false
 	var ntCancelCtx context.Context
-	_, bp, nt := n.chain.randomBeacon.Committees(round)
+	rb, bp, nt := n.chain.randomBeacon.Committees(round)
+	log.Info("start round", "round", round, "rb group", rb, "bp group", bp, "nt group", nt, "rand beacon", SHA3(n.chain.randomBeacon.History()[round].Sig))
 
 	// at most spend blockTime / 2 for proposing block, to avoid
 	// the case that there are too many transactions to be
