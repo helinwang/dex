@@ -43,13 +43,18 @@ func TestStateTokens(t *testing.T) {
 }
 
 func TestStateSerialize(t *testing.T) {
+	owner := consensus.RandSK().MustPK()
 	token0 := Token{ID: 1, TokenInfo: TokenInfo{Symbol: "BTC", Decimals: 8, TotalUnits: 10000000000}}
-	token1 := Token{ID: 2, TokenInfo: TokenInfo{Symbol: "ETH", Decimals: 8, TotalUnits: 10000000000}}
-	s := CreateGenesisState([]consensus.PK{consensus.RandSK().MustPK()}, []TokenInfo{token0.TokenInfo, token1.TokenInfo})
+	token1 := Token{ID: 2, TokenInfo: TokenInfo{Symbol: "ETH", Decimals: 8, TotalUnits: 1000000000}}
+	s := CreateGenesisState([]consensus.PK{owner}, []TokenInfo{token0.TokenInfo, token1.TokenInfo})
 	nativeToken := Token{ID: 0, TokenInfo: BNBInfo}
 	s.UpdateToken(token0)
 	s.UpdateToken(token1)
 	assert.Equal(t, []Token{nativeToken, token0, token1}, s.Tokens())
+	acc := s.Account(owner.Addr())
+	assert.NotNil(t, acc)
+	assert.Equal(t, token0.TotalUnits, acc.Balances[token0.ID].Available)
+	assert.Equal(t, token1.TotalUnits, acc.Balances[token1.ID].Available)
 
 	b, err := s.Serialize()
 	if err != nil {
@@ -63,4 +68,8 @@ func TestStateSerialize(t *testing.T) {
 	}
 
 	assert.Equal(t, []Token{nativeToken, token0, token1}, s0.Tokens())
+	acc = s0.Account(owner.Addr())
+	assert.NotNil(t, acc)
+	assert.Equal(t, token0.TotalUnits, acc.Balances[token0.ID].Available)
+	assert.Equal(t, token1.TotalUnits, acc.Balances[token1.ID].Available)
 }

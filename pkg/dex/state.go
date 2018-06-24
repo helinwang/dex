@@ -309,6 +309,7 @@ func (s *State) Tokens() []Token {
 }
 
 func (s *State) Serialize() (consensus.TrieBlob, error) {
+	s.CommitCache()
 	return serializeTrie(s.state, s.db, s.db.DiskDB())
 }
 
