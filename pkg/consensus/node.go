@@ -119,6 +119,7 @@ func (n *Node) StartRound(round uint64) {
 			ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(n.cfg.BlockTime))
 			go func() {
 				onNotarize := func(s *NtShare) {
+					log.Info("notarize", "group", nt, "bp", s.BP, "round", s.Round)
 					go n.net.recvNtShare(n.net.addr, s)
 				}
 

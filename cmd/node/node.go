@@ -83,15 +83,15 @@ func main() {
 		panic(err)
 	}
 
-	var credentials consensus.NodeCredentials
+	var credential consensus.NodeCredentials
 	dec := gob.NewDecoder(bytes.NewReader(cb))
-	err = dec.Decode(&credentials)
+	err = dec.Decode(&credential)
 	if err != nil {
 		panic(err)
 	}
 
 	server := dex.NewRPCServer()
-	n := createNode(credentials, genesis, server)
+	n := createNode(credential, genesis, server)
 	server.SetSender(n)
 	server.SetStater(n.Chain())
 	err = server.Start(*rpcAddr)
@@ -105,6 +105,7 @@ func main() {
 		return
 	}
 
+	log15.Info("node info", "addr", credential.SK.MustPK().Addr(), "member of groups", credential.Groups)
 	n.EndRound(0)
 
 	select {}
