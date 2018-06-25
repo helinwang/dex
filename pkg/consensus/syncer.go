@@ -237,11 +237,9 @@ func (s *syncer) syncBlockProposal(addr unicastAddr, hash Hash) (bp *BlockPropos
 		return
 	}
 
-	if bp.Round == s.chain.Round() {
-		broadcast, err = s.chain.addBP(bp, rankToWeight(rank))
-		if err != nil {
-			panic(err)
-		}
+	broadcast, err = s.chain.addBP(bp, rankToWeight(rank))
+	if err != nil {
+		panic(err)
 	}
 
 	return

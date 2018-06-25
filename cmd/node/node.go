@@ -32,7 +32,7 @@ func decodeFromFile(path string, v interface{}) {
 
 func createNode(c consensus.NodeCredentials, genesis consensus.Genesis, u consensus.Updater) *consensus.Node {
 	cfg := consensus.Config{
-		BlockTime:      time.Second,
+		BlockTime:      200 * time.Millisecond,
 		GroupSize:      3,
 		GroupThreshold: 2,
 	}

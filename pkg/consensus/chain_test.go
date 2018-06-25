@@ -94,3 +94,31 @@ func TestForkTraversal(t *testing.T) {
 	fork[0].blockChildren[0].blockChildren[0].blockChildren = []*blockNode{n}
 	assert.Equal(t, n, nodeAtDepthInFork(fork, 3))
 }
+
+func TestHeaviestFork(t *testing.T) {
+	fork := make([]*blockNode, 2)
+	fork[0] = &blockNode{Weight: 1}
+	fork[1] = &blockNode{Weight: 2}
+	fork[0].blockChildren = make([]*blockNode, 1)
+	fork[0].blockChildren[0] = &blockNode{Weight: 3}
+	fork[1].blockChildren = make([]*blockNode, 2)
+	fork[1].blockChildren[0] = &blockNode{Weight: 4}
+	fork[1].blockChildren[1] = &blockNode{Weight: 5}
+	fork[0].blockChildren[0].blockChildren = make([]*blockNode, 2)
+	fork[0].blockChildren[0].blockChildren[0] = &blockNode{Weight: 6}
+	fork[0].blockChildren[0].blockChildren[1] = &blockNode{Weight: 7}
+	n0 := &blockNode{Weight: 8}
+	n1 := &blockNode{Weight: 9}
+	fork[0].blockChildren[0].blockChildren[0].blockChildren = []*blockNode{n0, n1}
+	assert.Equal(t, 2, forkWidth(fork, 3))
+	r := heaviestFork(fork, 0)
+	assert.Equal(t, float64(2), r.Weight)
+	r = heaviestFork(fork, 1)
+	assert.Equal(t, float64(5), r.Weight)
+	r = heaviestFork(fork, 2)
+	assert.Equal(t, float64(7), r.Weight)
+	r = heaviestFork(fork, 3)
+	assert.Equal(t, float64(9), r.Weight)
+	assert.Equal(t, n1, r)
+	assert.Equal(t, 4, maxHeight(fork))
+}

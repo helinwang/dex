@@ -1,7 +1,7 @@
 package consensus
 
 import (
-	"errors"
+	"fmt"
 	"sync"
 
 	log "github.com/helinwang/log15"
@@ -138,8 +138,7 @@ func (r *RandomBeacon) AddRandBeaconSig(s *RandBeaconSig, syncDone bool) bool {
 	r.curRoundShares = make(map[Hash]*RandBeaconSigShare)
 	r.sigHistory = append(r.sigHistory, s)
 	round := r.round()
-	ch, ok := r.roundWaitCh[round]
-	if ok {
+	if ch, ok := r.roundWaitCh[round]; ok {
 		close(ch)
 		delete(r.roundWaitCh, round)
 	}
@@ -209,7 +208,7 @@ func (r *RandomBeacon) Rank(addr Addr, round uint64) (int, error) {
 
 	if idx < 0 {
 		r.mu.Unlock()
-		return 0, errors.New("addr not in the current block proposal committee")
+		return 0, fmt.Errorf("addr %v not in the current block proposal group %d, round: %d", addr, bp, round)
 	}
 
 	perm := r.nextBPRandHistory[round].Perm(idx+1, len(g.Members))

@@ -62,6 +62,7 @@ type Chain struct {
 	hashToNtShare         map[Hash]*NtShare
 	bpToNtShares          map[Hash][]*NtShare
 	bpNeedNotarize        map[Hash]bool
+	roundWaitCh           map[uint64]chan struct{}
 }
 
 // Updater updates the application layer (DEX) about the current
@@ -102,6 +103,7 @@ func NewChain(genesis *Block, genesisState State, seed Rand, cfg Config, txnPool
 		hashToNtShare:         make(map[Hash]*NtShare),
 		bpToNtShares:          make(map[Hash][]*NtShare),
 		bpNeedNotarize:        make(map[Hash]bool),
+		roundWaitCh:           make(map[uint64]chan struct{}),
 	}
 }
 
@@ -123,9 +125,26 @@ func (c *Chain) ChainStatus() ChainStatus {
 	return s
 }
 
+func (c *Chain) WaitUntil(round uint64) {
+	c.mu.Lock()
+	curRound := c.round()
+	if round <= curRound {
+		c.mu.Unlock()
+		return
+	}
+
+	ch, ok := c.roundWaitCh[round]
+	if !ok {
+		ch = make(chan struct{}, 0)
+		c.roundWaitCh[round] = ch
+	}
+	c.mu.Unlock()
+
+	<-ch
+}
+
 // ProposeBlock proposes a new block.
 func (c *Chain) ProposeBlock(ctx context.Context, sk SK) *BlockProposal {
-	log.Debug("propose block")
 	txns := c.txnPool.Txns()
 	block, state, _ := c.Leader()
 	round := block.Round + 1
@@ -221,14 +240,54 @@ func maxHeight(ns []*blockNode) int {
 	return max
 }
 
-func (c *Chain) heaviestFork() *blockNode {
-	// TODO: implement correctly
-	n := c.fork[0]
-	for len(n.blockChildren) > 0 {
-		n = n.blockChildren[0]
+func weight(n *blockNode) float64 {
+	w := n.Weight
+	prev := n.parent
+	for ; prev != nil; prev = prev.parent {
+		w += prev.Weight
 	}
 
-	return n
+	return w
+}
+
+func heaviestFork(fork []*blockNode, depth int) *blockNode {
+	var nodes []*blockNode
+	if depth == 0 {
+		nodes = fork
+	} else {
+		for _, v := range fork {
+			nodes = append(nodes, nodesAtDepth(v, depth-1)...)
+		}
+	}
+
+	var maxWeight float64
+	var r *blockNode
+	for _, n := range nodes {
+		w := weight(n)
+		if w > maxWeight {
+			r = n
+			maxWeight = w
+		}
+	}
+
+	return r
+}
+
+func nodesAtDepth(n *blockNode, d int) []*blockNode {
+	if d == 0 {
+		if len(n.blockChildren) == 0 {
+			return nil
+		}
+
+		return n.blockChildren
+	}
+
+	var nodes []*blockNode
+	for _, child := range n.blockChildren {
+		nodes = append(nodes, nodesAtDepth(child, d-1)...)
+	}
+
+	return nodes
 }
 
 func (c *Chain) leader() (*Block, State, *SysState) {
@@ -236,9 +295,9 @@ func (c *Chain) leader() (*Block, State, *SysState) {
 		return c.hashToBlock[c.finalized[len(c.finalized)-1]], c.lastFinalizedState, c.lastFinalizedSysState
 	}
 
-	n := c.heaviestFork()
+	depth := maxHeight(c.fork) - 1
+	n := heaviestFork(c.fork, depth)
 	return c.hashToBlock[n.Block], c.unFinalizedState[n.Block], c.lastFinalizedSysState
-
 }
 
 // Leader returns the block of the current round whose chain is the
@@ -313,7 +372,7 @@ func (c *Chain) addBP(bp *BlockProposal, weight float64) (bool, error) {
 }
 
 func (c *Chain) addNtShare(n *NtShare, groupID int) (b *Block, added, success bool) {
-	log.Debug("add notarization share to chain", "hash", n.Hash(), "group", groupID)
+	log.Debug("add notarization share to chain", "hash", n.Hash(), "bp", n.BP, "group", groupID)
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -342,6 +401,7 @@ func (c *Chain) addNtShare(n *NtShare, groupID int) (b *Block, added, success bo
 	success = true
 
 	if len(c.bpToNtShares[n.BP]) >= c.cfg.GroupThreshold {
+		log.Debug("recovering nt group sig", "bp", n.BP)
 		sig, err := recoverNtSig(c.bpToNtShares[n.BP])
 		if err != nil {
 			// should not happen
@@ -454,7 +514,7 @@ func (c *Chain) addBlock(b *Block, bp *BlockProposal, s State, weight float64) (
 		}
 
 		if removeIdx < 0 {
-			log.Info("block's proposal not found on chain", "bp", b.BlockProposal, "b", b.Hash())
+			log.Warn("block's proposal not found on chain", "bp", b.BlockProposal, "b", b.Hash())
 		} else {
 			c.bpNotOnFork = append(c.bpNotOnFork[:removeIdx], c.bpNotOnFork[removeIdx+1:]...)
 		}
@@ -465,7 +525,7 @@ func (c *Chain) addBlock(b *Block, bp *BlockProposal, s State, weight float64) (
 		}
 
 		if removeIdx < 0 {
-			c.graphviz(10)
+			fmt.Println(c.graphviz(10))
 			panic(fmt.Errorf("should never happen: prev block %v found but the block proposal %v is not its child", bp.PrevBlock, bp.Hash()))
 		}
 		nt.parent = prev
@@ -503,6 +563,10 @@ func (c *Chain) addBlock(b *Block, bp *BlockProposal, s State, weight float64) (
 		}
 
 		go c.n.EndRound(beginRound)
+		if ch, ok := c.roundWaitCh[round]; ok {
+			close(ch)
+			delete(c.roundWaitCh, round)
+		}
 	}
 	go c.updater.Update(leaderState)
 	return true, nil
@@ -566,6 +630,7 @@ func nodeAtDepthInFork(fork []*blockNode, depth int) *blockNode {
 	return nil
 }
 
+// TODO: fix
 // must be called with mutex held
 func (c *Chain) finalize(round uint64) {
 	count := uint64(len(c.finalized))

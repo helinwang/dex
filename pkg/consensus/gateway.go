@@ -121,8 +121,8 @@ func newGateway(net *network, chain *Chain) *gateway {
 	return n
 }
 
-func (n *gateway) requestItem(addr unicastAddr, item Item) error {
-	if n.requestingItem[item] {
+func (n *gateway) requestItem(addr unicastAddr, item Item, forceRequest bool) error {
+	if !forceRequest && n.requestingItem[item] {
 		return nil
 	}
 
@@ -149,7 +149,7 @@ func (n *gateway) RequestRandBeaconSig(ctx context.Context, addr unicastAddr, ro
 		err := n.requestItem(addr, Item{
 			T:     randBeaconSigItem,
 			Round: round,
-		})
+		}, true)
 		if err != nil {
 			n.mu.Unlock()
 			return nil, err
@@ -182,7 +182,7 @@ func (n *gateway) RequestBlock(ctx context.Context, addr unicastAddr, hash Hash)
 		err := n.requestItem(addr, Item{
 			T:    blockItem,
 			Hash: hash,
-		})
+		}, true)
 		if err != nil {
 			n.mu.Unlock()
 			return nil, err
@@ -215,7 +215,7 @@ func (n *gateway) RequestBlockProposal(ctx context.Context, addr unicastAddr, ha
 		err := n.requestItem(addr, Item{
 			T:    blockProposalItem,
 			Hash: hash,
-		})
+		}, true)
 		if err != nil {
 			n.mu.Unlock()
 			return nil, err
@@ -254,16 +254,22 @@ func (n *gateway) recvData() {
 		// types
 		switch v := pac.Data.(type) {
 		case []byte:
+			log.Debug("recvTxn", "hash", SHA3(v))
 			go n.recvTxn(v)
 		case *RandBeaconSig:
+			log.Debug("recvRandBeaconSig", "round", v.Round)
 			go n.recvRandBeaconSig(addr, v)
 		case *RandBeaconSigShare:
+			log.Debug("recvRandBeaconSigShare", "round", v.Round)
 			go n.recvRandBeaconSigShare(addr, v)
 		case *Block:
+			log.Debug("recvBlock", "round", v.Round, "hash", v.Hash())
 			go n.recvBlock(addr, v)
 		case *BlockProposal:
+			log.Debug("recvBlockProposal", "round", v.Round, "hash", v.Hash(), "block", v.PrevBlock)
 			go n.recvBlockProposal(addr, v)
 		case *NtShare:
+			log.Debug("recvNtShare", "round", v.Round, "hash", v.Hash(), "bp", v.BP)
 			go n.recvNtShare(addr, v)
 		case Item:
 			go n.recvInventory(addr, v)
@@ -441,8 +447,7 @@ func (n *gateway) recvInventory(addr unicastAddr, item Item) {
 	switch item.T {
 	case txnItem:
 		if n.chain.txnPool.NotSeen(item.Hash) {
-			log.Debug("request TxnItem", "item", item.Hash)
-			n.requestItem(addr, item)
+			n.requestItem(addr, item, false)
 		}
 	case sysTxnItem:
 		panic(sysTxnNotImplemented)
@@ -451,22 +456,19 @@ func (n *gateway) recvInventory(addr unicastAddr, item Item) {
 			return
 		}
 
-		log.Debug("request BlockItem", "item", item.Hash)
-		n.requestItem(addr, item)
+		n.requestItem(addr, item, false)
 	case blockProposalItem:
 		if bp := n.chain.BlockProposal(item.Hash); bp != nil {
 			return
 		}
 
-		log.Debug("request BlockProposalItem", "item", item.Hash)
-		n.requestItem(addr, item)
+		n.requestItem(addr, item, false)
 	case ntShareItem:
 		if nt := n.chain.NtShare(item.Hash); nt != nil {
 			return
 		}
 
-		log.Debug("request NtShareItem", "item", item.Hash)
-		n.requestItem(addr, item)
+		n.requestItem(addr, item, false)
 	case randBeaconSigShareItem:
 		if n.chain.randomBeacon.Round()+1 != item.Round {
 			return
@@ -477,13 +479,12 @@ func (n *gateway) recvInventory(addr unicastAddr, item Item) {
 			return
 		}
 
-		log.Debug("request RandBeaconSigShareItem", "item", item.Round)
-		n.requestItem(addr, item)
+		n.requestItem(addr, item, false)
 	case randBeaconSigItem:
-		if n.chain.randomBeacon.Round() < item.Round {
-			log.Debug("request randBeaconSigItem", "item", item.Round)
-			n.requestItem(addr, item)
+		if n.chain.randomBeacon.Round() >= item.Round {
+			return
 		}
+		n.requestItem(addr, item, false)
 	}
 }
 
