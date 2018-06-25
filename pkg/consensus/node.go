@@ -89,6 +89,10 @@ func (n *Node) StartRound(round uint64) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 
+	if n.round >= round {
+		return
+	}
+
 	n.round = round
 	var ntCancelCtx context.Context
 	rbGroup, bpGroup, ntGroup := n.chain.randomBeacon.Committees(round)

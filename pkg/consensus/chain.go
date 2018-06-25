@@ -341,7 +341,7 @@ func findPrevBlockNodeImpl(bp, prevBlock Hash, prev *blockNode) (*blockNode, int
 }
 
 func (c *Chain) addBP(bp *BlockProposal, weight float64) (bool, error) {
-	log.Debug("add block proposal to chain", "hash", bp.Hash(), "weight", weight)
+	log.Debug("add block proposal to chain", "hash", bp.Hash(), "weight", weight, "round", bp.Round)
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	h := bp.Hash()
