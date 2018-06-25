@@ -21,6 +21,17 @@ type Item struct {
 	Hash  Hash
 }
 
+func (i Item) String() string {
+	switch i.T {
+	case txnItem, sysTxnItem, blockItem, blockProposalItem, ntShareItem:
+		return fmt.Sprintf("%v_hash_%v", i.T, i.Hash)
+	case randBeaconSigShareItem, randBeaconSigItem:
+		return fmt.Sprintf("%v_round_%v", i.T, i.Round)
+	default:
+		panic(i.T)
+	}
+}
+
 type itemRequest Item
 
 // itemType is the different type of items.
@@ -115,6 +126,7 @@ func (n *gateway) requestItem(addr unicastAddr, item Item) error {
 		return nil
 	}
 
+	log.Debug("requesting item", "item", item)
 	n.requestingItem[item] = true
 	time.AfterFunc(2*time.Second, func() {
 		n.mu.Lock()
@@ -481,10 +493,10 @@ func (n *gateway) serveData(addr unicastAddr, item Item) {
 	switch item.T {
 	case txnItem:
 		txn := n.chain.txnPool.Get(item.Hash)
-		if txn != nil {
-			log.Debug("serving TxnItem", "item", item.Hash, "addr", addr.Addr)
-			go n.net.Send(addr, packet{Data: txn})
+		if txn == nil {
+			return
 		}
+		go n.net.Send(addr, packet{Data: txn})
 	case sysTxnItem:
 		panic(sysTxnNotImplemented)
 	case blockItem:
@@ -492,32 +504,24 @@ func (n *gateway) serveData(addr unicastAddr, item Item) {
 		if b == nil {
 			return
 		}
-
-		log.Debug("serving BlockItem", "item", item.Hash, "addr", addr.Addr)
 		go n.net.Send(addr, packet{Data: b})
 	case blockProposalItem:
 		bp := n.chain.BlockProposal(item.Hash)
 		if bp == nil {
 			return
 		}
-
-		log.Debug("serving BlockProposalItem", "item", item.Hash, "addr", addr.Addr)
 		go n.net.Send(addr, packet{Data: bp})
 	case ntShareItem:
 		nts := n.chain.NtShare(item.Hash)
 		if nts == nil {
 			return
 		}
-
-		log.Debug("serving NtShareItem", "item", item.Hash, "addr", addr.Addr)
 		go n.net.Send(addr, packet{Data: nts})
 	case randBeaconSigShareItem:
 		share := n.chain.randomBeacon.GetShare(item.Hash)
 		if share == nil {
 			return
 		}
-
-		log.Debug("serving RandBeaconSigShareItem", "round", item.Round, "addr", addr.Addr)
 		go n.net.Send(addr, packet{Data: share})
 	case randBeaconSigItem:
 		history := n.chain.randomBeacon.History()
@@ -526,7 +530,8 @@ func (n *gateway) serveData(addr unicastAddr, item Item) {
 		}
 
 		r := history[item.Round]
-		log.Debug("serving RandBeaconSigItem", "round", item.Round, "addr", addr.Addr)
 		go n.net.Send(addr, packet{Data: r})
 	}
+
+	log.Debug("serving item", "item", item, "addr", addr.Addr)
 }
