@@ -98,14 +98,10 @@ func (n *Node) StartRound(round uint64) {
 	rbGroup, bpGroup, ntGroup := n.chain.randomBeacon.Committees(round)
 	log.Info("start round", "round", round, "rb group", rbGroup, "bp group", bpGroup, "nt group", ntGroup, "rand beacon", SHA3(n.chain.randomBeacon.History()[round].Sig))
 
-	// at most spend blockTime / 2 for proposing block, to avoid
-	// the case that there are too many transactions to be
-	// included in the block proposal
-	proposeBlockCtx, cancelProposeBlock := context.WithTimeout(context.Background(), n.cfg.BlockTime/3)
-	defer cancelProposeBlock()
 	for _, m := range n.memberships {
 		if m.groupID == bpGroup {
 			go func() {
+
 				n.chain.WaitUntil(round)
 				n.mu.Lock()
 				nodeRound := n.round
@@ -116,10 +112,17 @@ func (n *Node) StartRound(round uint64) {
 					return
 				}
 
-				log.Debug("start propose block", "owner", n.addr, "round", round, "group", bpGroup)
-				bp := n.chain.ProposeBlock(proposeBlockCtx, n.sk)
-				log.Debug("propose block done", "owner", n.addr, "round", round, "bp round", bp.Round, "hash", bp.Hash(), "group", bpGroup)
-				n.net.recvBlockProposal(n.net.addr, bp)
+				// at most spend blockTime / 3 for proposing block, to avoid
+				// the case that there are too many transactions to be
+				// included in the block proposal
+				ctx, cancel := context.WithTimeout(context.Background(), n.cfg.BlockTime/3)
+				defer cancel()
+
+				bp := n.chain.ProposeBlock(ctx, n.sk, round)
+				if bp != nil {
+					log.Debug("propose block done", "owner", n.addr, "round", round, "bp round", bp.Round, "hash", bp.Hash(), "group", bpGroup)
+					n.net.recvBlockProposal(n.net.addr, bp)
+				}
 			}()
 		}
 
@@ -132,14 +135,14 @@ func (n *Node) StartRound(round uint64) {
 			notary := NewNotary(n.addr, n.sk, m.skShare, n.chain)
 			inCh := make(chan *BlockProposal, 20)
 			n.notarizeChs[round] = append(n.notarizeChs[round], inCh)
-			ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(n.cfg.BlockTime))
-			defer cancel()
 			go func() {
 				onNotarize := func(s *NtShare) {
 					log.Debug("produced one notarization share", "group", ntGroup, "bp", s.BP, "share round", s.Round, "round", round, "hash", s.Hash())
 					go n.net.recvNtShare(n.net.addr, s)
 				}
 
+				ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(n.cfg.BlockTime))
+				defer cancel()
 				notary.Notarize(ctx, ntCancelCtx, inCh, onNotarize)
 			}()
 		}

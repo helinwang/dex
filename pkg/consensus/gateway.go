@@ -263,7 +263,7 @@ func (n *gateway) recvData() {
 			log.Debug("recvRandBeaconSigShare", "round", v.Round)
 			go n.recvRandBeaconSigShare(addr, v)
 		case *Block:
-			log.Debug("recvBlock", "round", v.Round, "hash", v.Hash())
+			log.Debug("recvBlock", "round", v.Round, "hash", v.Hash(), "state root", v.StateRoot)
 			go n.recvBlock(addr, v)
 		case *BlockProposal:
 			log.Debug("recvBlockProposal", "round", v.Round, "hash", v.Hash(), "block", v.PrevBlock)

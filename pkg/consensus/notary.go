@@ -2,6 +2,7 @@ package consensus
 
 import (
 	"context"
+	"fmt"
 	"math"
 
 	log "github.com/helinwang/log15"
@@ -93,17 +94,17 @@ func (n *Notary) notarize(bp *BlockProposal) *NtShare {
 
 	prevBlock := n.chain.Block(bp.PrevBlock)
 	if prevBlock == nil {
-		panic("TODO")
+		panic(fmt.Errorf("should not happen: can not find pre block %v, bp: %v", bp.PrevBlock, bp.Hash()))
 	}
 
 	state := n.chain.BlockState(bp.PrevBlock)
 	if state == nil {
-		panic("TODO")
+		panic(fmt.Errorf("should not happen: can not find the state of pre block %v, bp: %v", bp.PrevBlock, bp.Hash()))
 	}
 
 	trans, err := recordTxns(state, bp.Data, bp.Round)
 	if err != nil {
-		panic("TODO: " + err.Error())
+		panic("should not happen, record block proposal transaction error, could be due to adversary: " + err.Error())
 	}
 
 	blk := &Block{
