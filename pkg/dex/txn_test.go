@@ -10,11 +10,11 @@ import (
 
 func TestOrderEncodeDecode(t *testing.T) {
 	o := Order{
-		Owner:        consensus.Addr{1, 2, 3},
-		SellSide:     true,
-		Quant:        1000000000,
-		Price:        20000000,
-		ExpireHeight: 1001,
+		Owner:       consensus.Addr{1, 2, 3},
+		SellSide:    true,
+		Quant:       1000000000,
+		Price:       20000000,
+		ExpireRound: 1001,
 	}
 	b, err := rlp.EncodeToBytes(&o)
 	if err != nil {

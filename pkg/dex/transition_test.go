@@ -147,11 +147,11 @@ func TestOrderAlreadyExpired(t *testing.T) {
 	s.UpdateToken(Token{ID: 0, TokenInfo: BNBInfo})
 	sk, addr := createAccount(s, 100)
 	order := PlaceOrderTxn{
-		SellSide:     false,
-		Quant:        40,
-		Price:        100000000,
-		ExpireHeight: 1,
-		Market:       MarketSymbol{Quote: 0, Base: 0},
+		SellSide:    false,
+		Quant:       40,
+		Price:       100000000,
+		ExpireRound: 1,
+		Market:      MarketSymbol{Quote: 0, Base: 0},
 	}
 
 	trans := s.Transition(1)
@@ -168,11 +168,11 @@ func TestOrderExpire(t *testing.T) {
 	s.UpdateToken(Token{ID: 0, TokenInfo: BNBInfo})
 	sk, addr := createAccount(s, 100)
 	order := PlaceOrderTxn{
-		SellSide:     false,
-		Quant:        40,
-		Price:        100000000,
-		ExpireHeight: 3,
-		Market:       MarketSymbol{Quote: 0, Base: 0},
+		SellSide:    false,
+		Quant:       40,
+		Price:       100000000,
+		ExpireRound: 3,
+		Market:      MarketSymbol{Quote: 0, Base: 0},
 	}
 
 	trans := s.Transition(1)
@@ -196,11 +196,11 @@ func TestPlaceOrder(t *testing.T) {
 	s.UpdateToken(Token{ID: 0, TokenInfo: BNBInfo})
 	sk, addr := createAccount(s, 100)
 	order := PlaceOrderTxn{
-		SellSide:     false,
-		Quant:        40,
-		Price:        100000000,
-		ExpireHeight: 3,
-		Market:       MarketSymbol{Quote: 0, Base: 0},
+		SellSide:    false,
+		Quant:       40,
+		Price:       100000000,
+		ExpireRound: 3,
+		Market:      MarketSymbol{Quote: 0, Base: 0},
 	}
 	trans := s.Transition(1)
 	valid, success := trans.Record(MakePlaceOrderTxn(sk, order, 0, 0))
@@ -213,11 +213,11 @@ func TestPlaceOrder(t *testing.T) {
 
 	trans = s.Transition(2)
 	order = PlaceOrderTxn{
-		SellSide:     true,
-		Quant:        40,
-		Price:        100000000,
-		ExpireHeight: 3,
-		Market:       MarketSymbol{Quote: 0, Base: 0},
+		SellSide:    true,
+		Quant:       40,
+		Price:       100000000,
+		ExpireRound: 3,
+		Market:      MarketSymbol{Quote: 0, Base: 0},
 	}
 	valid, success = trans.Record(MakePlaceOrderTxn(sk, order, 0, 1))
 	// TODO: rename trans.Commit to something that indicates a new

@@ -198,17 +198,17 @@ func (t *Transition) refundAfterCancel(owner *Account, cancel PendingOrder, mark
 }
 
 type ExecutionReport struct {
-	BlockHeight uint64
-	ID          OrderID
-	SellSide    bool
-	TradePrice  uint64
-	Quant       uint64
-	Fee         uint64
+	Round      uint64
+	ID         OrderID
+	SellSide   bool
+	TradePrice uint64
+	Quant      uint64
+	Fee        uint64
 }
 
 func (t *Transition) placeOrder(owner *Account, txn PlaceOrderTxn, round uint64) bool {
-	if txn.ExpireHeight > 0 && round >= txn.ExpireHeight {
-		log.Warn("order already expired", "expire round", txn.ExpireHeight, "cur round", round)
+	if txn.ExpireRound > 0 && round >= txn.ExpireRound {
+		log.Warn("order already expired", "expire round", txn.ExpireRound, "cur round", round)
 		return false
 	}
 
@@ -253,11 +253,11 @@ func (t *Transition) placeOrder(owner *Account, txn PlaceOrderTxn, round uint64)
 	owner.Balances[sell].Available -= sellQuantUnit
 	owner.Balances[sell].Pending += sellQuantUnit
 	order := Order{
-		Owner:        owner.PK.Addr(),
-		SellSide:     txn.SellSide,
-		Quant:        txn.Quant,
-		Price:        txn.Price,
-		ExpireHeight: txn.ExpireHeight,
+		Owner:       owner.PK.Addr(),
+		SellSide:    txn.SellSide,
+		Quant:       txn.Quant,
+		Price:       txn.Price,
+		ExpireRound: txn.ExpireRound,
 	}
 
 	book := t.getOrderBook(txn.Market)
@@ -270,8 +270,8 @@ func (t *Transition) placeOrder(owner *Account, txn PlaceOrderTxn, round uint64)
 	owner.PendingOrders = append(owner.PendingOrders, pendingOrder)
 	id := OrderID{ID: orderID, Market: txn.Market}
 
-	if order.ExpireHeight > 0 {
-		t.expirations[order.ExpireHeight] = append(t.expirations[order.ExpireHeight], orderExpiration{ID: id, Owner: owner.PK.Addr()})
+	if order.ExpireRound > 0 {
+		t.expirations[order.ExpireRound] = append(t.expirations[order.ExpireRound], orderExpiration{ID: id, Owner: owner.PK.Addr()})
 	}
 
 	if len(executions) > 0 {
@@ -290,11 +290,11 @@ func (t *Transition) placeOrder(owner *Account, txn PlaceOrderTxn, round uint64)
 
 			// TODO: report fee
 			report := ExecutionReport{
-				BlockHeight: round,
-				ID:          OrderID{ID: exec.ID, Market: txn.Market},
-				SellSide:    exec.SellSide,
-				TradePrice:  exec.Price,
-				Quant:       exec.Quant,
+				Round:      round,
+				ID:         OrderID{ID: exec.ID, Market: txn.Market},
+				SellSide:   exec.SellSide,
+				TradePrice: exec.Price,
+				Quant:      exec.Quant,
 			}
 			acc.ExecutionReports = append(acc.ExecutionReports, report)
 
@@ -463,8 +463,8 @@ func (t *Transition) finalizeState(round uint64) {
 }
 
 func (t *Transition) recordOrderExpirations() {
-	for expireHeight, ids := range t.expirations {
-		t.state.AddOrderExpirations(expireHeight, ids)
+	for expireRound, ids := range t.expirations {
+		t.state.AddOrderExpirations(expireRound, ids)
 	}
 }
 
@@ -477,28 +477,28 @@ func (t *Transition) saveDirtyOrderBooks() {
 }
 
 func (t *Transition) removeFilledOrderFromExpiration() {
-	heights := make(map[uint64]int)
+	rounds := make(map[uint64]int)
 	filled := make(map[OrderID]bool)
 	for _, o := range t.filledOrders {
-		if o.ExpireHeight == 0 {
+		if o.ExpireRound == 0 {
 			continue
 		}
 
 		filled[o.ID] = true
-		heights[o.ExpireHeight]++
+		rounds[o.ExpireRound]++
 	}
 
-	for height, toRemove := range heights {
+	for round, toRemove := range rounds {
 		// remove filled order's expiration from the
 		// to-be-added expirations of this round.
-		expirations := t.expirations[height]
+		expirations := t.expirations[round]
 		newExpirations := make([]orderExpiration, 0, len(expirations))
 		for _, exp := range expirations {
 			if !filled[exp.ID] {
 				newExpirations = append(newExpirations, exp)
 			}
 		}
-		t.expirations[height] = newExpirations
+		t.expirations[round] = newExpirations
 		removed := len(newExpirations) - len(expirations)
 		if removed == toRemove {
 			continue
@@ -506,15 +506,11 @@ func (t *Transition) removeFilledOrderFromExpiration() {
 
 		// remove filled order's expiration from the saved
 		// expiration from disk.
-		t.state.RemoveOrderExpirations(height, filled)
+		t.state.RemoveOrderExpirations(round, filled)
 	}
 }
 
-// TODO: optimization: cache all changed accounts, and save them
-// during the finalization.
-
 func (t *Transition) releaseTokens() {
-
 	// release the tokens that will be released next round
 	tokens := t.state.GetFreezeTokens(t.round + 1)
 	addrToAcc := make(map[consensus.Addr]*Account)

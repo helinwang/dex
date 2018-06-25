@@ -15,10 +15,9 @@ type pricePoint struct {
 }
 
 type orderBookEntryData struct {
-	ID           uint64
-	Owner        consensus.Addr
-	Quant        uint64
-	ExpireHeight uint64
+	ID    uint64
+	Owner consensus.Addr
+	Quant uint64
 }
 
 type orderBookEntry struct {
@@ -55,8 +54,8 @@ type Order struct {
 	Quant uint64
 	// price tick size is 10^-8, e.g,. price = Price * 10^-8
 	Price uint64
-	// the order is expired when ExpireHeight >= block height
-	ExpireHeight uint64
+	// the order is expired when ExpireRound >= block height
+	ExpireRound uint64
 }
 
 func newOrderBook() *orderBook {
@@ -158,10 +157,9 @@ func (o *orderBook) Limit(order Order) (id uint64, executions []orderExecution) 
 		// TODO: if a IOC order, do not need to insert
 		// no more matching orders, add to the order book
 		entry := o.getEntry(orderBookEntryData{
-			ID:           id,
-			Owner:        order.Owner,
-			Quant:        order.Quant,
-			ExpireHeight: order.ExpireHeight,
+			ID:    id,
+			Owner: order.Owner,
+			Quant: order.Quant,
 		})
 
 		if o.bidMax == nil || order.Price > o.bidMax.Price {
@@ -261,10 +259,9 @@ func (o *orderBook) Limit(order Order) (id uint64, executions []orderExecution) 
 
 		// TODO: if a IOC order, do not need to insert
 		entry := o.getEntry(orderBookEntryData{
-			ID:           id,
-			Owner:        order.Owner,
-			Quant:        order.Quant,
-			ExpireHeight: order.ExpireHeight,
+			ID:    id,
+			Owner: order.Owner,
+			Quant: order.Quant,
 		})
 
 		if o.askMin == nil || order.Price < o.askMin.Price {

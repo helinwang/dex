@@ -118,11 +118,11 @@ func main() {
 		}
 
 		t := dex.PlaceOrderTxn{
-			SellSide:     sellSide,
-			Quant:        quantUnit,
-			Price:        priceUnit,
-			ExpireHeight: 0,
-			Market:       dex.MarketSymbol{Base: baseToken.ID, Quote: quoteToken.ID},
+			SellSide:    sellSide,
+			Quant:       quantUnit,
+			Price:       priceUnit,
+			ExpireRound: 0,
+			Market:      dex.MarketSymbol{Base: baseToken.ID, Quote: quoteToken.ID},
 		}
 		txn := dex.MakePlaceOrderTxn(credential.SK, t, nonceIdx, nonceVal)
 		err = client.Call("WalletService.SendTxn", txn, nil)

@@ -161,7 +161,7 @@ func printAccount(c *cli.Context) error {
 		price := quantToStr(order.Price, dex.OrderPriceDecimals)
 		quant := quantToStr(order.Quant, int(idToToken[order.ID.Market.Base].Decimals))
 		executed := quantToStr(order.Executed, int(idToToken[order.ID.Market.Base].Decimals))
-		_, err = fmt.Fprintf(tw, "\t%s\t%s\t%s\t%s\t%s\t%s\t%d\t\n", order.ID.Encode(), market, side, price, quant, executed, order.ExpireHeight)
+		_, err = fmt.Fprintf(tw, "\t%s\t%s\t%s\t%s\t%s\t%s\t%d\t\n", order.ID.Encode(), market, side, price, quant, executed, order.ExpireRound)
 		if err != nil {
 			return err
 		}
@@ -188,7 +188,7 @@ func printAccount(c *cli.Context) error {
 		price := quantToStr(exec.TradePrice, dex.OrderPriceDecimals)
 		quant := quantToStr(exec.Quant, int(idToToken[exec.ID.Market.Base].Decimals))
 		fee := quantToStr(exec.Fee, int(idToToken[0].Decimals))
-		_, err = fmt.Fprintf(tw, "\t%d\t%s\t%s\t%s\t%s\t%s\t%s\t\n", exec.BlockHeight, exec.ID.Encode(), market, side, price, quant, fee)
+		_, err = fmt.Fprintf(tw, "\t%d\t%s\t%s\t%s\t%s\t%s\t%s\t\n", exec.Round, exec.ID.Encode(), market, side, price, quant, fee)
 		if err != nil {
 			return err
 		}
@@ -620,11 +620,11 @@ func placeOrder(c *cli.Context) error {
 
 	expireRound := state.Round + uint64(expire)
 	placeOrderTxn := dex.PlaceOrderTxn{
-		SellSide:     sellSide,
-		Quant:        quantUnit,
-		Price:        priceUnit,
-		ExpireHeight: expireRound,
-		Market:       market,
+		SellSide:    sellSide,
+		Quant:       quantUnit,
+		Price:       priceUnit,
+		ExpireRound: expireRound,
+		Market:      market,
 	}
 	txn := dex.MakePlaceOrderTxn(credential.SK, placeOrderTxn, idx, val)
 
