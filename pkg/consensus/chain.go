@@ -6,12 +6,14 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/ethereum/go-ethereum/rlp"
 	log "github.com/helinwang/log15"
 )
 
 const (
+	maxRoundMetric       = 600
 	sysTxnNotImplemented = "system transaction not implemented, will be implemented when open participation is necessary, however, the DEX is fully functional"
 )
 
@@ -35,10 +37,17 @@ type blockNode struct {
 type ChainStatus struct {
 	Round           uint64
 	RandBeaconDepth uint64
+	RoundMetrics    []RoundMetric
 }
 
 func (s *ChainStatus) InSync() bool {
 	return s.Round >= s.RandBeaconDepth && s.Round <= s.RandBeaconDepth+1
+}
+
+type RoundMetric struct {
+	Round     uint64
+	BlockTime time.Duration
+	TxnCount  int
 }
 
 // Chain is the blockchain.
@@ -49,7 +58,9 @@ type Chain struct {
 	txnPool      TxnPool
 	updater      Updater
 
-	mu sync.RWMutex
+	mu               sync.RWMutex
+	roundMetrics     []RoundMetric
+	lastEndRoundTime time.Time
 	// reorg will never happen to the finalized block
 	finalized             []Hash
 	lastFinalizedState    State
@@ -104,6 +115,7 @@ func NewChain(genesis *Block, genesisState State, seed Rand, cfg Config, txnPool
 		bpToNtShares:          make(map[Hash][]*NtShare),
 		bpNeedNotarize:        make(map[Hash]bool),
 		roundWaitCh:           make(map[uint64]chan struct{}),
+		lastEndRoundTime:      time.Now(),
 	}
 }
 
@@ -122,6 +134,8 @@ func (c *Chain) ChainStatus() ChainStatus {
 	s := ChainStatus{}
 	s.Round = c.round()
 	s.RandBeaconDepth = c.randomBeacon.Round()
+	s.RoundMetrics = make([]RoundMetric, len(c.roundMetrics))
+	copy(s.RoundMetrics, c.roundMetrics)
 	return s
 }
 
@@ -500,7 +514,7 @@ func (c *Chain) addBlock(b *Block, bp *BlockProposal, s State, weight float64) (
 	log.Debug("add block to chain", "hash", b.Hash(), "weight", weight)
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	beginRound := c.round()
+	startingRound := c.round()
 
 	h := b.Hash()
 	if _, ok := c.hashToBlock[h]; ok {
@@ -544,6 +558,7 @@ func (c *Chain) addBlock(b *Block, bp *BlockProposal, s State, weight float64) (
 	delete(c.bpNeedNotarize, b.BlockProposal)
 	delete(c.bpToNtShares, b.BlockProposal)
 
+	txnCount := 0
 	if len(bp.Data) > 0 {
 		var txns [][]byte
 		err := rlp.DecodeBytes(bp.Data, &txns)
@@ -551,6 +566,7 @@ func (c *Chain) addBlock(b *Block, bp *BlockProposal, s State, weight float64) (
 			return false, fmt.Errorf("should never happen: notarized block contains invalid txn data: %v", err)
 		}
 
+		txnCount = len(txns)
 		for _, txn := range txns {
 			c.txnPool.Remove(SHA3(txn))
 		}
@@ -559,17 +575,31 @@ func (c *Chain) addBlock(b *Block, bp *BlockProposal, s State, weight float64) (
 	_, leaderState, _ := c.leader()
 
 	round := c.round()
-	if beginRound == b.Round && beginRound+1 == round {
+	if startingRound == b.Round && startingRound+1 == round {
 		// when round n ended, round n - 2 can be
 		// finalized. See corollary 9.19 in page 15 of
 		// https://arxiv.org/abs/1805.04548
-		if beginRound > 2 {
+		if startingRound > 2 {
 			// TODO: use less aggressive finalize block count
 			// (currently 2).
-			c.finalize(beginRound - 2)
+			c.finalize(startingRound - 2)
 		}
 
-		go c.n.EndRound(beginRound)
+		now := time.Now()
+		metric := RoundMetric{
+			Round:     startingRound,
+			BlockTime: now.Sub(c.lastEndRoundTime),
+			TxnCount:  txnCount,
+		}
+		if len(c.roundMetrics) < maxRoundMetric {
+			c.roundMetrics = append(c.roundMetrics, metric)
+		} else {
+			copy(c.roundMetrics, c.roundMetrics[1:])
+			c.roundMetrics[maxRoundMetric-1] = metric
+		}
+		c.lastEndRoundTime = now
+
+		go c.n.EndRound(startingRound)
 		if ch, ok := c.roundWaitCh[round]; ok {
 			close(ch)
 			delete(c.roundWaitCh, round)

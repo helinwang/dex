@@ -331,6 +331,25 @@ func printStatus(c *cli.Context) error {
 	}
 
 	fmt.Printf("%s, round: %d\n", str, state.Round)
+	fmt.Println("Metrics of last 10 rounds:")
+	tw := tabwriter.NewWriter(os.Stdout, 0, 0, 1, ' ', tabwriter.AlignRight|tabwriter.Debug)
+	_, err = fmt.Fprintln(tw, "\tRound\tBlock Time\tTransaction count\t")
+	if err != nil {
+		return err
+	}
+
+	for i := len(state.RoundMetrics) - 1; i >= 0 && i >= len(state.RoundMetrics)-10; i-- {
+		m := state.RoundMetrics[i]
+		_, err = fmt.Fprintf(tw, "\t%d\t%v\t%d\t\n", m.Round, m.BlockTime, m.TxnCount)
+		if err != nil {
+			return err
+		}
+	}
+	err = tw.Flush()
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
