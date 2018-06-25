@@ -118,6 +118,7 @@ func (n *Node) StartRound(round uint64) {
 				ctx, cancel := context.WithTimeout(context.Background(), n.cfg.BlockTime/3)
 				defer cancel()
 
+				log.Debug("start propose block", "owner", n.addr, "round", round, "group", bpGroup)
 				bp := n.chain.ProposeBlock(ctx, n.sk, round)
 				if bp != nil {
 					log.Debug("propose block done", "owner", n.addr, "round", round, "bp round", bp.Round, "hash", bp.Hash(), "group", bpGroup)

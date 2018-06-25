@@ -148,13 +148,13 @@ func (c *Chain) ProposeBlock(ctx context.Context, sk SK, round uint64) *BlockPro
 	txns := c.txnPool.Txns()
 	block, state, _ := c.Leader()
 	if block.Round+1 < round {
+		log.Info("proposing block skipped", "expected round", round-1, "block round", block.Round)
 		return nil
 	} else if block.Round+1 > round {
 		log.Error("want to propose block, but does not find the suitable block", "expected round", round-1, "block round", block.Round)
 		return nil
 	}
 
-	log.Debug("start propose block", "owner", sk.MustPK().Addr(), "round", round, "state root", block.StateRoot)
 	trans := state.Transition(round)
 loop:
 	for _, txn := range txns {
