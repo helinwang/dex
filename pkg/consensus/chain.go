@@ -139,6 +139,10 @@ func (c *Chain) ChainStatus() ChainStatus {
 	return s
 }
 
+func (c *Chain) TxnPoolSize() int {
+	return c.txnPool.Size()
+}
+
 func (c *Chain) WaitUntil(round uint64) {
 	c.mu.Lock()
 	curRound := c.round()

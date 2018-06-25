@@ -153,7 +153,6 @@ func (o *orderBook) Limit(order Order) (id uint64, executions []orderExecution) 
 			o.askMin = o.askMin.NextPoint
 		}
 
-		// TODO: handle order expire
 		// TODO: if a IOC order, do not need to insert
 		// no more matching orders, add to the order book
 		entry := o.getEntry(orderBookEntryData{

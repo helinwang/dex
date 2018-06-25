@@ -36,4 +36,5 @@ type TxnPool interface {
 	NotSeen(hash Hash) bool
 	Txns() [][]byte
 	Remove(hash Hash)
+	Size() int
 }

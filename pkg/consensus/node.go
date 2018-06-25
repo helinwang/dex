@@ -17,11 +17,11 @@ import (
 // Nodes form a group randomly, the randomness comes from the random
 // beacon.
 type Node struct {
-	addr  Addr
-	cfg   Config
-	sk    SK
-	net   *gateway
-	chain *Chain
+	addr    Addr
+	cfg     Config
+	sk      SK
+	gateway *gateway
+	chain   *Chain
 
 	mu sync.Mutex
 	// the memberships of different groups
@@ -64,7 +64,7 @@ func NewNode(chain *Chain, sk SK, net *gateway, cfg Config) *Node {
 		cfg:            cfg,
 		sk:             sk,
 		chain:          chain,
-		net:            net,
+		gateway:        net,
 		bpForNotary:    make(map[uint64][]*BlockProposal),
 		notarizeChs:    make(map[uint64][]chan *BlockProposal),
 		cancelNotarize: make(map[uint64]func()),
@@ -80,7 +80,7 @@ func (n *Node) Chain() *Chain {
 
 // Start starts the p2p network service.
 func (n *Node) Start(host string, port int, seedAddr string) error {
-	return n.net.Start(host, port, seedAddr)
+	return n.gateway.Start(host, port, seedAddr)
 }
 
 // StartRound marks the start of the given round. It happens when the
@@ -122,7 +122,7 @@ func (n *Node) StartRound(round uint64) {
 				bp := n.chain.ProposeBlock(ctx, n.sk, round)
 				if bp != nil {
 					log.Debug("propose block done", "owner", n.addr, "round", round, "bp round", bp.Round, "hash", bp.Hash(), "group", bpGroup)
-					n.net.recvBlockProposal(n.net.addr, bp)
+					n.gateway.recvBlockProposal(n.gateway.addr, bp)
 				}
 			}()
 		}
@@ -139,7 +139,7 @@ func (n *Node) StartRound(round uint64) {
 			go func() {
 				onNotarize := func(s *NtShare) {
 					log.Debug("produced one notarization share", "group", ntGroup, "bp", s.BP, "share round", s.Round, "round", round, "hash", s.Hash())
-					go n.net.recvNtShare(n.net.addr, s)
+					go n.gateway.recvNtShare(n.gateway.addr, s)
 				}
 
 				ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(n.cfg.BlockTime))
@@ -192,7 +192,7 @@ func (n *Node) EndRound(round uint64) {
 			history := n.chain.randomBeacon.History()
 			lastSigHash := SHA3(history[round].Sig)
 			s := signRandBeaconSigShare(n.sk, keyShare, round+1, lastSigHash)
-			n.net.recvRandBeaconSigShare(n.net.addr, s)
+			n.gateway.recvRandBeaconSigShare(n.gateway.addr, s)
 		}()
 	}
 }
@@ -215,8 +215,8 @@ func (n *Node) recvBPForNotary(bp *BlockProposal) {
 	}
 }
 
-func (n *Node) SendTxn(t []byte) {
-	n.net.recvTxn(t)
+func (n *Node) SendTxn(t []byte) error {
+	return n.gateway.recvTxn(t)
 }
 
 // MakeNode makes a new node with the given configurations.

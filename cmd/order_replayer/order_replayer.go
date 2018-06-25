@@ -9,6 +9,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/helinwang/dex/pkg/consensus"
 	"github.com/helinwang/dex/pkg/dex"
@@ -22,6 +23,16 @@ func getTokens(client *rpc.Client) ([]dex.Token, error) {
 	}
 
 	return tokens.Tokens, nil
+}
+
+func txnPoolSize(client *rpc.Client) (int, error) {
+	var size int
+	err := client.Call("WalletService.TxnPoolSize", 0, &size)
+	if err != nil {
+		return 0, err
+	}
+
+	return size, nil
 }
 
 func nonce(client *rpc.Client, addr consensus.Addr) (uint8, uint64, error) {
@@ -69,6 +80,16 @@ func main() {
 
 	s := bufio.NewScanner(f)
 	for s.Scan() {
+	retry:
+		poolSize, err := txnPoolSize(client)
+		if err != nil {
+			panic(err)
+		}
+		if poolSize > 5000 {
+			time.Sleep(50 * time.Millisecond)
+			goto retry
+		}
+
 		ss := strings.Split(s.Text(), ",")
 
 		market := ss[0]

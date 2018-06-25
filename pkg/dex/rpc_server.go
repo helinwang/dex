@@ -13,12 +13,13 @@ import (
 )
 
 type TxnSender interface {
-	SendTxn([]byte)
+	SendTxn([]byte) error
 }
 
 type ChainStater interface {
 	ChainStatus() consensus.ChainStatus
 	Graphviz(int) string
+	TxnPoolSize() int
 }
 
 type RPCServer struct {
@@ -137,8 +138,8 @@ func (r *RPCServer) sendTxn(t []byte, _ *int) error {
 	if !state.InSync() {
 		return fmt.Errorf("for your safety, please wait until the chain is synchronized before making any transaction. Current round: %d, random beacon depth: %d", state.Round, state.RandBeaconDepth)
 	}
-	r.sender.SendTxn(t)
-	return nil
+
+	return r.sender.SendTxn(t)
 }
 
 type NonceSlot struct {
@@ -156,6 +157,10 @@ func (r *RPCServer) graphviz(str *string) error {
 	const maxFinalizeBlockPrint = 6
 	*str = r.chain.Graphviz(maxFinalizeBlockPrint)
 	return nil
+}
+
+func (r *RPCServer) txnPoolSize() int {
+	return r.chain.TxnPoolSize()
 }
 
 func (r *RPCServer) chainStatus(state *consensus.ChainStatus) error {
@@ -217,4 +222,9 @@ func (s *WalletService) ChainStatus(_ int, state *consensus.ChainStatus) error {
 
 func (s *WalletService) Graphviz(_ int, str *string) error {
 	return s.s.graphviz(str)
+}
+
+func (s *WalletService) TxnPoolSize(_ int, size *int) error {
+	*size = s.s.txnPoolSize()
+	return nil
 }

@@ -26,6 +26,11 @@ func (t *TxnPool) Add(b []byte) (boardcast bool) {
 		return false
 	}
 
+	// optimization TODOs:
+	// 1. benchmark place order
+	// 2. manually encode/decode order book/txn for speed
+	// 3. validate txn signature, so does not need to validate later
+	// 4. don't decode txn twice, take out from pool should be decoded
 	t.txns[hash] = b
 	return true
 }
@@ -46,6 +51,12 @@ func (t *TxnPool) Get(h consensus.Hash) []byte {
 	defer t.mu.Unlock()
 
 	return t.txns[h]
+}
+
+func (t *TxnPool) Size() int {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return len(t.txns)
 }
 
 func (t *TxnPool) Txns() [][]byte {
