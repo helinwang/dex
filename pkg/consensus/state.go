@@ -12,10 +12,10 @@ type State interface {
 // Transition is the transition from one State to another State.
 type Transition interface {
 	// Record records a transition to the state transition.
-	Record(Txn) (valid, success bool)
+	Record(*Txn) (valid, success bool)
 
-	// RecordTxns records the serialized transactions.
-	RecordTxns([]byte) (valid, success bool)
+	// RecordSerialized records the serialized transactions.
+	RecordSerialized([]byte, TxnPool) (valid, success bool)
 
 	// Txns returns the serialized recorded transactions.
 	Txns() []byte
@@ -29,9 +29,12 @@ type Transition interface {
 }
 
 // Txn is a transaction.
-type Txn interface {
-	Hash() Hash
-	Bytes() []byte
+type Txn struct {
+	Decoded  interface{}
+	Owner    Addr
+	NonceIdx uint8
+	NonceVal uint64
+	Raw      []byte
 }
 
 // TxnPool is the pool that stores the received transactions.
@@ -40,10 +43,10 @@ type TxnPool interface {
 	// validate the txn and return true if the transaction is
 	// valid and not already in the pool. The caller should
 	// broadcast the transaction if the return value is true.
-	Add(txn []byte) (h Hash, broadcast bool)
-	Get(hash Hash) Txn
+	Add(b []byte) (txn *Txn, broadcast bool)
+	Get(hash Hash) *Txn
 	NotSeen(hash Hash) bool
-	Txns() []Txn
+	Txns() []*Txn
 	Remove(hash Hash)
 	// RemoveTxns removes the given encoded transactions argument,
 	// returns the number of transactions encoded in that

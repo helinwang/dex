@@ -27,23 +27,23 @@ const (
 type Txn struct {
 	T          TxnType
 	Data       []byte
-	Owner      consensus.Addr
 	NonceIdx   uint8
 	NonceValue uint64
+	Owner      consensus.Addr
 	Sig        consensus.Sig
 }
 
-func validateNonce(state *State, txn *Txn) (acc *Account, ready, valid bool) {
+func validateNonce(state *State, txn *consensus.Txn) (acc *Account, ready, valid bool) {
 	acc = state.Account(txn.Owner)
 	if acc == nil {
 		log.Warn("txn owner not found")
 		return
 	}
 
-	if !txn.Sig.Verify(acc.PK, txn.Encode(false)) {
-		log.Warn("invalid txn signature")
-		return
-	}
+	// if !txn.Sig.Verify(acc.PK, txn.Encode(false)) {
+	// 	log.Warn("invalid txn signature")
+	// 	return
+	// }
 
 	// if int(txn.NonceIdx) >= len(acc.NonceVec) {
 	// 	if txn.NonceValue > 0 {
@@ -109,7 +109,7 @@ type CancelOrderTxn struct {
 	ID OrderID
 }
 
-func MakeCancelOrderTxn(sk consensus.SK, id OrderID, nonceIdx uint8, nonce uint64) *Txn {
+func MakeCancelOrderTxn(sk consensus.SK, id OrderID, nonceIdx uint8, nonce uint64) []byte {
 	t := CancelOrderTxn{
 		ID: id,
 	}
@@ -124,10 +124,10 @@ func MakeCancelOrderTxn(sk consensus.SK, id OrderID, nonceIdx uint8, nonce uint6
 
 	key := sk.MustGet()
 	txn.Sig = key.Sign(string(txn.Encode(false))).Serialize()
-	return txn
+	return txn.Encode(true)
 }
 
-func MakeSendTokenTxn(from consensus.SK, to consensus.PK, tokenID TokenID, quant uint64, nonceIdx uint8, nonce uint64) *Txn {
+func MakeSendTokenTxn(from consensus.SK, to consensus.PK, tokenID TokenID, quant uint64, nonceIdx uint8, nonce uint64) []byte {
 	send := SendTokenTxn{
 		TokenID: tokenID,
 		To:      to,
@@ -149,10 +149,10 @@ func MakeSendTokenTxn(from consensus.SK, to consensus.PK, tokenID TokenID, quant
 
 	key := from.MustGet()
 	txn.Sig = key.Sign(string(txn.Encode(false))).Serialize()
-	return txn
+	return txn.Encode(true)
 }
 
-func MakePlaceOrderTxn(sk consensus.SK, t PlaceOrderTxn, nonceIdx uint8, nonceValue uint64) *Txn {
+func MakePlaceOrderTxn(sk consensus.SK, t PlaceOrderTxn, nonceIdx uint8, nonceValue uint64) []byte {
 	txn := &Txn{
 		T:          PlaceOrder,
 		Owner:      sk.MustPK().Addr(),
@@ -163,10 +163,10 @@ func MakePlaceOrderTxn(sk consensus.SK, t PlaceOrderTxn, nonceIdx uint8, nonceVa
 
 	key := sk.MustGet()
 	txn.Sig = key.Sign(string(txn.Encode(false))).Serialize()
-	return txn
+	return txn.Encode(true)
 }
 
-func MakeIssueTokenTxn(sk consensus.SK, info TokenInfo, nonceIdx uint8, nonceValue uint64) *Txn {
+func MakeIssueTokenTxn(sk consensus.SK, info TokenInfo, nonceIdx uint8, nonceValue uint64) []byte {
 	t := IssueTokenTxn{Info: info}
 	txn := &Txn{
 		T:          IssueToken,
@@ -178,10 +178,10 @@ func MakeIssueTokenTxn(sk consensus.SK, info TokenInfo, nonceIdx uint8, nonceVal
 
 	key := sk.MustGet()
 	txn.Sig = key.Sign(string(txn.Encode(false))).Serialize()
-	return txn
+	return txn.Encode(true)
 }
 
-func MakeFreezeTokenTxn(sk consensus.SK, t FreezeTokenTxn, nonceIdx uint8, nonceValue uint64) *Txn {
+func MakeFreezeTokenTxn(sk consensus.SK, t FreezeTokenTxn, nonceIdx uint8, nonceValue uint64) []byte {
 	txn := &Txn{
 		T:          FreezeToken,
 		Data:       gobEncode(t),
@@ -192,7 +192,7 @@ func MakeFreezeTokenTxn(sk consensus.SK, t FreezeTokenTxn, nonceIdx uint8, nonce
 
 	key := sk.MustGet()
 	txn.Sig = key.Sign(string(txn.Encode(false))).Serialize()
-	return txn
+	return txn.Encode(true)
 }
 
 type IssueTokenTxn struct {

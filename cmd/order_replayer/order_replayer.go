@@ -85,8 +85,8 @@ func main() {
 		if err != nil {
 			panic(err)
 		}
-		if poolSize > 5000 {
-			time.Sleep(50 * time.Millisecond)
+		if poolSize > 10000 {
+			time.Sleep(10 * time.Millisecond)
 			goto retry
 		}
 
@@ -146,7 +146,7 @@ func main() {
 			Market:      dex.MarketSymbol{Base: baseToken.ID, Quote: quoteToken.ID},
 		}
 		txn := dex.MakePlaceOrderTxn(credential.SK, t, nonceIdx, nonceVal)
-		err = client.Call("WalletService.SendTxn", txn.Bytes(), nil)
+		err = client.Call("WalletService.SendTxn", txn, nil)
 		if err != nil {
 			panic(err)
 		}

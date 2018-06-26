@@ -35,7 +35,7 @@ func TestSendToken(t *testing.T) {
 	to := consensus.PK(skRecv.GetPublicKey().Serialize())
 	txn := MakeSendTokenTxn(sk, to, 0, 20, 0, 0)
 	trans := s.Transition(1)
-	valid, success := trans.Record(txn)
+	valid, success := trans.Record(parseTxn(txn))
 	assert.True(t, valid)
 	assert.True(t, success)
 
@@ -59,7 +59,7 @@ func TestFreezeToken(t *testing.T) {
 	txn := MakeFreezeTokenTxn(sk, FreezeTokenTxn{TokenID: 0, AvailableRound: 3, Quant: 50}, 0, 0)
 
 	trans := s.Transition(1)
-	valid, success := trans.Record(txn)
+	valid, success := trans.Record(parseTxn(txn))
 	assert.True(t, valid)
 	assert.True(t, success)
 	s = trans.Commit().(*State)
@@ -101,7 +101,7 @@ func TestTransitionNotCommitToDB(t *testing.T) {
 
 		to := consensus.PK(skRecv.GetPublicKey().Serialize())
 		txn := MakeSendTokenTxn(sk, to, 0, 1, uint8(i), 0)
-		valid, success := trans.Record(txn)
+		valid, success := trans.Record(parseTxn(txn))
 		assert.True(t, valid)
 		assert.True(t, success)
 	}
@@ -128,7 +128,7 @@ func TestIssueToken(t *testing.T) {
 	sk, addr := createAccount(s, 100)
 	trans := s.Transition(1)
 	txn := MakeIssueTokenTxn(sk, btcInfo, 0, 0)
-	trans.Record(txn)
+	trans.Record(parseTxn(txn))
 	s = trans.Commit().(*State)
 
 	assert.Equal(t, 2, len(s.Tokens()))
@@ -154,7 +154,7 @@ func TestOrderAlreadyExpired(t *testing.T) {
 	}
 
 	trans := s.Transition(1)
-	valid, success := trans.Record(MakePlaceOrderTxn(sk, order, 0, 0))
+	valid, success := trans.Record(parseTxn(MakePlaceOrderTxn(sk, order, 0, 0)))
 	assert.False(t, valid)
 	assert.False(t, success)
 	s = trans.Commit().(*State)
@@ -175,7 +175,7 @@ func TestOrderExpire(t *testing.T) {
 	}
 
 	trans := s.Transition(1)
-	valid, success := trans.Record(MakePlaceOrderTxn(sk, order, 0, 0))
+	valid, success := trans.Record(parseTxn(MakePlaceOrderTxn(sk, order, 0, 0)))
 	assert.True(t, valid)
 	assert.True(t, success)
 	// transition for the current round will expire the order for
@@ -202,7 +202,7 @@ func TestPlaceOrder(t *testing.T) {
 		Market:      MarketSymbol{Quote: 0, Base: 0},
 	}
 	trans := s.Transition(1)
-	valid, success := trans.Record(MakePlaceOrderTxn(sk, order, 0, 0))
+	valid, success := trans.Record(parseTxn(MakePlaceOrderTxn(sk, order, 0, 0)))
 	assert.True(t, valid)
 	assert.True(t, success)
 	s = trans.Commit().(*State)
@@ -218,7 +218,7 @@ func TestPlaceOrder(t *testing.T) {
 		ExpireRound: 3,
 		Market:      MarketSymbol{Quote: 0, Base: 0},
 	}
-	valid, success = trans.Record(MakePlaceOrderTxn(sk, order, 0, 1))
+	valid, success = trans.Record(parseTxn(MakePlaceOrderTxn(sk, order, 0, 1)))
 	// TODO: rename trans.Commit to something that indicates a new
 	// state is generated, rather than the prev state is modified.
 	s = trans.Commit().(*State)

@@ -35,7 +35,7 @@ func (n *Notary) Notarize(ctx, cancel context.Context, bCh chan *BlockProposal, 
 		select {
 		case <-ctx.Done():
 			for _, bp := range bestRankBPs {
-				s := n.notarize(bp)
+				s := n.notarize(bp, n.chain.txnPool)
 				if s != nil {
 					onNotarize(s)
 				}
@@ -54,7 +54,7 @@ func (n *Notary) Notarize(ctx, cancel context.Context, bCh chan *BlockProposal, 
 
 					if rank <= bestRank {
 						bestRank = rank
-						s := n.notarize(bp)
+						s := n.notarize(bp, n.chain.txnPool)
 						if s != nil {
 							onNotarize(s)
 						}
@@ -86,7 +86,7 @@ func (n *Notary) Notarize(ctx, cancel context.Context, bCh chan *BlockProposal, 
 	}
 }
 
-func (n *Notary) notarize(bp *BlockProposal) *NtShare {
+func (n *Notary) notarize(bp *BlockProposal, pool TxnPool) *NtShare {
 	nts := &NtShare{
 		Round: bp.Round,
 		BP:    bp.Hash(),
@@ -102,7 +102,7 @@ func (n *Notary) notarize(bp *BlockProposal) *NtShare {
 		panic(fmt.Errorf("should not happen: can not find the state of pre block %v, bp: %v", bp.PrevBlock, bp.Hash()))
 	}
 
-	trans, err := recordTxns(state, bp.Data, bp.Round)
+	trans, err := recordTxns(state, pool, bp.Data, bp.Round)
 	if err != nil {
 		panic("should not happen, record block proposal transaction error, could be due to adversary: " + err.Error())
 	}

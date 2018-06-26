@@ -1,8 +1,6 @@
 package dex
 
 import (
-	"bytes"
-	"encoding/gob"
 	"fmt"
 	"math"
 	"math/big"
@@ -17,7 +15,7 @@ type Transition struct {
 	round           uint64
 	finalized       bool
 	tokenCreations  []Token
-	txns            []*Txn
+	txns            []*consensus.Txn
 	expirations     map[uint64][]orderExpiration
 	filledOrders    []*PendingOrder
 	state           *State
@@ -38,18 +36,23 @@ func newTransition(s *State, round uint64) *Transition {
 	}
 }
 
-func (t *Transition) RecordTxns(b []byte) (valid, success bool) {
-	var txns []*Txn
-	err := rlp.DecodeBytes(b, &txns)
+func (t *Transition) RecordSerialized(blob []byte, pool consensus.TxnPool) (valid, success bool) {
+	var txns [][]byte
+	err := rlp.DecodeBytes(blob, &txns)
 	if err != nil {
 		log.Error("error decode txns in RecordTxns", "err", err)
 		return
 	}
 
-	for _, txn := range txns {
+	for _, b := range txns {
+		hash := consensus.SHA3(b)
+		txn := pool.Get(hash)
+		if txn == nil {
+			txn = parseTxn(b)
+		}
 		valid, success = t.Record(txn)
 		if !valid || !success {
-			log.Error("error record txn in encoded txns", "valid", valid, "success", success, "hash", txn.Hash())
+			log.Error("error record txn in encoded txns", "valid", valid, "success", success, "hash", hash)
 			return
 		}
 	}
@@ -58,8 +61,7 @@ func (t *Transition) RecordTxns(b []byte) (valid, success bool) {
 }
 
 // Record records a transition to the state transition.
-func (t *Transition) Record(c consensus.Txn) (valid, success bool) {
-	txn := c.(*Txn)
+func (t *Transition) Record(txn *consensus.Txn) (valid, success bool) {
 	if t.finalized {
 		panic("record should never be called after finalized")
 	}
@@ -78,67 +80,36 @@ func (t *Transition) Record(c consensus.Txn) (valid, success bool) {
 	}
 	acc.NonceVec[txn.NonceIdx]++
 
-	// TODO: encode txn.data more efficiently
-	dec := gob.NewDecoder(bytes.NewBuffer(txn.Data))
-	switch txn.T {
-	case PlaceOrder:
-		var txn PlaceOrderTxn
-		err := dec.Decode(&txn)
-		if err != nil {
-			log.Warn("PlaceOrderTxn decode failed", "err", err)
-			return
-		}
-		if !t.placeOrder(acc, txn, t.round) {
+	// TODO: encode txn.data more efficiently to save network bandwidth
+	switch tx := txn.Decoded.(type) {
+	case *PlaceOrderTxn:
+		if !t.placeOrder(acc, tx, t.round) {
 			log.Warn("placeOrder failed")
 			return
 		}
-	case CancelOrder:
-		var txn CancelOrderTxn
-		err := dec.Decode(&txn)
-		if err != nil {
-			log.Warn("CancelOrderTxn decode failed", "err", err)
-			return
-		}
-		if !t.cancelOrder(acc, txn) {
+	case *CancelOrderTxn:
+		if !t.cancelOrder(acc, tx) {
 			log.Warn("cancelOrder failed")
 			return
 		}
-	case IssueToken:
-		var txn IssueTokenTxn
-		err := dec.Decode(&txn)
-		if err != nil {
-			log.Warn("IssueTokenTxn decode failed", "err", err)
-			return
-		}
-		if !t.issueToken(acc, txn) {
+	case *IssueTokenTxn:
+		if !t.issueToken(acc, tx) {
 			log.Warn("CreateTokenTxn failed")
 			return
 		}
-	case SendToken:
-		var txn SendTokenTxn
-		err := dec.Decode(&txn)
-		if err != nil {
-			log.Warn("SendTokenTxn decode failed", "err", err)
-			return
-		}
-		if !t.sendToken(acc, txn) {
+	case *SendTokenTxn:
+		if !t.sendToken(acc, tx) {
 			log.Warn("SendTokenTxn failed")
 			return
 		}
-	case FreezeToken:
-		var txn FreezeTokenTxn
-		err := dec.Decode(&txn)
-		if err != nil {
-			log.Warn("FreezeTokenTxn decode failed", "err", err)
-			return
-		}
-		if !t.freezeToken(acc, txn) {
+	case *FreezeTokenTxn:
+		if !t.freezeToken(acc, tx) {
 			log.Warn("FreezeTokenTxn failed")
 			return
 		}
 
 	default:
-		log.Warn("unknown txn type", "type", txn.T)
+		log.Warn("unknown txn type", "type", fmt.Sprintf("%T", txn.Decoded))
 		return false, false
 	}
 
@@ -178,7 +149,7 @@ func calcBaseSellQuant(baseQuantUnit uint64, quoteDecimals uint8, priceQuantUnit
 	return result.Uint64()
 }
 
-func (t *Transition) cancelOrder(owner *Account, txn CancelOrderTxn) bool {
+func (t *Transition) cancelOrder(owner *Account, txn *CancelOrderTxn) bool {
 	cancel, ok := owner.PendingOrders[txn.ID]
 	if !ok {
 		log.Warn("can not find the order to cancel", "id", txn.ID)
@@ -221,7 +192,7 @@ type ExecutionReport struct {
 	Fee        uint64
 }
 
-func (t *Transition) placeOrder(owner *Account, txn PlaceOrderTxn, round uint64) bool {
+func (t *Transition) placeOrder(owner *Account, txn *PlaceOrderTxn, round uint64) bool {
 	if txn.ExpireRound > 0 && round >= txn.ExpireRound {
 		log.Warn("order already expired", "expire round", txn.ExpireRound, "cur round", round)
 		return false
@@ -363,7 +334,7 @@ func (t *Transition) placeOrder(owner *Account, txn PlaceOrderTxn, round uint64)
 	return true
 }
 
-func (t *Transition) issueToken(owner *Account, txn IssueTokenTxn) bool {
+func (t *Transition) issueToken(owner *Account, txn *IssueTokenTxn) bool {
 	if t.tokenCache.Exists(txn.Info.Symbol) {
 		log.Warn("token symbol already exists", "symbol", txn.Info.Symbol)
 		return false
@@ -388,7 +359,7 @@ func (t *Transition) issueToken(owner *Account, txn IssueTokenTxn) bool {
 
 // TODO: all elements in trie should be serialized using rlp, not gob,
 // since gob is not deterministic.
-func (t *Transition) sendToken(owner *Account, txn SendTokenTxn) bool {
+func (t *Transition) sendToken(owner *Account, txn *SendTokenTxn) bool {
 	if txn.Quant == 0 {
 		return false
 	}
@@ -425,7 +396,12 @@ func (t *Transition) Txns() []byte {
 		return nil
 	}
 
-	b, err := rlp.EncodeToBytes(t.txns)
+	bs := make([][]byte, len(t.txns))
+	for i := range bs {
+		bs[i] = t.txns[i].Raw
+	}
+
+	b, err := rlp.EncodeToBytes(bs)
 	if err != nil {
 		panic(err)
 	}
@@ -558,7 +534,7 @@ func (t *Transition) expireOrders() {
 	}
 }
 
-func (t *Transition) freezeToken(acc *Account, txn FreezeTokenTxn) bool {
+func (t *Transition) freezeToken(acc *Account, txn *FreezeTokenTxn) bool {
 	if txn.Quant == 0 {
 		return false
 	}

@@ -174,17 +174,17 @@ func (c *Chain) ProposeBlock(ctx context.Context, sk SK, round uint64) *BlockPro
 
 	trans := state.Transition(round)
 loop:
-	for _, txn := range txns {
+	for i := range txns {
 		select {
 		case <-ctx.Done():
 			break loop
 		default:
 		}
 
-		valid, _ := trans.Record(txn)
+		valid, _ := trans.Record(txns[i])
 		if !valid {
 			// TODO: handle "lost" txn due to reorg.
-			c.txnPool.Remove(txn.Hash())
+			c.txnPool.Remove(SHA3(txns[i].Raw))
 		}
 	}
 
@@ -432,7 +432,7 @@ func (c *Chain) addNtShare(n *NtShare, groupID int) (b *Block, added, success bo
 			panic("should never happen: can not find prev block, it should be already synced")
 		}
 
-		trans, err := recordTxns(state, bp.Data, bp.Round)
+		trans, err := recordTxns(state, c.txnPool, bp.Data, bp.Round)
 		if err != nil {
 			panic("should never happen: notarized block's txns should be all valid")
 		}
@@ -467,14 +467,14 @@ func (c *Chain) addNtShare(n *NtShare, groupID int) (b *Block, added, success bo
 	return
 }
 
-func recordTxns(state State, txnData []byte, round uint64) (trans Transition, err error) {
+func recordTxns(state State, pool TxnPool, txnData []byte, round uint64) (trans Transition, err error) {
 	trans = state.Transition(round)
 
 	if len(txnData) == 0 {
 		return
 	}
 
-	valid, success := trans.RecordTxns(txnData)
+	valid, success := trans.RecordSerialized(txnData, pool)
 	if !valid || !success {
 		err = errors.New("failed to apply transactions")
 		return
