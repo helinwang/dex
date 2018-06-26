@@ -78,7 +78,7 @@ func TestTransitionNotCommitToDB(t *testing.T) {
 	memDB := ethdb.NewMemDatabase()
 	s := NewState(memDB)
 	sk, addr := createAccount(s, 100)
-	h, err := s.state.Commit(nil)
+	h, err := s.trie.Commit(nil)
 	if err != nil {
 		panic(err)
 	}

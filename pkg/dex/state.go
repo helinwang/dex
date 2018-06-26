@@ -51,7 +51,7 @@ type State struct {
 	diskDB ethdb.Database
 
 	mu           sync.Mutex
-	state        *trie.Trie
+	trie         *trie.Trie
 	accountCache map[consensus.Addr]*Account
 	accountDirty map[consensus.Addr]bool
 }
@@ -99,7 +99,7 @@ func newState(state *trie.Trie, db *trie.Database, diskDB ethdb.Database) *State
 	return &State{
 		diskDB:       diskDB,
 		db:           db,
-		state:        state,
+		trie:         state,
 		accountCache: make(map[consensus.Addr]*Account),
 		accountDirty: make(map[consensus.Addr]bool),
 	}
@@ -242,7 +242,7 @@ func (s *State) UpdateToken(token Token) {
 		panic(err)
 	}
 
-	s.state.Update(path, b)
+	s.trie.Update(path, b)
 }
 
 func (s *State) UpdateAccount(acc *Account) {
@@ -260,7 +260,7 @@ func (s *State) updateAccount(acc *Account) {
 		panic(err)
 	}
 
-	s.state.Update(accountAddrToPath(addr), b)
+	s.trie.Update(accountAddrToPath(addr), b)
 }
 
 func (s *State) Account(addr consensus.Addr) *Account {
@@ -272,7 +272,7 @@ func (s *State) Account(addr consensus.Addr) *Account {
 		return cache
 	}
 
-	acc := s.state.Get(accountAddrToPath(addr))
+	acc := s.trie.Get(accountAddrToPath(addr))
 	if acc == nil {
 		return nil
 	}
@@ -294,7 +294,7 @@ func (s *State) loadOrderBook(m MarketSymbol) *orderBook {
 	defer s.mu.Unlock()
 
 	path := marketPath(m.Encode())
-	b := s.state.Get(path)
+	b := s.trie.Get(path)
 	if b == nil {
 		return nil
 	}
@@ -315,7 +315,7 @@ func (s *State) saveOrderBook(m MarketSymbol, book *orderBook) {
 	}
 
 	path := marketPath(m.Encode())
-	s.state.Update(path, b)
+	s.trie.Update(path, b)
 }
 
 // Tokens returns all issued tokens
@@ -324,7 +324,7 @@ func (s *State) Tokens() []Token {
 	defer s.mu.Unlock()
 
 	prefix := encodePath(tokenPrefix)
-	iter := s.state.NodeIterator(prefix)
+	iter := s.trie.NodeIterator(prefix)
 
 	var r []Token
 	hasNext := true
@@ -363,7 +363,7 @@ func (s *State) Tokens() []Token {
 
 func (s *State) Serialize() (consensus.TrieBlob, error) {
 	s.CommitCache()
-	return serializeTrie(s.state, s.db, s.db.DiskDB())
+	return serializeTrie(s.trie, s.db, s.db.DiskDB())
 }
 
 func (s *State) Deserialize(b consensus.TrieBlob) error {
@@ -378,7 +378,7 @@ func (s *State) Deserialize(b consensus.TrieBlob) error {
 		return err
 	}
 
-	s.state = t
+	s.trie = t
 	s.db = db
 	return nil
 }
@@ -388,7 +388,7 @@ func (s *State) Hash() consensus.Hash {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	return consensus.Hash(s.state.Hash())
+	return consensus.Hash(s.trie.Hash())
 }
 
 // Transition returns the state change transition.
@@ -396,7 +396,7 @@ func (s *State) Transition(round uint64) consensus.Transition {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	root, err := s.state.Commit(nil)
+	root, err := s.trie.Commit(nil)
 	if err != nil {
 		panic(err)
 	}
@@ -425,7 +425,7 @@ func (s *State) GetOrderExpirations(round uint64) []orderExpiration {
 func (s *State) getOrderExpirations(round uint64) []orderExpiration {
 	var all []orderExpiration
 	path := expirationToPath(round)
-	exisiting := s.state.Get(path)
+	exisiting := s.trie.Get(path)
 	if len(exisiting) > 0 {
 		err := rlp.DecodeBytes(exisiting, &all)
 		if err != nil {
@@ -447,7 +447,7 @@ func (s *State) AddOrderExpirations(round uint64, ids []orderExpiration) {
 	}
 
 	path := expirationToPath(round)
-	s.state.Update(path, b)
+	s.trie.Update(path, b)
 }
 
 func (s *State) RemoveOrderExpirations(round uint64, ids map[OrderID]bool) {
@@ -467,7 +467,7 @@ func (s *State) RemoveOrderExpirations(round uint64, ids map[OrderID]bool) {
 		panic(err)
 	}
 	path := expirationToPath(round)
-	s.state.Update(path, b)
+	s.trie.Update(path, b)
 }
 
 type freezeToken struct {
@@ -485,7 +485,7 @@ func (s *State) GetFreezeTokens(round uint64) []freezeToken {
 
 func (s *State) getFreezeTokens(round uint64) []freezeToken {
 	path := freezeAtRoundToPath(round)
-	b := s.state.Get(path)
+	b := s.trie.Get(path)
 	if len(b) == 0 {
 		return nil
 	}
@@ -511,5 +511,5 @@ func (s *State) FreezeToken(round uint64, f freezeToken) {
 	}
 
 	path := freezeAtRoundToPath(round)
-	s.state.Update(path, b)
+	s.trie.Update(path, b)
 }
