@@ -77,3 +77,45 @@ func TestStateSerialize(t *testing.T) {
 	assert.Equal(t, token0.TotalUnits, b0.Available)
 	assert.Equal(t, token1.TotalUnits, b1.Available)
 }
+
+func TestStateNonce(t *testing.T) {
+	s := NewState(ethdb.NewMemDatabase())
+	addr := consensus.RandSK().MustPK().Addr()
+	assert.Equal(t, 0, len(s.NonceVec(addr)))
+	v := []uint64{1, 2, 3}
+	s.UpdateNonceVec(addr, v)
+	assert.Equal(t, v, s.NonceVec(addr))
+}
+
+func TestStateBalances(t *testing.T) {
+	s := NewState(ethdb.NewMemDatabase())
+	addr := consensus.RandSK().MustPK().Addr()
+	b, i := s.Balances(addr)
+	assert.Equal(t, 0, len(b))
+	assert.Equal(t, 0, len(i))
+
+	b = []Balance{Balance{Available: 1, Pending: 2, Frozen: []Frozen{{AvailableRound: 1, Quant: 2}}}}
+	i = []TokenID{2}
+	s.UpdateBalances(addr, b, i)
+	b0, i0 := s.Balances(addr)
+	assert.Equal(t, b, b0)
+	assert.Equal(t, i, i0)
+}
+
+func TestStatePendingOrders(t *testing.T) {
+	s := NewState(ethdb.NewMemDatabase())
+	addr := consensus.RandSK().MustPK().Addr()
+	assert.Equal(t, 0, len(s.PendingOrders(addr)))
+	ps := []PendingOrder{{Executed: 100}}
+	s.UpdatePendingOrders(addr, ps)
+	assert.Equal(t, ps, s.PendingOrders(addr))
+}
+
+func TestStateExecutionReports(t *testing.T) {
+	s := NewState(ethdb.NewMemDatabase())
+	addr := consensus.RandSK().MustPK().Addr()
+	assert.Equal(t, 0, len(s.ExecutionReports(addr)))
+	es := []ExecutionReport{{Round: 1}}
+	s.UpdateExecutionReports(addr, es)
+	assert.Equal(t, es, s.ExecutionReports(addr))
+}

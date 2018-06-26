@@ -53,7 +53,6 @@ type State struct {
 	mu           sync.Mutex
 	trie         *trie.Trie
 	accountCache map[consensus.Addr]*Account
-	accountDirty map[consensus.Addr]bool
 }
 
 // TODO: add receipt for create, send, freeze, burn token.
@@ -101,7 +100,6 @@ func newState(state *trie.Trie, db *trie.Database, diskDB ethdb.Database) *State
 		db:           db,
 		trie:         state,
 		accountCache: make(map[consensus.Addr]*Account),
-		accountDirty: make(map[consensus.Addr]bool),
 	}
 }
 
@@ -116,11 +114,16 @@ func NewState(diskDB ethdb.Database) *State {
 }
 
 var (
-	accountPrefix         = []byte{0}
-	marketPrefix          = []byte{1}
-	tokenPrefix           = []byte{2}
-	orderExpirationPrefix = []byte{3}
-	freezeAtRoundPrefix   = []byte{4}
+	accountPrefix          = []byte{0}
+	marketPrefix           = []byte{1}
+	tokenPrefix            = []byte{2}
+	orderExpirationPrefix  = []byte{3}
+	freezeAtRoundPrefix    = []byte{4}
+	pkPrefix               = 0
+	noncePrefix            = 1
+	balancePrefix          = 2
+	pendingOrdersPrefix    = 3
+	executionReportsPrefix = 4
 )
 
 func freezeAtRoundToPath(round uint64) []byte {
@@ -129,8 +132,29 @@ func freezeAtRoundToPath(round uint64) []byte {
 	return append(freezeAtRoundPrefix, b...)
 }
 
-func accountAddrToPath(addr consensus.Addr) []byte {
-	return append(accountPrefix, addr[:]...)
+func addrPKPath(addr consensus.Addr) []byte {
+	p := append(accountPrefix, addr[:]...)
+	return append(p, byte(pkPrefix))
+}
+
+func addrNoncePath(addr consensus.Addr) []byte {
+	p := append(accountPrefix, addr[:]...)
+	return append(p, byte(noncePrefix))
+}
+
+func addrBalancePath(addr consensus.Addr) []byte {
+	p := append(accountPrefix, addr[:]...)
+	return append(p, byte(balancePrefix))
+}
+
+func addrPendingOrdersPath(addr consensus.Addr) []byte {
+	p := append(accountPrefix, addr[:]...)
+	return append(p, byte(pendingOrdersPrefix))
+}
+
+func addrExecutionReportsPath(addr consensus.Addr) []byte {
+	p := append(accountPrefix, addr[:]...)
+	return append(p, byte(executionReportsPrefix))
 }
 
 func expirationToPath(round uint64) []byte {
@@ -164,70 +188,159 @@ func (s *State) CommitCache() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	for addr, dirty := range s.accountDirty {
-		if !dirty {
-			continue
-		}
-
-		s.updateAccount(s.accountCache[addr])
+	for _, acc := range s.accountCache {
+		acc.CommitCache(s)
 	}
 }
 
-func (s *State) UpdatePK(pk consensus.PK) {
+func (s *State) pk(addr consensus.Addr) consensus.PK {
+	b := s.trie.Get(addrPKPath(addr))
+	return consensus.PK(b)
+}
+
+func (s *State) PK(addr consensus.Addr) consensus.PK {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.pk(addr)
+}
+
+func (s *State) UpdatePK(pk consensus.PK) {
+	addr := pk.Addr()
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	path := addrPKPath(addr)
+	s.trie.Update(path, pk)
 }
 
 func (s *State) UpdateNonceVec(addr consensus.Addr, vec []uint64) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-}
+	b, err := rlp.EncodeToBytes(vec)
+	if err != nil {
+		panic(err)
+	}
 
-func (s *State) UpdateBalances(addr consensus.Addr, balances []Balance, ids []TokenID) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-}
-
-func (s *State) UpdatePendingOrders(addr consensus.Addr, ps []PendingOrder) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-}
-
-func (s *State) UpdateExecutionReports(addr consensus.Addr, es []ExecutionReport) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
+	path := addrNoncePath(addr)
+	s.trie.Update(path, b)
 }
 
 func (s *State) NonceVec(addr consensus.Addr) []uint64 {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	return nil
+	b := s.trie.Get(addrNoncePath(addr))
+	if len(b) == 0 {
+		return nil
+	}
+
+	var vec []uint64
+	err := rlp.DecodeBytes(b, &vec)
+	if err != nil {
+		panic(err)
+	}
+
+	return vec
 }
 
-func (s *State) ExecutionReports(addr consensus.Addr) []ExecutionReport {
+type balanceIDs struct {
+	B []Balance
+	I []TokenID
+}
+
+func (s *State) UpdateBalances(addr consensus.Addr, balances []Balance, ids []TokenID) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	return nil
-}
+	v := balanceIDs{B: balances, I: ids}
+	b, err := rlp.EncodeToBytes(v)
+	if err != nil {
+		panic(err)
+	}
 
-func (s *State) PendingOrders(addr consensus.Addr) []PendingOrder {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	return nil
+	path := addrBalancePath(addr)
+	s.trie.Update(path, b)
 }
 
 func (s *State) Balances(addr consensus.Addr) ([]Balance, []TokenID) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	return nil, nil
+	b := s.trie.Get(addrBalancePath(addr))
+	if len(b) == 0 {
+		return nil, nil
+	}
+
+	var v balanceIDs
+	err := rlp.DecodeBytes(b, &v)
+	if err != nil {
+		panic(err)
+	}
+
+	return v.B, v.I
+}
+
+func (s *State) UpdatePendingOrders(addr consensus.Addr, ps []PendingOrder) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	b, err := rlp.EncodeToBytes(ps)
+	if err != nil {
+		panic(err)
+	}
+
+	path := addrPendingOrdersPath(addr)
+	s.trie.Update(path, b)
+}
+
+func (s *State) PendingOrders(addr consensus.Addr) []PendingOrder {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	b := s.trie.Get(addrPendingOrdersPath(addr))
+	if len(b) == 0 {
+		return nil
+	}
+
+	var ps []PendingOrder
+	err := rlp.DecodeBytes(b, &ps)
+	if err != nil {
+		panic(err)
+	}
+
+	return ps
+}
+
+func (s *State) UpdateExecutionReports(addr consensus.Addr, es []ExecutionReport) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	b, err := rlp.EncodeToBytes(es)
+	if err != nil {
+		panic(err)
+	}
+
+	path := addrExecutionReportsPath(addr)
+	s.trie.Update(path, b)
+}
+
+func (s *State) ExecutionReports(addr consensus.Addr) []ExecutionReport {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	b := s.trie.Get(addrExecutionReportsPath(addr))
+	if len(b) == 0 {
+		return nil
+	}
+
+	var es []ExecutionReport
+	err := rlp.DecodeBytes(b, &es)
+	if err != nil {
+		panic(err)
+	}
+
+	return es
 }
 
 func (s *State) UpdateToken(token Token) {
@@ -246,21 +359,7 @@ func (s *State) UpdateToken(token Token) {
 }
 
 func (s *State) UpdateAccount(acc *Account) {
-	addr := acc.PK().Addr()
-	s.mu.Lock()
-	s.accountDirty[addr] = true
-	s.accountCache[addr] = acc
-	s.mu.Unlock()
-}
-
-func (s *State) updateAccount(acc *Account) {
-	addr := acc.PK().Addr()
-	b, err := rlp.EncodeToBytes(acc)
-	if err != nil {
-		panic(err)
-	}
-
-	s.trie.Update(accountAddrToPath(addr), b)
+	// TODO: remove this func
 }
 
 func (s *State) Account(addr consensus.Addr) *Account {
@@ -272,20 +371,10 @@ func (s *State) Account(addr consensus.Addr) *Account {
 		return cache
 	}
 
-	acc := s.trie.Get(accountAddrToPath(addr))
-	if acc == nil {
-		return nil
-	}
-
-	var account Account
-	err := rlp.DecodeBytes(acc, &account)
-	if err != nil {
-		log.Error("decode account error", "err", err)
-		return nil
-	}
-
-	s.accountCache[addr] = &account
-	return &account
+	pk := s.PK(addr)
+	account := BindAccount(pk, s)
+	s.accountCache[addr] = account
+	return account
 }
 
 // loadOrderBook deserializes the order from the state trie.
