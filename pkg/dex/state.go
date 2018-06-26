@@ -88,7 +88,6 @@ func CreateGenesisState(recipients []consensus.PK, additionalTokens []TokenInfo)
 			avg := t.TotalUnits / uint64(len(recipients))
 			account.UpdateBalance(t.ID, Balance{Available: avg})
 		}
-		s.UpdateAccount(account)
 	}
 
 	return s
@@ -356,10 +355,6 @@ func (s *State) UpdateToken(token Token) {
 	}
 
 	s.trie.Update(path, b)
-}
-
-func (s *State) UpdateAccount(acc *Account) {
-	// TODO: remove this func
 }
 
 func (s *State) Account(addr consensus.Addr) *Account {

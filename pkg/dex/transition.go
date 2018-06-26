@@ -155,9 +155,7 @@ func (t *Transition) cancelOrder(owner *Account, txn *CancelOrderTxn) bool {
 	book.Cancel(txn.ID.ID)
 	t.dirtyOrderBooks[txn.ID.Market] = true
 	owner.RemovePendingOrder(txn.ID)
-
 	t.refundAfterCancel(owner, cancel, txn.ID.Market)
-	t.state.UpdateAccount(owner)
 	return true
 }
 
@@ -320,12 +318,7 @@ func (t *Transition) placeOrder(owner *Account, txn *PlaceOrderTxn, round uint64
 				acc.UpdateBalance(txn.Market.Quote, sellSideBalance)
 				acc.UpdateBalance(txn.Market.Base, buySideBalance)
 			}
-			t.state.UpdateAccount(acc)
 		}
-	} else {
-		// TODO: remove all update account call, since update
-		// account can be automatically tracked.
-		t.state.UpdateAccount(owner)
 	}
 	return true
 }
@@ -349,7 +342,6 @@ func (t *Transition) issueToken(owner *Account, txn *IssueTokenTxn) bool {
 	t.tokenCreations = append(t.tokenCreations, token)
 	t.state.UpdateToken(token)
 	owner.UpdateBalance(id, Balance{Available: txn.Info.TotalUnits})
-	t.state.UpdateAccount(owner)
 	return true
 }
 
@@ -382,8 +374,6 @@ func (t *Transition) sendToken(owner *Account, txn *SendTokenTxn) bool {
 	toAccBalance, _ := toAcc.Balance(txn.TokenID)
 	toAccBalance.Available += txn.Quant
 	toAcc.UpdateBalance(txn.TokenID, toAccBalance)
-	t.state.UpdateAccount(toAcc)
-	t.state.UpdateAccount(owner)
 	return true
 }
 
@@ -496,10 +486,6 @@ func (t *Transition) releaseTokens() {
 		b.Available += f.Quant
 		acc.UpdateBalance(token.TokenID, b)
 	}
-
-	for _, acc := range addrToAcc {
-		t.state.UpdateAccount(acc)
-	}
 }
 
 func (t *Transition) expireOrders() {
@@ -523,10 +509,6 @@ func (t *Transition) expireOrders() {
 
 		acc.RemovePendingOrder(o.ID)
 		t.refundAfterCancel(acc, order, o.ID.Market)
-	}
-
-	for _, acc := range addrToAcc {
-		t.state.UpdateAccount(acc)
 	}
 }
 
@@ -558,7 +540,6 @@ func (t *Transition) freezeToken(acc *Account, txn *FreezeTokenTxn) bool {
 	b.Available -= txn.Quant
 	b.Frozen = append(b.Frozen, frozen)
 	acc.UpdateBalance(txn.TokenID, b)
-	t.state.UpdateAccount(acc)
 	t.state.FreezeToken(txn.AvailableRound, freezeToken{Addr: acc.PK().Addr(), TokenID: txn.TokenID, Quant: txn.Quant})
 	return true
 }

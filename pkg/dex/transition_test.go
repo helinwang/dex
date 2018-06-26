@@ -16,7 +16,6 @@ func createAccount(s *State, quant uint64) (consensus.SK, consensus.Addr) {
 	addr := acc.PK().Addr()
 	acc.balances = make(map[TokenID]Balance)
 	acc.balances[0] = Balance{Available: quant}
-	s.UpdateAccount(acc)
 	s.CommitCache()
 	return consensus.SK(sk.GetLittleEndian()), addr
 }
