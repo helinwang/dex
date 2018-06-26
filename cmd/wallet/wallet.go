@@ -271,7 +271,7 @@ func sendToken(c *cli.Context) error {
 	}
 
 	txn := dex.MakeSendTokenTxn(credential.SK, pk, tokenID, uint64(quant*mul), idx, val)
-	err = client.Call("WalletService.SendTxn", txn, nil)
+	err = client.Call("WalletService.SendTxn", txn.Bytes(), nil)
 	if err != nil {
 		return err
 	}
@@ -407,7 +407,7 @@ func issueToken(c *cli.Context) error {
 	}
 
 	txn := dex.MakeIssueTokenTxn(credential.SK, tokenInfo, idx, val)
-	err = client.Call("WalletService.SendTxn", txn, nil)
+	err = client.Call("WalletService.SendTxn", txn.Bytes(), nil)
 	if err != nil {
 		return err
 	}
@@ -495,7 +495,7 @@ func freezeToken(c *cli.Context) error {
 
 	t := dex.FreezeTokenTxn{TokenID: tokenID, AvailableRound: availableHeight, Quant: uint64(quant * mul)}
 	txn := dex.MakeFreezeTokenTxn(credential.SK, t, idx, val)
-	err = client.Call("WalletService.SendTxn", txn, nil)
+	err = client.Call("WalletService.SendTxn", txn.Bytes(), nil)
 	if err != nil {
 		return err
 	}
@@ -527,7 +527,7 @@ func cancelOrder(c *cli.Context) error {
 	}
 
 	txn := dex.MakeCancelOrderTxn(credential.SK, id, idx, val)
-	err = client.Call("WalletService.SendTxn", txn, nil)
+	err = client.Call("WalletService.SendTxn", txn.Bytes(), nil)
 	if err != nil {
 		return err
 	}
@@ -627,8 +627,7 @@ func placeOrder(c *cli.Context) error {
 		Market:      market,
 	}
 	txn := dex.MakePlaceOrderTxn(credential.SK, placeOrderTxn, idx, val)
-
-	err = client.Call("WalletService.SendTxn", txn, nil)
+	err = client.Call("WalletService.SendTxn", txn.Bytes(), nil)
 	if err != nil {
 		return err
 	}

@@ -8,6 +8,7 @@ import (
 	"math/big"
 	"strings"
 
+	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/helinwang/dex/pkg/consensus"
 	log "github.com/helinwang/log15"
 )
@@ -16,7 +17,7 @@ type Transition struct {
 	round           uint64
 	finalized       bool
 	tokenCreations  []Token
-	txns            [][]byte
+	txns            []*Txn
 	expirations     map[uint64][]orderExpiration
 	filledOrders    []*PendingOrder
 	state           *State
@@ -37,13 +38,33 @@ func newTransition(s *State, round uint64) *Transition {
 	}
 }
 
+func (t *Transition) RecordTxns(b []byte) (valid, success bool) {
+	var txns []*Txn
+	err := rlp.DecodeBytes(b, &txns)
+	if err != nil {
+		log.Error("error decode txns in RecordTxns", "err", err)
+		return
+	}
+
+	for _, txn := range txns {
+		valid, success = t.Record(txn)
+		if !valid || !success {
+			log.Error("error record txn in encoded txns", "valid", valid, "success", success, "hash", txn.Hash())
+			return
+		}
+	}
+
+	return true, true
+}
+
 // Record records a transition to the state transition.
-func (t *Transition) Record(b []byte) (valid, success bool) {
+func (t *Transition) Record(c consensus.Txn) (valid, success bool) {
+	txn := c.(*Txn)
 	if t.finalized {
 		panic("record should never be called after finalized")
 	}
 
-	txn, acc, ready, nonceValid := validateSigAndNonce(t.state, b)
+	acc, ready, nonceValid := validateNonce(t.state, txn)
 	if !nonceValid {
 		return
 	}
@@ -57,6 +78,7 @@ func (t *Transition) Record(b []byte) (valid, success bool) {
 	}
 	acc.NonceVec[txn.NonceIdx]++
 
+	// TODO: encode txn.data more efficiently
 	dec := gob.NewDecoder(bytes.NewBuffer(txn.Data))
 	switch txn.T {
 	case PlaceOrder:
@@ -120,7 +142,7 @@ func (t *Transition) Record(b []byte) (valid, success bool) {
 		return false, false
 	}
 
-	t.txns = append(t.txns, b)
+	t.txns = append(t.txns, txn)
 	return true, true
 }
 
@@ -398,8 +420,17 @@ func (t *Transition) sendToken(owner *Account, txn SendTokenTxn) bool {
 	return true
 }
 
-func (t *Transition) Txns() [][]byte {
-	return t.txns
+func (t *Transition) Txns() []byte {
+	if len(t.txns) == 0 {
+		return nil
+	}
+
+	b, err := rlp.EncodeToBytes(t.txns)
+	if err != nil {
+		panic(err)
+	}
+
+	return b
 }
 
 func (t *Transition) finalizeState(round uint64) {

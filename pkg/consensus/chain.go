@@ -8,7 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ethereum/go-ethereum/rlp"
 	log "github.com/helinwang/log15"
 )
 
@@ -185,16 +184,11 @@ loop:
 		valid, _ := trans.Record(txn)
 		if !valid {
 			// TODO: handle "lost" txn due to reorg.
-			c.txnPool.Remove(SHA3(txn))
+			c.txnPool.Remove(txn.Hash())
 		}
 	}
 
-	txns = trans.Txns()
-	b, err := rlp.EncodeToBytes(txns)
-	if err != nil {
-		panic(err)
-	}
-
+	txnsBytes := trans.Txns()
 	var bp BlockProposal
 	bp.PrevBlock = SHA3(block.Encode(true))
 	bp.Round = round
@@ -204,7 +198,7 @@ loop:
 	}
 
 	bp.Owner = pk.Addr()
-	bp.Data = b
+	bp.Data = txnsBytes
 	bp.OwnerSig = sk.Sign(bp.Encode(false))
 	return &bp
 }
@@ -480,19 +474,10 @@ func recordTxns(state State, txnData []byte, round uint64) (trans Transition, er
 		return
 	}
 
-	var txns [][]byte
-	err = rlp.DecodeBytes(txnData, &txns)
-	if err != nil {
-		err = fmt.Errorf("invalid transactions: %v", err)
+	valid, success := trans.RecordTxns(txnData)
+	if !valid || !success {
+		err = errors.New("failed to apply transactions")
 		return
-	}
-
-	for _, t := range txns {
-		valid, success := trans.Record(t)
-		if !valid || !success {
-			err = errors.New("failed to apply transactions")
-			return
-		}
 	}
 
 	return
@@ -564,16 +549,7 @@ func (c *Chain) addBlock(b *Block, bp *BlockProposal, s State, weight float64) (
 
 	txnCount := 0
 	if len(bp.Data) > 0 {
-		var txns [][]byte
-		err := rlp.DecodeBytes(bp.Data, &txns)
-		if err != nil {
-			return false, fmt.Errorf("should never happen: notarized block contains invalid txn data: %v", err)
-		}
-
-		txnCount = len(txns)
-		for _, txn := range txns {
-			c.txnPool.Remove(SHA3(txn))
-		}
+		txnCount = c.txnPool.RemoveTxns(bp.Data)
 	}
 
 	_, leaderState, _ := c.leader()

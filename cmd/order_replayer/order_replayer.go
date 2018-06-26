@@ -146,7 +146,7 @@ func main() {
 			Market:      dex.MarketSymbol{Base: baseToken.ID, Quote: quoteToken.ID},
 		}
 		txn := dex.MakePlaceOrderTxn(credential.SK, t, nonceIdx, nonceVal)
-		err = client.Call("WalletService.SendTxn", txn, nil)
+		err = client.Call("WalletService.SendTxn", txn.Bytes(), nil)
 		if err != nil {
 			panic(err)
 		}

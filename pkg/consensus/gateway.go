@@ -286,9 +286,9 @@ func (n *gateway) broadcast(item Item) {
 }
 
 func (n *gateway) recvTxn(t []byte) error {
-	broadcast := n.chain.txnPool.Add(t)
+	h, broadcast := n.chain.txnPool.Add(t)
 	if broadcast {
-		go n.broadcast(Item{T: txnItem, Hash: SHA3(t)})
+		go n.broadcast(Item{T: txnItem, Hash: h})
 	}
 	return nil
 }
@@ -498,7 +498,8 @@ func (n *gateway) serveData(addr unicastAddr, item Item) {
 		if txn == nil {
 			return
 		}
-		go n.net.Send(addr, packet{Data: txn})
+		fmt.Println(txn)
+		go n.net.Send(addr, packet{Data: txn.Bytes()})
 	case sysTxnItem:
 		panic(sysTxnNotImplemented)
 	case blockItem:
