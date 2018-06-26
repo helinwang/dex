@@ -87,7 +87,7 @@ func CreateGenesisState(recipients []consensus.PK, additionalTokens []TokenInfo)
 		account := NewAccount(pk)
 		for _, t := range tokens {
 			avg := t.TotalUnits / uint64(len(recipients))
-			account.Balances[t.ID] = &Balance{Available: avg}
+			account.UpdateBalance(t.ID, Balance{Available: avg})
 		}
 		s.UpdateAccount(account)
 	}
@@ -189,7 +189,7 @@ func (s *State) UpdateToken(token Token) {
 }
 
 func (s *State) UpdateAccount(acc *Account) {
-	addr := acc.PK.Addr()
+	addr := acc.PK().Addr()
 	s.mu.Lock()
 	s.accountDirty[addr] = true
 	s.accountCache[addr] = acc
@@ -197,7 +197,7 @@ func (s *State) UpdateAccount(acc *Account) {
 }
 
 func (s *State) updateAccount(acc *Account) {
-	addr := acc.PK.Addr()
+	addr := acc.PK().Addr()
 	b, err := rlp.EncodeToBytes(acc)
 	if err != nil {
 		panic(err)

@@ -13,9 +13,9 @@ func createAccount(s *State, quant uint64) (consensus.SK, consensus.Addr) {
 	var sk bls.SecretKey
 	sk.SetByCSPRNG()
 	acc := NewAccount(sk.GetPublicKey().Serialize())
-	addr := consensus.SHA3(acc.PK).Addr()
-	acc.Balances = make(map[TokenID]*Balance)
-	acc.Balances[0] = &Balance{Available: quant}
+	addr := acc.PK().Addr()
+	acc.balances = make(map[TokenID]Balance)
+	acc.balances[0] = Balance{Available: quant}
 	s.UpdateAccount(acc)
 	s.CommitCache()
 	return consensus.SK(sk.GetLittleEndian()), addr
@@ -27,7 +27,7 @@ func TestSendToken(t *testing.T) {
 
 	// check balance not changed before commiting the txn
 	newAcc := s.Account(addr)
-	assert.Equal(t, 100, int(newAcc.Balances[0].Available))
+	assert.Equal(t, 100, int(newAcc.balances[0].Available))
 
 	var skRecv bls.SecretKey
 	skRecv.SetByCSPRNG()
@@ -40,13 +40,13 @@ func TestSendToken(t *testing.T) {
 	assert.True(t, success)
 
 	newAcc = s.Account(addr)
-	assert.Equal(t, 100, int(newAcc.Balances[0].Available))
+	assert.Equal(t, 100, int(newAcc.balances[0].Available))
 	s = trans.Commit().(*State)
 
 	toAcc := s.Account(to.Addr())
-	assert.Equal(t, 20, int(toAcc.Balances[0].Available))
+	assert.Equal(t, 20, int(toAcc.balances[0].Available))
 	newAcc = s.Account(addr)
-	assert.Equal(t, 80, int(newAcc.Balances[0].Available))
+	assert.Equal(t, 80, int(newAcc.balances[0].Available))
 }
 
 func TestFreezeToken(t *testing.T) {
@@ -55,7 +55,7 @@ func TestFreezeToken(t *testing.T) {
 
 	// check balance not changed before commiting the txn
 	newAcc := s.Account(addr)
-	assert.Equal(t, 100, int(newAcc.Balances[0].Available))
+	assert.Equal(t, 100, int(newAcc.balances[0].Available))
 	txn := MakeFreezeTokenTxn(sk, FreezeTokenTxn{TokenID: 0, AvailableRound: 3, Quant: 50}, 0, 0)
 
 	trans := s.Transition(1)
@@ -64,14 +64,14 @@ func TestFreezeToken(t *testing.T) {
 	assert.True(t, success)
 	s = trans.Commit().(*State)
 	newAcc = s.Account(addr)
-	assert.Equal(t, 50, int(newAcc.Balances[0].Available))
-	assert.Equal(t, []Frozen([]Frozen{Frozen{AvailableRound: 3, Quant: 50}}), newAcc.Balances[0].Frozen)
+	assert.Equal(t, 50, int(newAcc.balances[0].Available))
+	assert.Equal(t, []Frozen([]Frozen{Frozen{AvailableRound: 3, Quant: 50}}), newAcc.balances[0].Frozen)
 
 	trans = s.Transition(2)
 	s = trans.Commit().(*State)
 	newAcc = s.Account(addr)
-	assert.Equal(t, 100, int(newAcc.Balances[0].Available))
-	assert.Equal(t, 0, len(newAcc.Balances[0].Frozen))
+	assert.Equal(t, 100, int(newAcc.balances[0].Available))
+	assert.Equal(t, 0, len(newAcc.balances[0].Frozen))
 }
 
 func TestTransitionNotCommitToDB(t *testing.T) {
@@ -92,7 +92,7 @@ func TestTransitionNotCommitToDB(t *testing.T) {
 	assert.Equal(t, 1, dbLen)
 
 	newAcc := s.Account(addr)
-	assert.Equal(t, 100, int(newAcc.Balances[0].Available))
+	assert.Equal(t, 100, int(newAcc.balances[0].Available))
 	trans := s.Transition(1)
 
 	for i := 0; i < 99; i++ {
@@ -107,13 +107,13 @@ func TestTransitionNotCommitToDB(t *testing.T) {
 	}
 
 	newAcc = s.Account(addr)
-	assert.Equal(t, 100, int(newAcc.Balances[0].Available))
+	assert.Equal(t, 100, int(newAcc.balances[0].Available))
 	// test len does not change, transition not committed to DB
 	assert.Equal(t, 1, memDB.Len())
 
 	s = trans.Commit().(*State)
 	newAcc = s.Account(addr)
-	assert.Equal(t, 1, int(newAcc.Balances[0].Available))
+	assert.Equal(t, 1, int(newAcc.balances[0].Available))
 }
 
 func TestIssueToken(t *testing.T) {
@@ -137,8 +137,8 @@ func TestIssueToken(t *testing.T) {
 	assert.Equal(t, &btcInfo, cache.Info(1))
 
 	acc := s.Account(addr)
-	assert.Equal(t, btcInfo.TotalUnits, acc.Balances[1].Available)
-	assert.Equal(t, uint64(0), acc.Balances[1].Pending)
+	assert.Equal(t, btcInfo.TotalUnits, acc.balances[1].Available)
+	assert.Equal(t, uint64(0), acc.balances[1].Pending)
 }
 
 func TestOrderAlreadyExpired(t *testing.T) {
@@ -159,7 +159,7 @@ func TestOrderAlreadyExpired(t *testing.T) {
 	assert.False(t, success)
 	s = trans.Commit().(*State)
 	acc := s.Account(addr)
-	assert.Equal(t, 0, len(acc.PendingOrders))
+	assert.Equal(t, 0, len(acc.pendingOrders))
 }
 
 func TestOrderExpire(t *testing.T) {
@@ -182,12 +182,12 @@ func TestOrderExpire(t *testing.T) {
 	// the next round.
 	s = trans.Commit().(*State)
 	acc := s.Account(addr)
-	assert.Equal(t, 1, len(acc.PendingOrders))
+	assert.Equal(t, 1, len(acc.pendingOrders))
 	trans = s.Transition(2)
 	s = trans.Commit().(*State)
 
 	acc = s.Account(addr)
-	assert.Equal(t, 0, len(acc.PendingOrders))
+	assert.Equal(t, 0, len(acc.pendingOrders))
 }
 
 func TestPlaceOrder(t *testing.T) {
@@ -208,7 +208,7 @@ func TestPlaceOrder(t *testing.T) {
 	s = trans.Commit().(*State)
 
 	acc := s.Account(addr)
-	assert.Equal(t, 40, int(acc.Balances[0].Pending))
+	assert.Equal(t, 40, int(acc.balances[0].Pending))
 
 	trans = s.Transition(2)
 	order = PlaceOrderTxn{
@@ -225,7 +225,7 @@ func TestPlaceOrder(t *testing.T) {
 	assert.True(t, valid)
 	assert.True(t, success)
 	acc = s.Account(addr)
-	assert.Equal(t, 0, int(acc.Balances[0].Pending))
+	assert.Equal(t, 0, int(acc.balances[0].Pending))
 }
 
 func TestCalcBaseSellQuant(t *testing.T) {

@@ -40,6 +40,8 @@ func validateNonce(state *State, txn *consensus.Txn) (acc *Account, ready, valid
 		return
 	}
 
+	// TODO: validate nonce
+
 	// if !txn.Sig.Verify(acc.PK, txn.Encode(false)) {
 	// 	log.Warn("invalid txn signature")
 	// 	return

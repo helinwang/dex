@@ -11,19 +11,19 @@ import (
 func TestAccountEncodeDecode(t *testing.T) {
 	orderID := OrderID{ID: 1, Market: MarketSymbol{Base: 2, Quote: 3}}
 	a := Account{
-		PK:       consensus.PK{1, 2, 3},
-		NonceVec: []uint64{4, 5},
-		Balances: map[TokenID]*Balance{
-			0: &Balance{Available: 100, Pending: 20, Frozen: []Frozen{}},
-			5: &Balance{Available: 1<<64 - 1, Pending: 1, Frozen: []Frozen{}},
+		pk:       consensus.PK{1, 2, 3},
+		nonceVec: []uint64{4, 5},
+		balances: map[TokenID]Balance{
+			0: Balance{Available: 100, Pending: 20, Frozen: []Frozen{}},
+			5: Balance{Available: 1<<64 - 1, Pending: 1, Frozen: []Frozen{}},
 		},
-		PendingOrders: map[OrderID]*PendingOrder{
+		pendingOrders: map[OrderID]*PendingOrder{
 			orderID: &PendingOrder{
 				ID:       orderID,
 				Executed: 4,
 				Order:    Order{Price: 5}},
 		},
-		ExecutionReports: []ExecutionReport{{Round: 1}},
+		executionReports: []ExecutionReport{{Round: 1}},
 	}
 
 	b, err := rlp.EncodeToBytes(&a)
@@ -53,11 +53,11 @@ func TestOrderIDEncodeDecode(t *testing.T) {
 
 func TestAccountHashDeterministic(t *testing.T) {
 	a := Account{
-		PK:       consensus.PK{1, 2, 3},
-		NonceVec: []uint64{4, 5},
-		Balances: map[TokenID]*Balance{
-			0: &Balance{Available: 100, Pending: 20},
-			5: &Balance{Available: 1<<64 - 1, Pending: 1},
+		pk:       consensus.PK{1, 2, 3},
+		nonceVec: []uint64{4, 5},
+		balances: map[TokenID]Balance{
+			0: Balance{Available: 100, Pending: 20},
+			5: Balance{Available: 1<<64 - 1, Pending: 1},
 		},
 	}
 

@@ -75,11 +75,6 @@ func (t *Transition) Record(txn *consensus.Txn) (valid, success bool) {
 		return true, false
 	}
 
-	if len(acc.NonceVec) <= int(txn.NonceIdx) {
-		acc.NonceVec = append(acc.NonceVec, make([]uint64, int(txn.NonceIdx)-len(acc.NonceVec)+1)...)
-	}
-	acc.NonceVec[txn.NonceIdx]++
-
 	// TODO: encode txn.data more efficiently to save network bandwidth
 	switch tx := txn.Decoded.(type) {
 	case *PlaceOrderTxn:
@@ -150,7 +145,7 @@ func calcBaseSellQuant(baseQuantUnit uint64, quoteDecimals uint8, priceQuantUnit
 }
 
 func (t *Transition) cancelOrder(owner *Account, txn *CancelOrderTxn) bool {
-	cancel, ok := owner.PendingOrders[txn.ID]
+	cancel, ok := owner.PendingOrder(txn.ID)
 	if !ok {
 		log.Warn("can not find the order to cancel", "id", txn.ID)
 		return false
@@ -159,7 +154,7 @@ func (t *Transition) cancelOrder(owner *Account, txn *CancelOrderTxn) bool {
 	book := t.getOrderBook(txn.ID.Market)
 	book.Cancel(txn.ID.ID)
 	t.dirtyOrderBooks[txn.ID.Market] = true
-	delete(owner.PendingOrders, txn.ID)
+	owner.RemovePendingOrder(txn.ID)
 
 	t.refundAfterCancel(owner, cancel, txn.ID.Market)
 	t.state.UpdateAccount(owner)
@@ -179,8 +174,10 @@ func (t *Transition) refundAfterCancel(owner *Account, cancel *PendingOrder, mar
 		pendingQuant = calcBaseSellQuant(cancel.Quant, quoteInfo.Decimals, cancel.Price, OrderPriceDecimals, baseInfo.Decimals)
 	}
 
-	owner.Balances[token].Pending -= pendingQuant
-	owner.Balances[token].Available += pendingQuant
+	balance, _ := owner.Balance(token)
+	balance.Pending -= pendingQuant
+	balance.Available += pendingQuant
+	owner.UpdateBalance(token, balance)
 }
 
 type ExecutionReport struct {
@@ -220,7 +217,7 @@ func (t *Transition) placeOrder(owner *Account, txn *PlaceOrderTxn, round uint64
 		sell = txn.Market.Quote
 	}
 
-	sb, ok := owner.Balances[sell]
+	sellBalance, ok := owner.Balance(sell)
 	if !ok {
 		log.Warn("does not have balance for the given token", "token", sell)
 		return false
@@ -231,15 +228,16 @@ func (t *Transition) placeOrder(owner *Account, txn *PlaceOrderTxn, round uint64
 		return false
 	}
 
-	if sb.Available <= sellQuantUnit {
+	if sellBalance.Available <= sellQuantUnit {
 		log.Warn("insufficient quant to sell", "token", sell, "quant unit", sellQuantUnit)
 		return false
 	}
 
-	owner.Balances[sell].Available -= sellQuantUnit
-	owner.Balances[sell].Pending += sellQuantUnit
+	sellBalance.Available -= sellQuantUnit
+	sellBalance.Pending += sellQuantUnit
+	owner.UpdateBalance(sell, sellBalance)
 	order := Order{
-		Owner:       owner.PK.Addr(),
+		Owner:       owner.PK().Addr(),
 		SellSide:    txn.SellSide,
 		Quant:       txn.Quant,
 		Price:       txn.Price,
@@ -254,9 +252,9 @@ func (t *Transition) placeOrder(owner *Account, txn *PlaceOrderTxn, round uint64
 		ID:    id,
 		Order: order,
 	}
-	owner.PendingOrders[pendingOrder.ID] = pendingOrder
+	owner.UpdatePendingOrder(pendingOrder)
 	if order.ExpireRound > 0 {
-		t.expirations[order.ExpireRound] = append(t.expirations[order.ExpireRound], orderExpiration{ID: id, Owner: owner.PK.Addr()})
+		t.expirations[order.ExpireRound] = append(t.expirations[order.ExpireRound], orderExpiration{ID: id, Owner: owner.PK().Addr()})
 	}
 
 	if len(executions) > 0 {
@@ -271,25 +269,25 @@ func (t *Transition) placeOrder(owner *Account, txn *PlaceOrderTxn, round uint64
 				TradePrice: exec.Price,
 				Quant:      exec.Quant,
 			}
-			acc.ExecutionReports = append(acc.ExecutionReports, report)
-			order, ok := acc.PendingOrders[orderID]
+			acc.AddExecutionReport(report)
+			order, ok := acc.PendingOrder(orderID)
 			if !ok {
 				panic(fmt.Errorf("impossible: can not find matched order %d, market: %v, executed order: %v", exec.ID, txn.Market, exec))
 			}
 
 			order.Executed += exec.Quant
 			if order.Executed == order.Quant {
-				delete(acc.PendingOrders, orderID)
+				acc.RemovePendingOrder(orderID)
 			}
 			t.filledOrders = append(t.filledOrders, order)
 
 			var soldQuant, boughtQuant, refund uint64
-			var sellSideBalance, buySideBalance *Balance
+			var sellSideBalance, buySideBalance Balance
 			if exec.SellSide {
 				// sold, deduct base pending balance,
 				// add quote available balance
-				sellSideBalance = acc.Balances[txn.Market.Base]
-				buySideBalance = acc.Balances[txn.Market.Quote]
+				sellSideBalance, _ = acc.Balance(txn.Market.Base)
+				buySideBalance, _ = acc.Balance(txn.Market.Quote)
 				soldQuant = exec.Quant
 				boughtQuant = calcBaseSellQuant(exec.Quant, quoteInfo.Decimals, exec.Price, OrderPriceDecimals, baseInfo.Decimals)
 
@@ -298,16 +296,14 @@ func (t *Transition) placeOrder(owner *Account, txn *PlaceOrderTxn, round uint64
 				}
 
 				sellSideBalance.Pending -= soldQuant
-
-				if buySideBalance == nil {
-					buySideBalance = &Balance{}
-				}
 				buySideBalance.Available += boughtQuant
+				acc.UpdateBalance(txn.Market.Base, sellSideBalance)
+				acc.UpdateBalance(txn.Market.Quote, buySideBalance)
 			} else {
 				// bought, deduct quote pending
 				// balance, add base available balance
-				sellSideBalance = acc.Balances[txn.Market.Quote]
-				buySideBalance = acc.Balances[txn.Market.Base]
+				sellSideBalance, _ = acc.Balance(txn.Market.Quote)
+				buySideBalance, _ = acc.Balance(txn.Market.Base)
 				boughtQuant = exec.Quant
 				soldQuant = calcBaseSellQuant(exec.Quant, quoteInfo.Decimals, exec.Price, OrderPriceDecimals, baseInfo.Decimals)
 				if exec.Taker {
@@ -320,11 +316,9 @@ func (t *Transition) placeOrder(owner *Account, txn *PlaceOrderTxn, round uint64
 
 				sellSideBalance.Pending -= (soldQuant + refund)
 				sellSideBalance.Available += refund
-
-				if buySideBalance == nil {
-					buySideBalance = &Balance{}
-				}
 				buySideBalance.Available += boughtQuant
+				acc.UpdateBalance(txn.Market.Quote, sellSideBalance)
+				acc.UpdateBalance(txn.Market.Base, buySideBalance)
 			}
 			t.state.UpdateAccount(acc)
 		}
@@ -352,7 +346,7 @@ func (t *Transition) issueToken(owner *Account, txn *IssueTokenTxn) bool {
 	token := Token{ID: id, TokenInfo: txn.Info}
 	t.tokenCreations = append(t.tokenCreations, token)
 	t.state.UpdateToken(token)
-	owner.Balances[id] = &Balance{Available: txn.Info.TotalUnits}
+	owner.UpdateBalance(id, Balance{Available: txn.Info.TotalUnits})
 	t.state.UpdateAccount(owner)
 	return true
 }
@@ -364,7 +358,7 @@ func (t *Transition) sendToken(owner *Account, txn *SendTokenTxn) bool {
 		return false
 	}
 
-	b, ok := owner.Balances[txn.TokenID]
+	b, ok := owner.Balance(txn.TokenID)
 	if !ok {
 		log.Warn("trying to send token that the owner does not have", "tokenID", txn.TokenID)
 		return false
@@ -381,11 +375,11 @@ func (t *Transition) sendToken(owner *Account, txn *SendTokenTxn) bool {
 		toAcc = NewAccount(txn.To)
 	}
 
-	owner.Balances[txn.TokenID].Available -= txn.Quant
-	if toAcc.Balances[txn.TokenID] == nil {
-		toAcc.Balances[txn.TokenID] = &Balance{}
-	}
-	toAcc.Balances[txn.TokenID].Available += txn.Quant
+	b.Available -= txn.Quant
+	owner.UpdateBalance(txn.TokenID, b)
+	toAccBalance, _ := toAcc.Balance(txn.TokenID)
+	toAccBalance.Available += txn.Quant
+	toAcc.UpdateBalance(txn.TokenID, toAccBalance)
 	t.state.UpdateAccount(toAcc)
 	t.state.UpdateAccount(owner)
 	return true
@@ -487,7 +481,7 @@ func (t *Transition) releaseTokens() {
 			addrToAcc[token.Addr] = acc
 		}
 
-		b := acc.Balances[token.TokenID]
+		b, _ := acc.Balance(token.TokenID)
 		removeIdx := -1
 		for i, f := range b.Frozen {
 			if f.Quant == token.Quant {
@@ -498,6 +492,7 @@ func (t *Transition) releaseTokens() {
 		f := b.Frozen[removeIdx]
 		b.Frozen = append(b.Frozen[:removeIdx], b.Frozen[removeIdx+1:]...)
 		b.Available += f.Quant
+		acc.UpdateBalance(token.TokenID, b)
 	}
 
 	for _, acc := range addrToAcc {
@@ -519,13 +514,12 @@ func (t *Transition) expireOrders() {
 			addrToAcc[o.Owner] = acc
 		}
 
-		order, ok := acc.PendingOrders[o.ID]
-
+		order, ok := acc.PendingOrder(o.ID)
 		if !ok {
 			panic("can not find expiring order")
 		}
 
-		delete(acc.PendingOrders, o.ID)
+		acc.RemovePendingOrder(o.ID)
 		t.refundAfterCancel(acc, order, o.ID.Market)
 	}
 
@@ -544,7 +538,7 @@ func (t *Transition) freezeToken(acc *Account, txn *FreezeTokenTxn) bool {
 		return false
 	}
 
-	b, ok := acc.Balances[txn.TokenID]
+	b, ok := acc.Balance(txn.TokenID)
 	if !ok {
 		log.Warn("trying to freeze token that the owner does not have", "tokenID", txn.TokenID)
 		return false
@@ -561,8 +555,9 @@ func (t *Transition) freezeToken(acc *Account, txn *FreezeTokenTxn) bool {
 	}
 	b.Available -= txn.Quant
 	b.Frozen = append(b.Frozen, frozen)
+	acc.UpdateBalance(txn.TokenID, b)
 	t.state.UpdateAccount(acc)
-	t.state.FreezeToken(txn.AvailableRound, freezeToken{Addr: acc.PK.Addr(), TokenID: txn.TokenID, Quant: txn.Quant})
+	t.state.FreezeToken(txn.AvailableRound, freezeToken{Addr: acc.PK().Addr(), TokenID: txn.TokenID, Quant: txn.Quant})
 	return true
 }
 

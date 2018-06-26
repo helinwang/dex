@@ -102,9 +102,9 @@ func (r *RPCServer) walletState(addr consensus.Addr, w *WalletState) error {
 		return fmt.Errorf("account %v does not exist", addr)
 	}
 
-	keys := make([]TokenID, len(acc.Balances))
+	keys := make([]TokenID, len(acc.balances))
 	i := 0
-	for k := range acc.Balances {
+	for k := range acc.balances {
 		keys[i] = k
 		i++
 	}
@@ -112,17 +112,13 @@ func (r *RPCServer) walletState(addr consensus.Addr, w *WalletState) error {
 	bs := make([]UserBalance, len(keys))
 	for i := range bs {
 		bs[i].Token = keys[i]
-		bs[i].Balance = *acc.Balances[keys[i]]
+		b, _ := acc.Balance(keys[i])
+		bs[i].Balance = b
 	}
 
 	// TODO: sort pending orders by key
-	w.PendingOrders = make([]*PendingOrder, len(acc.PendingOrders))
-	i = 0
-	for _, v := range acc.PendingOrders {
-		w.PendingOrders[i] = v
-		i++
-	}
-	w.ExecutionReports = acc.ExecutionReports
+	w.PendingOrders = acc.PendingOrders()
+	w.ExecutionReports = acc.ExecutionReports()
 	w.Balances = bs
 	return nil
 }
@@ -190,8 +186,8 @@ func (r *RPCServer) nonce(addr consensus.Addr, slot *NonceSlot) error {
 		return fmt.Errorf("account %v does not exist", addr)
 	}
 
-	if len(acc.NonceVec) > 0 {
-		slot.Val = acc.NonceVec[0]
+	if len(acc.NonceVec()) > 0 {
+		slot.Val = acc.NonceVec()[0]
 	}
 
 	return nil
