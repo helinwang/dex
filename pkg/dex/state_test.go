@@ -57,12 +57,10 @@ func TestStateSerialize(t *testing.T) {
 	assert.Equal(t, token0.TotalUnits, b0.Available)
 	b1, _ := acc.Balance(token1.ID)
 	assert.Equal(t, token1.TotalUnits, b1.Available)
-
 	b, err := s.Serialize()
 	if err != nil {
 		panic(err)
 	}
-
 	s0 := NewState(ethdb.NewMemDatabase())
 	err = s0.Deserialize(b)
 	if err != nil {

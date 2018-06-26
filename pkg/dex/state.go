@@ -186,9 +186,17 @@ func encodePath(str []byte) []byte {
 
 func (s *State) CommitCache() {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-
+	accounts := make([]*Account, len(s.accountCache))
+	i := 0
 	for _, acc := range s.accountCache {
+		accounts[i] = acc
+		i++
+	}
+	s.mu.Unlock()
+
+	for _, acc := range accounts {
+		// commit cache calls the methods of s, need to be
+		// outside of s.mu
 		acc.CommitCache(s)
 	}
 }
@@ -381,7 +389,7 @@ func (s *State) Account(addr consensus.Addr) *Account {
 		return cache
 	}
 
-	pk := s.PK(addr)
+	pk := s.pk(addr)
 	account := &Account{
 		addr:  pk.Addr(),
 		pk:    pk,

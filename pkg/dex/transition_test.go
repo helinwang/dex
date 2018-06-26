@@ -3,7 +3,6 @@ package dex
 import (
 	"testing"
 
-	"github.com/dfinity/go-dfinity-crypto/bls"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/helinwang/dex/pkg/consensus"
 	"github.com/stretchr/testify/assert"
@@ -27,10 +26,8 @@ func TestSendToken(t *testing.T) {
 	newAcc := s.Account(addr)
 	assert.Equal(t, 100, int(newAcc.balances[0].Available))
 
-	var skRecv bls.SecretKey
-	skRecv.SetByCSPRNG()
-
-	to := consensus.PK(skRecv.GetPublicKey().Serialize())
+	skRecv := consensus.RandSK()
+	to := skRecv.MustPK()
 	txn := MakeSendTokenTxn(sk, to, 0, 20, 0, 0)
 	trans := s.Transition(1)
 	valid, success := trans.Record(parseTxn(txn))
@@ -94,10 +91,8 @@ func TestTransitionNotCommitToDB(t *testing.T) {
 	trans := s.Transition(1)
 
 	for i := 0; i < 99; i++ {
-		var skRecv bls.SecretKey
-		skRecv.SetByCSPRNG()
-
-		to := consensus.PK(skRecv.GetPublicKey().Serialize())
+		skRecv := consensus.RandSK()
+		to := skRecv.MustPK()
 		txn := MakeSendTokenTxn(sk, to, 0, 1, uint8(i), 0)
 		valid, success := trans.Record(parseTxn(txn))
 		assert.True(t, valid)
