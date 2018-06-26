@@ -84,7 +84,7 @@ func CreateGenesisState(recipients []consensus.PK, additionalTokens []TokenInfo)
 	}
 
 	for _, pk := range recipients {
-		account := NewAccount(pk)
+		account := NewAccount(pk, s)
 		for _, t := range tokens {
 			avg := t.TotalUnits / uint64(len(recipients))
 			account.UpdateBalance(t.ID, Balance{Available: avg})
@@ -171,6 +171,63 @@ func (s *State) CommitCache() {
 
 		s.updateAccount(s.accountCache[addr])
 	}
+}
+
+func (s *State) UpdatePK(pk consensus.PK) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+}
+
+func (s *State) UpdateNonceVec(addr consensus.Addr, vec []uint64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+}
+
+func (s *State) UpdateBalances(addr consensus.Addr, balances []Balance, ids []TokenID) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+}
+
+func (s *State) UpdatePendingOrders(addr consensus.Addr, ps []PendingOrder) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+}
+
+func (s *State) UpdateExecutionReports(addr consensus.Addr, es []ExecutionReport) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+}
+
+func (s *State) NonceVec(addr consensus.Addr) []uint64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return nil
+}
+
+func (s *State) ExecutionReports(addr consensus.Addr) []ExecutionReport {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return nil
+}
+
+func (s *State) PendingOrders(addr consensus.Addr) []PendingOrder {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return nil
+}
+
+func (s *State) Balances(addr consensus.Addr) ([]Balance, []TokenID) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return nil, nil
 }
 
 func (s *State) UpdateToken(token Token) {

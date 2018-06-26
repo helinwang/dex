@@ -85,7 +85,7 @@ type UserBalance struct {
 
 type WalletState struct {
 	Balances         []UserBalance
-	PendingOrders    []*PendingOrder
+	PendingOrders    []PendingOrder
 	ExecutionReports []ExecutionReport
 }
 

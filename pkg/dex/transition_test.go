@@ -12,7 +12,7 @@ import (
 func createAccount(s *State, quant uint64) (consensus.SK, consensus.Addr) {
 	var sk bls.SecretKey
 	sk.SetByCSPRNG()
-	acc := NewAccount(sk.GetPublicKey().Serialize())
+	acc := NewAccount(sk.GetPublicKey().Serialize(), s)
 	addr := acc.PK().Addr()
 	acc.balances = make(map[TokenID]Balance)
 	acc.balances[0] = Balance{Available: quant}

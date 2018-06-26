@@ -17,11 +17,12 @@ func TestAccountEncodeDecode(t *testing.T) {
 			0: Balance{Available: 100, Pending: 20, Frozen: []Frozen{}},
 			5: Balance{Available: 1<<64 - 1, Pending: 1, Frozen: []Frozen{}},
 		},
-		pendingOrders: map[OrderID]*PendingOrder{
-			orderID: &PendingOrder{
+		pendingOrders: map[OrderID]PendingOrder{
+			orderID: PendingOrder{
 				ID:       orderID,
 				Executed: 4,
-				Order:    Order{Price: 5}},
+				Order:    Order{Price: 5},
+			},
 		},
 		executionReports: []ExecutionReport{{Round: 1}},
 	}

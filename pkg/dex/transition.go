@@ -17,7 +17,7 @@ type Transition struct {
 	tokenCreations  []Token
 	txns            []*consensus.Txn
 	expirations     map[uint64][]orderExpiration
-	filledOrders    []*PendingOrder
+	filledOrders    []PendingOrder
 	state           *State
 	orderBooks      map[MarketSymbol]*orderBook
 	dirtyOrderBooks map[MarketSymbol]bool
@@ -32,7 +32,7 @@ func newTransition(s *State, round uint64) *Transition {
 		orderBooks:      make(map[MarketSymbol]*orderBook),
 		dirtyOrderBooks: make(map[MarketSymbol]bool),
 		tokenCache:      newTokenCache(s),
-		filledOrders:    make([]*PendingOrder, 0, 1000), // optimization: preallocate buffer
+		filledOrders:    make([]PendingOrder, 0, 1000), // optimization: preallocate buffer
 	}
 }
 
@@ -161,7 +161,7 @@ func (t *Transition) cancelOrder(owner *Account, txn *CancelOrderTxn) bool {
 	return true
 }
 
-func (t *Transition) refundAfterCancel(owner *Account, cancel *PendingOrder, market MarketSymbol) {
+func (t *Transition) refundAfterCancel(owner *Account, cancel PendingOrder, market MarketSymbol) {
 	var pendingQuant uint64
 	var token TokenID
 	if cancel.SellSide {
@@ -248,7 +248,7 @@ func (t *Transition) placeOrder(owner *Account, txn *PlaceOrderTxn, round uint64
 	orderID, executions := book.Limit(order)
 	t.dirtyOrderBooks[txn.Market] = true
 	id := OrderID{ID: orderID, Market: txn.Market}
-	pendingOrder := &PendingOrder{
+	pendingOrder := PendingOrder{
 		ID:    id,
 		Order: order,
 	}
@@ -323,6 +323,8 @@ func (t *Transition) placeOrder(owner *Account, txn *PlaceOrderTxn, round uint64
 			t.state.UpdateAccount(acc)
 		}
 	} else {
+		// TODO: remove all update account call, since update
+		// account can be automatically tracked.
 		t.state.UpdateAccount(owner)
 	}
 	return true
@@ -372,7 +374,7 @@ func (t *Transition) sendToken(owner *Account, txn *SendTokenTxn) bool {
 	toAddr := txn.To.Addr()
 	toAcc := t.state.Account(toAddr)
 	if toAcc == nil {
-		toAcc = NewAccount(txn.To)
+		toAcc = NewAccount(txn.To, t.state)
 	}
 
 	b.Available -= txn.Quant
