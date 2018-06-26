@@ -366,7 +366,7 @@ func (t *Transition) sendToken(owner *Account, txn *SendTokenTxn) bool {
 	toAddr := txn.To.Addr()
 	toAcc := t.state.Account(toAddr)
 	if toAcc == nil {
-		toAcc = NewAccount(txn.To, t.state)
+		toAcc = t.state.NewAccount(txn.To)
 	}
 
 	b.Available -= txn.Quant

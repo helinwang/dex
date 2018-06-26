@@ -83,13 +83,14 @@ func CreateGenesisState(recipients []consensus.PK, additionalTokens []TokenInfo)
 	}
 
 	for _, pk := range recipients {
-		account := NewAccount(pk, s)
+		account := s.NewAccount(pk)
 		for _, t := range tokens {
 			avg := t.TotalUnits / uint64(len(recipients))
 			account.UpdateBalance(t.ID, Balance{Available: avg})
 		}
 	}
 
+	s.CommitCache()
 	return s
 }
 
@@ -190,6 +191,20 @@ func (s *State) CommitCache() {
 	for _, acc := range s.accountCache {
 		acc.CommitCache(s)
 	}
+}
+
+func (s *State) NewAccount(pk consensus.PK) *Account {
+	account := &Account{
+		addr:       pk.Addr(),
+		pk:         pk,
+		newAccount: true,
+		state:      s,
+	}
+
+	s.mu.Lock()
+	s.accountCache[account.addr] = account
+	s.mu.Unlock()
+	return account
 }
 
 func (s *State) pk(addr consensus.Addr) consensus.PK {
@@ -367,7 +382,12 @@ func (s *State) Account(addr consensus.Addr) *Account {
 	}
 
 	pk := s.PK(addr)
-	account := BindAccount(pk, s)
+	account := &Account{
+		addr:  pk.Addr(),
+		pk:    pk,
+		state: s,
+	}
+
 	s.accountCache[addr] = account
 	return account
 }

@@ -10,14 +10,13 @@ import (
 )
 
 func createAccount(s *State, quant uint64) (consensus.SK, consensus.Addr) {
-	var sk bls.SecretKey
-	sk.SetByCSPRNG()
-	acc := NewAccount(sk.GetPublicKey().Serialize(), s)
+	sk := consensus.RandSK()
+	acc := s.NewAccount(sk.MustPK())
 	addr := acc.PK().Addr()
 	acc.balances = make(map[TokenID]Balance)
 	acc.balances[0] = Balance{Available: quant}
 	s.CommitCache()
-	return consensus.SK(sk.GetLittleEndian()), addr
+	return sk, addr
 }
 
 func TestSendToken(t *testing.T) {

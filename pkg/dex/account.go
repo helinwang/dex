@@ -84,25 +84,6 @@ type Account struct {
 	executionReportsDirty bool
 }
 
-// NewAccount creates a new account which is not in the state trie.
-func NewAccount(pk consensus.PK, state *State) *Account {
-	return &Account{
-		addr:       pk.Addr(),
-		pk:         pk,
-		state:      state,
-		newAccount: true,
-	}
-}
-
-// BindAccount binds the account to its data store in the state trie.
-func BindAccount(pk consensus.PK, state *State) *Account {
-	return &Account{
-		addr:  pk.Addr(),
-		pk:    pk,
-		state: state,
-	}
-}
-
 func (a *Account) ExecutionReports() []ExecutionReport {
 	if a.executionReports == nil {
 		a.loadExecutionReports()
