@@ -73,8 +73,16 @@ type Account struct {
 	// a vector of nonce that enables concurrent transactions.
 	NonceVec         []uint64
 	Balances         map[TokenID]*Balance
-	PendingOrders    []PendingOrder
+	PendingOrders    map[OrderID]*PendingOrder
 	ExecutionReports []ExecutionReport
+}
+
+func NewAccount(pk consensus.PK) *Account {
+	return &Account{
+		PK:            pk,
+		Balances:      make(map[TokenID]*Balance),
+		PendingOrders: make(map[OrderID]*PendingOrder),
+	}
 }
 
 func (a *Account) EncodeRLP(w io.Writer) error {
@@ -83,7 +91,43 @@ func (a *Account) EncodeRLP(w io.Writer) error {
 		return err
 	}
 
-	err = rlp.Encode(w, a.PendingOrders)
+	pks := make([]OrderID, len(a.PendingOrders))
+	pvs := make([]*PendingOrder, len(a.PendingOrders))
+	i := 0
+	for k := range a.PendingOrders {
+		pks[i] = k
+		i++
+	}
+
+	// sort keys, the encoded bytes is deterministic given that
+	// the keys are sorted and unique.
+	sort.Slice(pks, func(i, j int) bool {
+		a := pks[i]
+		b := pks[j]
+		if a.Market == b.Market {
+			return a.ID < b.ID
+		}
+
+		if a.Market.Base < b.Market.Base {
+			return true
+		}
+
+		if a.Market.Base > b.Market.Base {
+			return false
+		}
+
+		return a.Market.Quote < b.Market.Quote
+	})
+	for i, k := range pks {
+		pvs[i] = a.PendingOrders[k]
+	}
+
+	err = rlp.Encode(w, pks)
+	if err != nil {
+		return err
+	}
+
+	err = rlp.Encode(w, pvs)
 	if err != nil {
 		return err
 	}
@@ -100,7 +144,7 @@ func (a *Account) EncodeRLP(w io.Writer) error {
 
 	keys := make([]TokenID, len(a.Balances))
 	values := make([]*Balance, len(a.Balances))
-	i := 0
+	i = 0
 	for k := range a.Balances {
 		keys[i] = k
 		i++
@@ -141,12 +185,27 @@ func (a *Account) DecodeRLP(s *rlp.Stream) error {
 	if err != nil {
 		return err
 	}
-	var pendingOrders []PendingOrder
-	err = rlp.DecodeBytes(v, &pendingOrders)
+
+	var pks []OrderID
+	err = rlp.DecodeBytes(v, &pks)
 	if err != nil {
 		return err
 	}
-	b.PendingOrders = pendingOrders
+
+	v, err = s.Raw()
+	if err != nil {
+		return err
+	}
+
+	var pvs []*PendingOrder
+	err = rlp.DecodeBytes(v, &pvs)
+	if err != nil {
+		return err
+	}
+	b.PendingOrders = make(map[OrderID]*PendingOrder)
+	for i := range pks {
+		b.PendingOrders[pks[i]] = pvs[i]
+	}
 
 	v, err = s.Raw()
 	if err != nil {

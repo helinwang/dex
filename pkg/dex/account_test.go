@@ -9,6 +9,7 @@ import (
 )
 
 func TestAccountEncodeDecode(t *testing.T) {
+	orderID := OrderID{ID: 1, Market: MarketSymbol{Base: 2, Quote: 3}}
 	a := Account{
 		PK:       consensus.PK{1, 2, 3},
 		NonceVec: []uint64{4, 5},
@@ -16,13 +17,13 @@ func TestAccountEncodeDecode(t *testing.T) {
 			0: &Balance{Available: 100, Pending: 20, Frozen: []Frozen{}},
 			5: &Balance{Available: 1<<64 - 1, Pending: 1, Frozen: []Frozen{}},
 		},
-		PendingOrders: []PendingOrder{
-			{
-				ID:       OrderID{ID: 1, Market: MarketSymbol{Base: 2, Quote: 3}},
+		PendingOrders: map[OrderID]*PendingOrder{
+			orderID: &PendingOrder{
+				ID:       orderID,
 				Executed: 4,
 				Order:    Order{Price: 5}},
 		},
-		ExecutionReports: []ExecutionReport{},
+		ExecutionReports: []ExecutionReport{{Round: 1}},
 	}
 
 	b, err := rlp.EncodeToBytes(&a)

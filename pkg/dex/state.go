@@ -84,11 +84,7 @@ func CreateGenesisState(recipients []consensus.PK, additionalTokens []TokenInfo)
 	}
 
 	for _, pk := range recipients {
-		account := &Account{
-			PK:       pk,
-			Balances: make(map[TokenID]*Balance),
-		}
-
+		account := NewAccount(pk)
 		for _, t := range tokens {
 			avg := t.TotalUnits / uint64(len(recipients))
 			account.Balances[t.ID] = &Balance{Available: avg}

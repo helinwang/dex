@@ -10,14 +10,13 @@ import (
 )
 
 func createAccount(s *State, quant uint64) (consensus.SK, consensus.Addr) {
-	var acc Account
 	var sk bls.SecretKey
 	sk.SetByCSPRNG()
-	acc.PK = sk.GetPublicKey().Serialize()
+	acc := NewAccount(sk.GetPublicKey().Serialize())
 	addr := consensus.SHA3(acc.PK).Addr()
 	acc.Balances = make(map[TokenID]*Balance)
 	acc.Balances[0] = &Balance{Available: quant}
-	s.UpdateAccount(&acc)
+	s.UpdateAccount(acc)
 	s.CommitCache()
 	return consensus.SK(sk.GetLittleEndian()), addr
 }

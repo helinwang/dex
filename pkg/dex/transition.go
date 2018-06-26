@@ -18,7 +18,7 @@ type Transition struct {
 	tokenCreations  []Token
 	txns            [][]byte
 	expirations     map[uint64][]orderExpiration
-	filledOrders    []PendingOrder
+	filledOrders    []*PendingOrder
 	state           *State
 	orderBooks      map[MarketSymbol]*orderBook
 	dirtyOrderBooks map[MarketSymbol]bool
@@ -33,6 +33,7 @@ func newTransition(s *State, round uint64) *Transition {
 		orderBooks:      make(map[MarketSymbol]*orderBook),
 		dirtyOrderBooks: make(map[MarketSymbol]bool),
 		tokenCache:      newTokenCache(s),
+		filledOrders:    make([]*PendingOrder, 0, 1000), // optimization: preallocate buffer
 	}
 }
 
@@ -66,7 +67,7 @@ func (t *Transition) Record(b []byte) (valid, success bool) {
 			return
 		}
 		if !t.placeOrder(acc, txn, t.round) {
-			log.Warn("t.placeOrder failed")
+			log.Warn("placeOrder failed")
 			return
 		}
 	case CancelOrder:
@@ -77,7 +78,7 @@ func (t *Transition) Record(b []byte) (valid, success bool) {
 			return
 		}
 		if !t.cancelOrder(acc, txn) {
-			log.Warn("t.cancelOrder failed")
+			log.Warn("cancelOrder failed")
 			return
 		}
 	case IssueToken:
@@ -156,15 +157,8 @@ func calcBaseSellQuant(baseQuantUnit uint64, quoteDecimals uint8, priceQuantUnit
 }
 
 func (t *Transition) cancelOrder(owner *Account, txn CancelOrderTxn) bool {
-	idx := -1
-	for i, o := range owner.PendingOrders {
-		if o.ID == txn.ID {
-			idx = i
-			break
-		}
-	}
-
-	if idx < 0 {
+	cancel, ok := owner.PendingOrders[txn.ID]
+	if !ok {
 		log.Warn("can not find the order to cancel", "id", txn.ID)
 		return false
 	}
@@ -172,15 +166,14 @@ func (t *Transition) cancelOrder(owner *Account, txn CancelOrderTxn) bool {
 	book := t.getOrderBook(txn.ID.Market)
 	book.Cancel(txn.ID.ID)
 	t.dirtyOrderBooks[txn.ID.Market] = true
-	cancel := owner.PendingOrders[idx]
-	owner.PendingOrders = append(owner.PendingOrders[:idx], owner.PendingOrders[idx+1:]...)
+	delete(owner.PendingOrders, txn.ID)
 
 	t.refundAfterCancel(owner, cancel, txn.ID.Market)
 	t.state.UpdateAccount(owner)
 	return true
 }
 
-func (t *Transition) refundAfterCancel(owner *Account, cancel PendingOrder, market MarketSymbol) {
+func (t *Transition) refundAfterCancel(owner *Account, cancel *PendingOrder, market MarketSymbol) {
 	var pendingQuant uint64
 	var token TokenID
 	if cancel.SellSide {
@@ -214,13 +207,13 @@ func (t *Transition) placeOrder(owner *Account, txn PlaceOrderTxn, round uint64)
 
 	baseInfo := t.tokenCache.Info(txn.Market.Base)
 	if baseInfo == nil {
-		log.Error("trying to place order on nonexistent token", "token", txn.Market.Base)
+		log.Warn("trying to place order on nonexistent token", "token", txn.Market.Base)
 		return false
 	}
 
 	quoteInfo := t.tokenCache.Info(txn.Market.Quote)
 	if quoteInfo == nil {
-		log.Error("trying to place order on nonexistent token", "token", txn.Market.Quote)
+		log.Warn("trying to place order on nonexistent token", "token", txn.Market.Quote)
 		return false
 	}
 
@@ -263,66 +256,39 @@ func (t *Transition) placeOrder(owner *Account, txn PlaceOrderTxn, round uint64)
 	book := t.getOrderBook(txn.Market)
 	orderID, executions := book.Limit(order)
 	t.dirtyOrderBooks[txn.Market] = true
-	pendingOrder := PendingOrder{
-		ID:    OrderID{ID: orderID, Market: txn.Market},
+	id := OrderID{ID: orderID, Market: txn.Market}
+	pendingOrder := &PendingOrder{
+		ID:    id,
 		Order: order,
 	}
-	owner.PendingOrders = append(owner.PendingOrders, pendingOrder)
-	id := OrderID{ID: orderID, Market: txn.Market}
-
+	owner.PendingOrders[pendingOrder.ID] = pendingOrder
 	if order.ExpireRound > 0 {
 		t.expirations[order.ExpireRound] = append(t.expirations[order.ExpireRound], orderExpiration{ID: id, Owner: owner.PK.Addr()})
 	}
 
 	if len(executions) > 0 {
-		addrToAcc := make(map[consensus.Addr]*Account)
-		addrToAcc[owner.PK.Addr()] = owner
-
 		for _, exec := range executions {
-			acc := addrToAcc[exec.Owner]
-			if acc == nil {
-				acc = t.state.Account(exec.Owner)
-				if acc == nil {
-					panic(fmt.Errorf("owner %s not found on executed order, should never happen", exec.Owner.Hex()))
-				}
-				addrToAcc[exec.Owner] = acc
-			}
-
+			acc := t.state.Account(exec.Owner)
 			// TODO: report fee
+			orderID := OrderID{ID: exec.ID, Market: txn.Market}
 			report := ExecutionReport{
 				Round:      round,
-				ID:         OrderID{ID: exec.ID, Market: txn.Market},
+				ID:         orderID,
 				SellSide:   exec.SellSide,
 				TradePrice: exec.Price,
 				Quant:      exec.Quant,
 			}
 			acc.ExecutionReports = append(acc.ExecutionReports, report)
-
-			orderFound := false
-			var orderPrice uint64
-			removeIdx := -1
-			for i := range acc.PendingOrders {
-				if acc.PendingOrders[i].ID.Market == txn.Market && acc.PendingOrders[i].ID.ID == exec.ID {
-					acc.PendingOrders[i].Executed += exec.Quant
-					if acc.PendingOrders[i].Executed == acc.PendingOrders[i].Quant {
-						removeIdx = i
-					}
-
-					orderPrice = acc.PendingOrders[i].Price
-					orderFound = true
-					break
-				}
-			}
-
-			if !orderFound {
+			order, ok := acc.PendingOrders[orderID]
+			if !ok {
 				panic(fmt.Errorf("impossible: can not find matched order %d, market: %v, executed order: %v", exec.ID, txn.Market, exec))
 			}
 
-			if removeIdx >= 0 {
-				pendingOrder := acc.PendingOrders[removeIdx]
-				acc.PendingOrders = append(acc.PendingOrders[:removeIdx], acc.PendingOrders[removeIdx+1:]...)
-				t.filledOrders = append(t.filledOrders, pendingOrder)
+			order.Executed += exec.Quant
+			if order.Executed == order.Quant {
+				delete(acc.PendingOrders, orderID)
 			}
+			t.filledOrders = append(t.filledOrders, order)
 
 			var soldQuant, boughtQuant, refund uint64
 			var sellSideBalance, buySideBalance *Balance
@@ -352,7 +318,7 @@ func (t *Transition) placeOrder(owner *Account, txn PlaceOrderTxn, round uint64)
 				boughtQuant = exec.Quant
 				soldQuant = calcBaseSellQuant(exec.Quant, quoteInfo.Decimals, exec.Price, OrderPriceDecimals, baseInfo.Decimals)
 				if exec.Taker {
-					refund = calcBaseSellQuant(exec.Quant, quoteInfo.Decimals, orderPrice-exec.Price, OrderPriceDecimals, baseInfo.Decimals)
+					refund = calcBaseSellQuant(exec.Quant, quoteInfo.Decimals, order.Price-exec.Price, OrderPriceDecimals, baseInfo.Decimals)
 				}
 
 				if sellSideBalance.Pending < soldQuant+refund {
@@ -367,9 +333,6 @@ func (t *Transition) placeOrder(owner *Account, txn PlaceOrderTxn, round uint64)
 				}
 				buySideBalance.Available += boughtQuant
 			}
-		}
-
-		for _, acc := range addrToAcc {
 			t.state.UpdateAccount(acc)
 		}
 	} else {
@@ -396,10 +359,6 @@ func (t *Transition) issueToken(owner *Account, txn IssueTokenTxn) bool {
 	token := Token{ID: id, TokenInfo: txn.Info}
 	t.tokenCreations = append(t.tokenCreations, token)
 	t.state.UpdateToken(token)
-
-	if owner.Balances == nil {
-		owner.Balances = make(map[TokenID]*Balance)
-	}
 	owner.Balances[id] = &Balance{Available: txn.Info.TotalUnits}
 	t.state.UpdateAccount(owner)
 	return true
@@ -426,7 +385,7 @@ func (t *Transition) sendToken(owner *Account, txn SendTokenTxn) bool {
 	toAddr := txn.To.Addr()
 	toAcc := t.state.Account(toAddr)
 	if toAcc == nil {
-		toAcc = &Account{PK: txn.To, Balances: make(map[TokenID]*Balance)}
+		toAcc = NewAccount(txn.To)
 	}
 
 	owner.Balances[txn.TokenID].Available -= txn.Quant
@@ -553,21 +512,14 @@ func (t *Transition) expireOrders() {
 			addrToAcc[o.Owner] = acc
 		}
 
-		idx := -1
-		for i := range acc.PendingOrders {
-			if acc.PendingOrders[i].ID == o.ID {
-				idx = i
-				break
-			}
-		}
+		order, ok := acc.PendingOrders[o.ID]
 
-		if idx < 0 {
+		if !ok {
 			panic("can not find expiring order")
 		}
 
-		cancel := acc.PendingOrders[idx]
-		acc.PendingOrders = append(acc.PendingOrders[:idx], acc.PendingOrders[idx+1:]...)
-		t.refundAfterCancel(acc, cancel, o.ID.Market)
+		delete(acc.PendingOrders, o.ID)
+		t.refundAfterCancel(acc, order, o.ID.Market)
 	}
 
 	for _, acc := range addrToAcc {

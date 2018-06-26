@@ -85,7 +85,7 @@ type UserBalance struct {
 
 type WalletState struct {
 	Balances         []UserBalance
-	PendingOrders    []PendingOrder
+	PendingOrders    []*PendingOrder
 	ExecutionReports []ExecutionReport
 }
 
@@ -115,7 +115,13 @@ func (r *RPCServer) walletState(addr consensus.Addr, w *WalletState) error {
 		bs[i].Balance = *acc.Balances[keys[i]]
 	}
 
-	w.PendingOrders = acc.PendingOrders
+	// TODO: sort pending orders by key
+	w.PendingOrders = make([]*PendingOrder, len(acc.PendingOrders))
+	i = 0
+	for _, v := range acc.PendingOrders {
+		w.PendingOrders[i] = v
+		i++
+	}
 	w.ExecutionReports = acc.ExecutionReports
 	w.Balances = bs
 	return nil
