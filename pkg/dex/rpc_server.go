@@ -136,11 +136,6 @@ func (r *RPCServer) tokens(_ int, t *TokenState) error {
 }
 
 func (r *RPCServer) sendTxn(t []byte, _ *int) error {
-	state := r.chain.ChainStatus()
-	if !state.InSync() {
-		return fmt.Errorf("for your safety, please wait until the chain is synchronized before making any transaction. Current round: %d, random beacon depth: %d", state.Round, state.RandBeaconDepth)
-	}
-
 	return r.sender.SendTxn(t)
 }
 
