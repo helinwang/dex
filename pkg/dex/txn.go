@@ -87,10 +87,6 @@ func (b *Txn) Encode(withSig bool) []byte {
 	return d
 }
 
-func (b *Txn) Hash() consensus.Hash {
-	return consensus.SHA3(b.Bytes())
-}
-
 func (b *Txn) Bytes() []byte {
 	return b.Encode(true)
 }

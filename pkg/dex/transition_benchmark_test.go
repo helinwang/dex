@@ -8,10 +8,10 @@ import (
 	"github.com/helinwang/dex/pkg/consensus"
 )
 
-func BenchmarkPlaceOrder(b *testing.B) {
+func genTransTxns() (consensus.Transition, []byte) {
 	const (
-		accountCount = 100
-		orderCount   = 1000
+		accountCount = 10000
+		orderCount   = 10000
 	)
 
 	accountSKs := make([]consensus.SK, accountCount)
@@ -45,7 +45,15 @@ func BenchmarkPlaceOrder(b *testing.B) {
 	if err != nil {
 		panic(err)
 	}
+
+	return trans, body
+}
+
+func BenchmarkPlaceOrder(b *testing.B) {
 	pool := NewTxnPool()
+	trans, body := genTransTxns()
+	// make sure everything is in pool
+	trans.RecordSerialized(body, pool)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
