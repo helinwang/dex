@@ -83,7 +83,7 @@ func TestTransitionNotCommitToDB(t *testing.T) {
 	}
 
 	dbLen := memDB.Len()
-	assert.Equal(t, 3, dbLen)
+	assert.Equal(t, 4, dbLen)
 
 	newAcc := s.Account(addr)
 	assert.Equal(t, 100, int(newAcc.balances[0].Available))
@@ -101,7 +101,7 @@ func TestTransitionNotCommitToDB(t *testing.T) {
 	newAcc = s.Account(addr)
 	assert.Equal(t, 100, int(newAcc.balances[0].Available))
 	// test len does not change, transition not committed to DB
-	assert.Equal(t, 3, memDB.Len())
+	assert.Equal(t, 4, memDB.Len())
 
 	s = trans.Commit().(*State)
 	newAcc = s.Account(addr)

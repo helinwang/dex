@@ -82,37 +82,30 @@ type Account struct {
 	pk         consensus.PK
 	newAccount bool
 	// a vector of nonce that enables concurrent transactions.
-	nonceVec              []uint64
-	nonceVecDirty         bool
-	balances              map[TokenID]Balance
-	balanceDirty          bool
-	executionReports      []ExecutionReport
-	executionReportsDirty bool
+	nonceVec       []uint64
+	nonceVecDirty  bool
+	balances       map[TokenID]Balance
+	balanceDirty   bool
+	reportIdx      *uint32
+	reportIdxDirty bool
 }
 
 func (a *Account) ExecutionReports() []ExecutionReport {
-	if a.executionReports == nil {
-		a.loadExecutionReports()
-	}
-	return a.executionReports
-}
-
-func (a *Account) loadExecutionReports() {
-	if !a.newAccount {
-		a.executionReports = a.state.ExecutionReports(a.addr)
-	}
-
-	if a.executionReports == nil {
-		a.executionReports = make([]ExecutionReport, 0)
-	}
+	return a.state.ExecutionReports(a.addr)
 }
 
 func (a *Account) AddExecutionReport(e ExecutionReport) {
-	if a.executionReports == nil {
-		a.loadExecutionReports()
+	if a.reportIdx == nil {
+		a.loadReportIdx()
 	}
-	a.executionReports = append(a.executionReports, e)
-	a.executionReportsDirty = true
+	a.state.AddExecutionReport(a.addr, e, *a.reportIdx)
+	*a.reportIdx++
+	a.reportIdxDirty = true
+}
+
+func (a *Account) loadReportIdx() {
+	idx := a.state.ReportIdx(a.addr)
+	a.reportIdx = &idx
 }
 
 func (a *Account) NonceVec() []uint64 {
@@ -229,8 +222,8 @@ func (a *Account) CommitCache(s *State) {
 		a.balanceDirty = false
 	}
 
-	if a.executionReportsDirty {
-		a.state.UpdateExecutionReports(a.addr, a.executionReports)
-		a.executionReportsDirty = false
+	if a.reportIdxDirty {
+		a.state.UpdateReportIdx(a.addr, *a.reportIdx)
+		a.reportIdxDirty = false
 	}
 }

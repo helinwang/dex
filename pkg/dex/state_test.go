@@ -132,7 +132,8 @@ func TestStateExecutionReports(t *testing.T) {
 	s := NewState(ethdb.NewMemDatabase())
 	addr := consensus.RandSK().MustPK().Addr()
 	assert.Equal(t, 0, len(s.ExecutionReports(addr)))
-	es := []ExecutionReport{{Round: 1}}
-	s.UpdateExecutionReports(addr, es)
+	es := []ExecutionReport{{Round: 1}, {Round: 2}}
+	s.AddExecutionReport(addr, es[0], 0)
+	s.AddExecutionReport(addr, es[1], 1)
 	assert.Equal(t, es, s.ExecutionReports(addr))
 }

@@ -119,17 +119,21 @@ func NewState(diskDB ethdb.Database) *State {
 }
 
 var (
-	accountPrefix          = []byte{0}
-	marketPrefix           = []byte{1}
-	tokenPrefix            = []byte{2}
-	orderExpirationPrefix  = []byte{3}
-	freezeAtRoundPrefix    = []byte{4}
-	pkPrefix               = 0
-	noncePrefix            = 1
-	balancePrefix          = 2
-	pendingOrdersPrefix    = 3
-	executionReportsPrefix = 4
+	marketPrefix           = []byte{0}
+	tokenPrefix            = []byte{1}
+	orderExpirationPrefix  = []byte{2}
+	freezeAtRoundPrefix    = []byte{3}
+	pkPrefix               = []byte{4}
+	noncePrefix            = []byte{5}
+	balancePrefix          = []byte{6}
+	pendingOrdersPrefix    = []byte{7}
+	executionReportsPrefix = []byte{8}
+	reportIdxPrefix        = []byte{9}
 )
+
+func addrReportIdxPath(addr consensus.Addr) []byte {
+	return append(reportIdxPrefix, addr[:]...)
+}
 
 func freezeAtRoundToPath(round uint64) []byte {
 	b := make([]byte, 64)
@@ -138,39 +142,39 @@ func freezeAtRoundToPath(round uint64) []byte {
 }
 
 func addrPKPath(addr consensus.Addr) []byte {
-	p := append(accountPrefix, addr[:]...)
-	return append(p, byte(pkPrefix))
+	return append(pkPrefix, addr[:]...)
 }
 
 func addrNoncePath(addr consensus.Addr) []byte {
-	p := append(accountPrefix, addr[:]...)
-	return append(p, byte(noncePrefix))
+	return append(noncePrefix, addr[:]...)
 }
 
 func addrBalancePath(addr consensus.Addr) []byte {
-	p := append(accountPrefix, addr[:]...)
-	return append(p, byte(balancePrefix))
+	return append(balancePrefix, addr[:]...)
 }
 
 func addrPendingOrderPath(addr consensus.Addr, orderID OrderID) []byte {
 	orderBytes := orderID.Bytes()
-	p := make([]byte, 0, len(accountPrefix)+len(addr)+1+len(orderBytes))
-	p = append(p, accountPrefix...)
-	p = append(p, addr[:]...)
-	p = append(p, byte(pendingOrdersPrefix))
+	p := append(pendingOrdersPrefix, addr[:]...)
 	p = append(p, orderBytes...)
 	return p
 }
 
 func addrPendingOrdersPath(addr consensus.Addr) []byte {
-	p := append(accountPrefix, addr[:]...)
-	p = append(p, byte(pendingOrdersPrefix))
+	return append(pendingOrdersPrefix, addr[:]...)
+}
+
+func addrExecutionReportPath(addr consensus.Addr, idx uint32) []byte {
+	buf := make([]byte, 32)
+	binary.LittleEndian.PutUint32(buf, idx)
+	p := append(executionReportsPrefix, addr[:]...)
+	p = append(p, buf...)
 	return p
 }
 
 func addrExecutionReportsPath(addr consensus.Addr) []byte {
-	p := append(accountPrefix, addr[:]...)
-	return append(p, byte(executionReportsPrefix))
+	p := append(executionReportsPrefix, addr[:]...)
+	return p
 }
 
 func expirationToPath(round uint64) []byte {
@@ -398,35 +402,58 @@ func (s *State) PendingOrders(addr consensus.Addr) []PendingOrder {
 	return r
 }
 
-func (s *State) UpdateExecutionReports(addr consensus.Addr, es []ExecutionReport) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	b, err := rlp.EncodeToBytes(es)
+func (s *State) AddExecutionReport(addr consensus.Addr, e ExecutionReport, idx uint32) {
+	b, err := rlp.EncodeToBytes(e)
 	if err != nil {
 		panic(err)
 	}
 
-	path := addrExecutionReportsPath(addr)
+	s.mu.Lock()
+	path := addrExecutionReportPath(addr, idx)
 	s.trie.Update(path, b)
+	s.mu.Unlock()
 }
 
 func (s *State) ExecutionReports(addr consensus.Addr) []ExecutionReport {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	b := s.trie.Get(addrExecutionReportsPath(addr))
-	if len(b) == 0 {
-		return nil
-	}
+	prefix := encodePath(addrExecutionReportsPath(addr))
+	iter := s.trie.NodeIterator(prefix)
 
-	var es []ExecutionReport
-	err := rlp.DecodeBytes(b, &es)
-	if err != nil {
-		panic(err)
-	}
+	var r []ExecutionReport
+	hasNext := true
+	foundPrefix := false
 
-	return es
+	for ; hasNext; hasNext = iter.Next(true) {
+		if err := iter.Error(); err != nil {
+			log.Error("error iterating state trie's tokens", "err", err)
+			break
+		}
+
+		if !iter.Leaf() {
+			continue
+		}
+
+		path := iter.Path()
+		if !bytes.HasPrefix(path, prefix) {
+			if foundPrefix {
+				break
+			}
+
+			continue
+		}
+		foundPrefix = true
+
+		var e ExecutionReport
+		err := rlp.DecodeBytes(iter.LeafBlob(), &e)
+		if err != nil {
+			panic(err)
+		}
+
+		r = append(r, e)
+	}
+	return r
 }
 
 func (s *State) UpdateToken(token Token) {
@@ -648,6 +675,35 @@ func (s *State) RemoveOrderExpirations(round uint64, ids map[OrderID]bool) {
 	}
 	path := expirationToPath(round)
 	s.trie.Update(path, b)
+}
+
+func (s *State) UpdateReportIdx(addr consensus.Addr, idx uint32) {
+	b, err := rlp.EncodeToBytes(idx)
+	if err != nil {
+		panic(err)
+	}
+
+	s.mu.Lock()
+	s.trie.Update(addrReportIdxPath(addr), b)
+	s.mu.Unlock()
+}
+
+func (s *State) ReportIdx(addr consensus.Addr) uint32 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	b := s.trie.Get(addrReportIdxPath(addr))
+	if len(b) == 0 {
+		return 0
+	}
+
+	var r uint32
+	err := rlp.DecodeBytes(b, &r)
+	if err != nil {
+		panic(err)
+	}
+
+	return r
 }
 
 type freezeToken struct {
