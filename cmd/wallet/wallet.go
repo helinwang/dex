@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"text/tabwriter"
+	"time"
 
 	"github.com/helinwang/dex/pkg/consensus"
 	"github.com/helinwang/dex/pkg/dex"
@@ -366,6 +367,55 @@ func printStatus(c *cli.Context) error {
 		return err
 	}
 
+	fmt.Println("Stats")
+	tw = tabwriter.NewWriter(os.Stdout, 0, 0, 1, ' ', tabwriter.AlignRight|tabwriter.Debug)
+	_, err = fmt.Fprintln(tw, "\tNumber of rounds\tAverage Block Time\tTransaction per second\t")
+	if err != nil {
+		return err
+	}
+
+	numRounds := []int{10, 30, 100}
+	avgBlockTime := make([]time.Duration, len(numRounds))
+	avgTxnPerSec := make([]float64, len(numRounds))
+	ready := make([]bool, len(numRounds))
+	var totalBlockTime time.Duration
+	var totalTxn int
+	count := 0
+	for i := len(state.RoundMetrics) - 1; i >= 0; i-- {
+		m := state.RoundMetrics[i]
+		totalBlockTime += m.BlockTime
+		totalTxn += m.TxnCount
+		count++
+		for i, r := range numRounds {
+			if count == r {
+				avgBlockTime[i] = totalBlockTime / time.Duration(count)
+				avgTxnPerSec[i] = float64(totalTxn) * 1000 / float64(totalBlockTime/time.Millisecond)
+				ready[i] = true
+			}
+		}
+
+		if count >= numRounds[len(numRounds)-1] {
+			break
+		}
+	}
+
+	for i := range numRounds {
+		if ready[i] {
+			_, err = fmt.Fprintf(tw, "\t%d\t%v\t%f\t\n", numRounds[i], avgBlockTime[i], avgTxnPerSec[i])
+			if err != nil {
+				return err
+			}
+		} else {
+			_, err = fmt.Fprintf(tw, "\t%d\tN/A\tN/A\t\n", numRounds[i])
+			if err != nil {
+				return err
+			}
+		}
+	}
+	err = tw.Flush()
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
