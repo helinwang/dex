@@ -102,6 +102,7 @@ func (r *RPCServer) walletState(addr consensus.Addr, w *WalletState) error {
 		return fmt.Errorf("account %v does not exist", addr)
 	}
 
+	acc.loadBalances()
 	keys := make([]TokenID, len(acc.balances))
 	i := 0
 	for k := range acc.balances {
@@ -116,7 +117,6 @@ func (r *RPCServer) walletState(addr consensus.Addr, w *WalletState) error {
 		bs[i].Balance = b
 	}
 
-	// TODO: sort pending orders by key
 	w.PendingOrders = acc.PendingOrders()
 	w.ExecutionReports = acc.ExecutionReports()
 	w.Balances = bs

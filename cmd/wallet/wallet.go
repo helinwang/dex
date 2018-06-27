@@ -8,6 +8,7 @@ import (
 	"math"
 	"net/rpc"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"text/tabwriter"
@@ -128,7 +129,9 @@ func printAccount(c *cli.Context) error {
 		return err
 	}
 
-	// TODO: support send token to address, rather than PK.
+	sort.Slice(w.Balances, func(i, j int) bool {
+		return w.Balances[i].Token < w.Balances[j].Token
+	})
 
 	for _, b := range w.Balances {
 		symbol := idToToken[b.Token].Symbol
@@ -145,6 +148,7 @@ func printAccount(c *cli.Context) error {
 		return err
 	}
 
+	// TODO: sort pending orders by key
 	fmt.Println("\nPending Orders:")
 	tw = tabwriter.NewWriter(os.Stdout, 0, 0, 1, ' ', tabwriter.Debug)
 	_, err = fmt.Fprintln(tw, "\tID\tMarket\tSide\tPrice\tAmount\tExecuted\tExpiry Block Height\t")
