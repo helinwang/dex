@@ -111,10 +111,12 @@ func (n *Node) StartRound(round uint64) {
 					return
 				}
 
-				// at most spend blockTime / 3 for proposing block, to avoid
-				// the case that there are too many transactions to be
-				// included in the block proposal
-				ctx, cancel := context.WithTimeout(context.Background(), n.cfg.BlockTime/3)
+				// at most spend blockTime/2 for
+				// proposing block, to avoid the case
+				// that there are too many
+				// transactions to be included in the
+				// block proposal
+				ctx, cancel := context.WithTimeout(context.Background(), n.cfg.BlockTime/2)
 				defer cancel()
 
 				log.Debug("start propose block", "owner", n.addr, "round", round, "group", bpGroup)

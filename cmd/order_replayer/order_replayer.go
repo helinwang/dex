@@ -9,7 +9,6 @@ import (
 	"io/ioutil"
 	"log"
 	"math"
-	"math/rand"
 	"net/rpc"
 	"os"
 	"path"
@@ -120,6 +119,7 @@ func main() {
 
 	defer f.Close()
 
+	credIdx := 0
 	s := bufio.NewScanner(f)
 	for s.Scan() {
 	retry:
@@ -132,9 +132,12 @@ func main() {
 			goto retry
 		}
 
-		credential := credentials[rand.Intn(len(credentials))]
-		ss := strings.Split(s.Text(), ",")
+		credential := credentials[credIdx]
+		if credIdx >= len(credentials) {
+			credIdx = 0
+		}
 
+		ss := strings.Split(s.Text(), ",")
 		market := ss[0]
 		ms := strings.Split(market, "_")
 		if len(ms) != 2 {

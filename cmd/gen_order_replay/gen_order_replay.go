@@ -16,8 +16,6 @@ func main() {
 
 	rand.Seed(*seed)
 
-	lastPrice := 1.0
-	lastQuant := 10.0
 	for i := 0; i < *count; i++ {
 		m := markets[rand.Intn(len(markets))]
 		sell := rand.Intn(2) == 0
@@ -27,17 +25,8 @@ func main() {
 		} else {
 			side = "buy"
 		}
-		price := float64(rand.Intn(1001)-500)/10000 + lastPrice
-		if price <= 0 {
-			price = 1 / 10000
-		}
-		lastPrice = price
-
-		quant := float64(rand.Intn(1001)-500)/1000 + lastQuant
-		if quant <= 0 {
-			quant = 1 / 1000
-		}
-		lastQuant = quant
+		price := float64(rand.Intn(5000)) / 10000
+		quant := float64(rand.Intn(10)) + 1
 		fmt.Printf("%s,%s,%f,%f\n", m, side, price, quant)
 	}
 }
