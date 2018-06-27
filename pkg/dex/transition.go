@@ -188,6 +188,10 @@ type ExecutionReport struct {
 }
 
 func (t *Transition) placeOrder(owner *Account, txn *PlaceOrderTxn, round uint64) bool {
+	if !txn.Market.Valid() {
+		log.Warn("order's market is invalid", "market", txn.Market)
+		return false
+	}
 	if txn.ExpireRound > 0 && round >= txn.ExpireRound {
 		log.Warn("order already expired", "expire round", txn.ExpireRound, "cur round", round)
 		return false

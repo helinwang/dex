@@ -21,6 +21,10 @@ type MarketSymbol struct {
 	Quote TokenID // the unit of the order's price
 }
 
+func (m *MarketSymbol) Valid() bool {
+	return m.Base != m.Quote
+}
+
 // Encode returns the bytes representation of the market symbol.
 //
 // The bytes is used as a prefix of a path of a patricia tree, It will
@@ -184,14 +188,27 @@ func encodePath(str []byte) []byte {
 	return nibbles
 }
 
-func (s *State) CommitCache() {
-	s.mu.Lock()
+func (s *State) cachedAccounts() []*Account {
 	accounts := make([]*Account, len(s.accountCache))
 	i := 0
 	for _, acc := range s.accountCache {
 		accounts[i] = acc
 		i++
 	}
+	return accounts
+}
+
+func (s *State) commitCache() {
+	for _, acc := range s.cachedAccounts() {
+		// commit cache calls the methods of s, need to be
+		// outside of s.mu
+		acc.CommitCache(s)
+	}
+}
+
+func (s *State) CommitCache() {
+	s.mu.Lock()
+	accounts := s.cachedAccounts()
 	s.mu.Unlock()
 
 	for _, acc := range accounts {
@@ -507,6 +524,8 @@ func (s *State) Hash() consensus.Hash {
 func (s *State) Transition(round uint64) consensus.Transition {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
+	s.commitCache()
 
 	root, err := s.trie.Commit(nil)
 	if err != nil {
