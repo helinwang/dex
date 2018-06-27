@@ -136,6 +136,7 @@ func main() {
 		}
 
 		credential := credentials[perm[credIdx]]
+		credIdx++
 		if credIdx >= len(credentials) {
 			credIdx = 0
 		}
