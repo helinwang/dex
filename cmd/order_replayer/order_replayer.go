@@ -9,6 +9,7 @@ import (
 	"io/ioutil"
 	"log"
 	"math"
+	"math/rand"
 	"net/rpc"
 	"os"
 	"path"
@@ -88,9 +89,10 @@ func loadCredentials(dir string) ([]consensus.SK, error) {
 
 func main() {
 	credentialsPath := flag.String("c", "", "path to the directory contains node credentials")
-	orderPath := flag.String("order", "", "path to the order file to replay")
+	orderPath := flag.String("path", "", "path to the order file to replay")
 	addr := flag.String("addr", ":12001", "node's wallet RPC endpoint")
 	flag.Parse()
+	rand.Seed(time.Now().UnixNano())
 
 	client, err := rpc.DialHTTP("tcp", *addr)
 	if err != nil {
@@ -119,6 +121,7 @@ func main() {
 
 	defer f.Close()
 
+	perm := rand.Perm(len(credentials))
 	credIdx := 0
 	s := bufio.NewScanner(f)
 	for s.Scan() {
@@ -132,7 +135,7 @@ func main() {
 			goto retry
 		}
 
-		credential := credentials[credIdx]
+		credential := credentials[perm[credIdx]]
 		if credIdx >= len(credentials) {
 			credIdx = 0
 		}

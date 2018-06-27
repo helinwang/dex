@@ -96,11 +96,6 @@ func (t *TxnPool) Add(b []byte) (r *consensus.Txn, boardcast bool) {
 
 	ret := parseTxn(b)
 	// TODO: validate txn signature here.
-
-	// optimization TODOs:
-	// 1. benchmark place order
-	// 2. manually encode/decode order book/txn for speed
-	// 3. don't decode txn twice, take out from pool should be decoded
 	t.txns[hash] = ret
 	return ret, true
 }

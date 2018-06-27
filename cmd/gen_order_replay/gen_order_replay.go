@@ -8,7 +8,7 @@ import (
 )
 
 func main() {
-	ms := flag.String("markets", "ETH_BTC,BNB_BTC,BNB_ETH", "comma separated market list")
+	ms := flag.String("markets", "ETH_BTC,XRP_BTC,XRP_ETH,EOS_BTC,EOS_ETH,ICX_BTC,ICX_ETH,TRX_BTC,TRX_ETH,XLM_BTC,XLM_ETH,BCC_BTC,BCC_ETH,LTC_BTC,LTC_ETH", "comma separated market list")
 	seed := flag.Int64("seed", 0, "the seed used for the random order generation process")
 	count := flag.Int("count", 100000, "order count")
 	flag.Parse()
