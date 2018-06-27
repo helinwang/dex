@@ -38,7 +38,7 @@ func createNode(c consensus.NodeCredentials, genesis consensus.Genesis, u consen
 	}
 
 	state := dex.NewState(ethdb.NewMemDatabase())
-	return consensus.MakeNode(c, cfg, genesis, state, dex.NewTxnPool(), u)
+	return consensus.MakeNode(c, cfg, genesis, state, dex.NewTxnPool(state), u)
 }
 
 func main() {

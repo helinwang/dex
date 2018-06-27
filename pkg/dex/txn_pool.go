@@ -11,18 +11,25 @@ import (
 	log "github.com/helinwang/log15"
 )
 
+type pker interface {
+	PK(addr consensus.Addr) consensus.PK
+}
+
 type TxnPool struct {
+	pker pker
+
 	mu   sync.Mutex
 	txns map[consensus.Hash]*consensus.Txn
 }
 
-func NewTxnPool() *TxnPool {
+func NewTxnPool(pker pker) *TxnPool {
 	return &TxnPool{
+		pker: pker,
 		txns: make(map[consensus.Hash]*consensus.Txn),
 	}
 }
 
-func parseTxn(b []byte) (*consensus.Txn, error) {
+func parseTxn(b []byte, pker pker) (*consensus.Txn, error) {
 	var txn Txn
 	err := rlp.DecodeBytes(b, &txn)
 	if err != nil {
@@ -77,6 +84,10 @@ func parseTxn(b []byte) (*consensus.Txn, error) {
 		return nil, fmt.Errorf("unknown txn type: %v", txn.T)
 	}
 
+	if !txn.Sig.Verify(pker.PK(txn.Owner), txn.Encode(false)) {
+		return nil, fmt.Errorf("txn signature verification failed")
+	}
+
 	return ret, nil
 }
 
@@ -89,7 +100,7 @@ func (t *TxnPool) Add(b []byte) (r *consensus.Txn, boardcast bool) {
 		return
 	}
 
-	ret, err := parseTxn(b)
+	ret, err := parseTxn(b, t.pker)
 	if err != nil {
 		log.Error("error add txn to pool", "err", err)
 		return nil, false

@@ -29,7 +29,10 @@ func TestSendToken(t *testing.T) {
 	to := skRecv.MustPK()
 	txn := MakeSendTokenTxn(sk, to, 0, 20, 0, 0)
 	trans := s.Transition(1)
-	pt, err := parseTxn(txn)
+	pk := sk.MustPK()
+	pt, err := parseTxn(txn, &myPKer{m: map[consensus.Addr]consensus.PK{
+		pk.Addr(): pk,
+	}})
 	if err != nil {
 		panic(err)
 	}
@@ -58,7 +61,10 @@ func TestFreezeToken(t *testing.T) {
 	txn := MakeFreezeTokenTxn(sk, FreezeTokenTxn{TokenID: 0, AvailableRound: 3, Quant: 50}, 0, 0)
 
 	trans := s.Transition(1)
-	pt, err := parseTxn(txn)
+	pk := sk.MustPK()
+	pt, err := parseTxn(txn, &myPKer{m: map[consensus.Addr]consensus.PK{
+		pk.Addr(): pk,
+	}})
 	if err != nil {
 		panic(err)
 	}
@@ -98,12 +104,16 @@ func TestTransitionNotCommitToDB(t *testing.T) {
 	newAcc := s.Account(addr)
 	assert.Equal(t, 100, int(newAcc.balances[0].Available))
 	trans := s.Transition(1)
+	pk := sk.MustPK()
+	pker := &myPKer{m: map[consensus.Addr]consensus.PK{
+		pk.Addr(): pk,
+	}}
 
 	for i := 0; i < 99; i++ {
 		skRecv := consensus.RandSK()
 		to := skRecv.MustPK()
 		txn := MakeSendTokenTxn(sk, to, 0, 1, uint8(i), 0)
-		pt, err := parseTxn(txn)
+		pt, err := parseTxn(txn, pker)
 		if err != nil {
 			panic(err)
 		}
@@ -135,7 +145,10 @@ func TestIssueToken(t *testing.T) {
 	sk, addr := createAccount(s, 100)
 	trans := s.Transition(1)
 	txn := MakeIssueTokenTxn(sk, btcInfo, 0, 0)
-	pt, err := parseTxn(txn)
+	pk := sk.MustPK()
+	pt, err := parseTxn(txn, &myPKer{m: map[consensus.Addr]consensus.PK{
+		pk.Addr(): pk,
+	}})
 	if err != nil {
 		panic(err)
 	}
@@ -166,7 +179,10 @@ func TestOrderAlreadyExpired(t *testing.T) {
 	}
 
 	trans := s.Transition(1)
-	pt, err := parseTxn(MakePlaceOrderTxn(sk, order, 0, 0))
+	pk := sk.MustPK()
+	pt, err := parseTxn(MakePlaceOrderTxn(sk, order, 0, 0), &myPKer{m: map[consensus.Addr]consensus.PK{
+		pk.Addr(): pk,
+	}})
 	if err != nil {
 		panic(err)
 	}
@@ -197,7 +213,10 @@ func TestOrderExpire(t *testing.T) {
 	}
 
 	trans := s.Transition(1)
-	pt, err := parseTxn(MakePlaceOrderTxn(sk, order, 0, 0))
+	pk := sk.MustPK()
+	pt, err := parseTxn(MakePlaceOrderTxn(sk, order, 0, 0), &myPKer{m: map[consensus.Addr]consensus.PK{
+		pk.Addr(): pk,
+	}})
 	if err != nil {
 		panic(err)
 	}
@@ -234,7 +253,11 @@ func TestPlaceOrder(t *testing.T) {
 		Market:      MarketSymbol{Quote: 0, Base: 1},
 	}
 	trans := s.Transition(1)
-	pt, err := parseTxn(MakePlaceOrderTxn(sk, order, 0, 0))
+	pk := sk.MustPK()
+	pker := &myPKer{m: map[consensus.Addr]consensus.PK{
+		pk.Addr(): pk,
+	}}
+	pt, err := parseTxn(MakePlaceOrderTxn(sk, order, 0, 0), pker)
 	if err != nil {
 		panic(err)
 	}
@@ -255,7 +278,7 @@ func TestPlaceOrder(t *testing.T) {
 		ExpireRound: 3,
 		Market:      MarketSymbol{Quote: 0, Base: 1},
 	}
-	pt, err = parseTxn(MakePlaceOrderTxn(sk, order, 0, 1))
+	pt, err = parseTxn(MakePlaceOrderTxn(sk, order, 0, 1), pker)
 	if err != nil {
 		panic(err)
 	}

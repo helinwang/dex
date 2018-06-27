@@ -87,17 +87,16 @@ func (s SK) Sign(b []byte) Sig {
 type Sig []byte
 
 func (s Sig) Verify(pk PK, msg []byte) bool {
-	// if len(s) == 0 || len(pk) == 0 {
-	// 	return false
-	// }
+	if len(s) == 0 || len(pk) == 0 {
+		return false
+	}
 
-	// var sign bls.Sign
-	// err := sign.Deserialize(s)
-	// if err != nil {
-	// 	return false
-	// }
+	var sign bls.Sign
+	err := sign.Deserialize(s)
+	if err != nil {
+		return false
+	}
 
-	// key := pk.MustGet()
-	// return sign.Verify(&key, string(msg))
-	return true
+	key := pk.MustGet()
+	return sign.Verify(&key, string(msg))
 }

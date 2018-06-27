@@ -8,7 +8,15 @@ import (
 	"github.com/helinwang/dex/pkg/consensus"
 )
 
-func genTransTxns() (consensus.Transition, []byte) {
+type myPKer struct {
+	m map[consensus.Addr]consensus.PK
+}
+
+func (m *myPKer) PK(addr consensus.Addr) consensus.PK {
+	return m.m[addr]
+}
+
+func genTransTxns(p *myPKer) (consensus.Transition, []byte) {
 	const (
 		accountCount = 10000
 		orderCount   = 10000
@@ -18,8 +26,10 @@ func genTransTxns() (consensus.Transition, []byte) {
 	accountPKs := make([]consensus.PK, accountCount)
 	for i := range accountSKs {
 		sk := consensus.RandSK()
+		pk := sk.MustPK()
 		accountSKs[i] = sk
-		accountPKs[i] = sk.MustPK()
+		accountPKs[i] = pk
+		p.m[pk.Addr()] = pk
 	}
 
 	var BTCInfo = TokenInfo{
@@ -50,8 +60,9 @@ func genTransTxns() (consensus.Transition, []byte) {
 }
 
 func BenchmarkPlaceOrder(b *testing.B) {
-	pool := NewTxnPool()
-	trans, body := genTransTxns()
+	p := &myPKer{m: make(map[consensus.Addr]consensus.PK)}
+	trans, body := genTransTxns(p)
+	pool := NewTxnPool(p)
 	// make sure everything is in pool
 	trans.RecordSerialized(body, pool)
 
