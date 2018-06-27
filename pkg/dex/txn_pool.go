@@ -3,6 +3,7 @@ package dex
 import (
 	"bytes"
 	"encoding/gob"
+	"fmt"
 	"sync"
 
 	"github.com/ethereum/go-ethereum/rlp"
@@ -21,12 +22,11 @@ func NewTxnPool() *TxnPool {
 	}
 }
 
-func parseTxn(b []byte) *consensus.Txn {
+func parseTxn(b []byte) (*consensus.Txn, error) {
 	var txn Txn
 	err := rlp.DecodeBytes(b, &txn)
 	if err != nil {
-		log.Warn("error decode txn", "err", err)
-		return nil
+		return nil, fmt.Errorf("error decode txn: %v", err)
 	}
 
 	dec := gob.NewDecoder(bytes.NewReader(txn.Data))
@@ -42,47 +42,42 @@ func parseTxn(b []byte) *consensus.Txn {
 		var txn PlaceOrderTxn
 		err := dec.Decode(&txn)
 		if err != nil {
-			log.Warn("PlaceOrderTxn decode failed", "err", err)
-			return nil
+			return nil, fmt.Errorf("PlaceOrderTxn decode failed: %v", err)
 		}
 		ret.Decoded = &txn
 	case CancelOrder:
 		var txn CancelOrderTxn
 		err := dec.Decode(&txn)
 		if err != nil {
-			log.Warn("CancelOrderTxn decode failed", "err", err)
-			return nil
+			return nil, fmt.Errorf("CancelOrderTxn decode failed: %v", err)
 		}
 		ret.Decoded = &txn
 	case IssueToken:
 		var txn IssueTokenTxn
 		err := dec.Decode(&txn)
 		if err != nil {
-			log.Warn("IssueTokenTxn decode failed", "err", err)
-			return nil
+			return nil, fmt.Errorf("IssueTokenTxn decode failed: %v", err)
 		}
 		ret.Decoded = &txn
 	case SendToken:
 		var txn SendTokenTxn
 		err := dec.Decode(&txn)
 		if err != nil {
-			log.Warn("SendTokenTxn decode failed", "err", err)
-			return nil
+			return nil, fmt.Errorf("SendTokenTxn decode failed: %v", err)
 		}
 		ret.Decoded = &txn
 	case FreezeToken:
 		var txn FreezeTokenTxn
 		err := dec.Decode(&txn)
 		if err != nil {
-			log.Warn("FreezeTokenTxn decode failed", "err", err)
-			return nil
+			return nil, fmt.Errorf("FreezeTokenTxn decode failed: %v", err)
 		}
 		ret.Decoded = &txn
 	default:
-		log.Error("unknown txn type", "type", txn.T)
-		return nil
+		return nil, fmt.Errorf("unknown txn type: %v", txn.T)
 	}
-	return ret
+
+	return ret, nil
 }
 
 func (t *TxnPool) Add(b []byte) (r *consensus.Txn, boardcast bool) {
@@ -94,8 +89,12 @@ func (t *TxnPool) Add(b []byte) (r *consensus.Txn, boardcast bool) {
 		return
 	}
 
-	ret := parseTxn(b)
-	// TODO: validate txn signature here.
+	ret, err := parseTxn(b)
+	if err != nil {
+		log.Error("error add txn to pool", "err", err)
+		return nil, false
+	}
+
 	t.txns[hash] = ret
 	return ret, true
 }
