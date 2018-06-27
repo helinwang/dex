@@ -101,7 +101,6 @@ func (n *Node) StartRound(round uint64) {
 	for _, m := range n.memberships {
 		if m.groupID == bpGroup {
 			go func() {
-
 				n.chain.WaitUntil(round)
 				n.mu.Lock()
 				nodeRound := n.round

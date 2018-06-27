@@ -48,7 +48,7 @@ func (t *Transition) RecordSerialized(blob []byte, pool consensus.TxnPool) (vali
 		hash := consensus.SHA3(b)
 		txn := pool.Get(hash)
 		if txn == nil {
-			txn = parseTxn(b)
+			txn, _ = pool.Add(b)
 		}
 		valid, success = t.Record(txn)
 		if !valid || !success {
