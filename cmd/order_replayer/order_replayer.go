@@ -2,11 +2,17 @@ package main
 
 import (
 	"bufio"
+	"bytes"
+	"encoding/gob"
 	"flag"
 	"fmt"
+	"io/ioutil"
+	"log"
 	"math"
+	"math/rand"
 	"net/rpc"
 	"os"
+	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -45,8 +51,44 @@ func nonce(client *rpc.Client, addr consensus.Addr) (uint8, uint64, error) {
 	return slot.Idx, slot.Val, nil
 }
 
+func loadCredentials(dir string) ([]consensus.SK, error) {
+	var r []consensus.SK
+	files, err := ioutil.ReadDir(dir)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for _, f := range files {
+		if f.IsDir() {
+			continue
+		}
+
+		if !strings.HasPrefix(f.Name(), "node-") {
+			continue
+		}
+
+		path := path.Join(dir, f.Name())
+		b, err := ioutil.ReadFile(path)
+		if err != nil {
+			return nil, err
+		}
+
+		dec := gob.NewDecoder(bytes.NewReader(b))
+		var c consensus.NodeCredentials
+		err = dec.Decode(&c)
+		if err != nil {
+			fmt.Printf("error decode credential from file: %s, err: %v, skip\n", path, err)
+			continue
+		}
+
+		r = append(r, c.SK)
+	}
+
+	return r, nil
+}
+
 func main() {
-	credentialPath := flag.String("c", "", "path to the node credential file")
+	credentialsPath := flag.String("c", "", "path to the directory contains node credentials")
 	orderPath := flag.String("order", "", "path to the order file to replay")
 	addr := flag.String("addr", ":12001", "node's wallet RPC endpoint")
 	flag.Parse()
@@ -66,7 +108,7 @@ func main() {
 		tokenCache[strings.ToLower(string(t.Symbol))] = t
 	}
 
-	credential, err := consensus.LoadCredential(*credentialPath)
+	credentials, err := loadCredentials(*credentialsPath)
 	if err != nil {
 		panic(err)
 	}
@@ -90,6 +132,7 @@ func main() {
 			goto retry
 		}
 
+		credential := credentials[rand.Intn(len(credentials))]
 		ss := strings.Split(s.Text(), ",")
 
 		market := ss[0]
@@ -133,7 +176,7 @@ func main() {
 		quantMul := math.Pow10(int(quoteToken.Decimals))
 		quantUnit := uint64(quant * quantMul)
 
-		nonceIdx, nonceVal, err := nonce(client, credential.SK.MustPK().Addr())
+		nonceIdx, nonceVal, err := nonce(client, credential.MustPK().Addr())
 		if err != nil {
 			panic(err)
 		}
@@ -145,7 +188,7 @@ func main() {
 			ExpireRound: 0,
 			Market:      dex.MarketSymbol{Base: baseToken.ID, Quote: quoteToken.ID},
 		}
-		txn := dex.MakePlaceOrderTxn(credential.SK, t, nonceIdx, nonceVal)
+		txn := dex.MakePlaceOrderTxn(credential, t, nonceIdx, nonceVal)
 		err = client.Call("WalletService.SendTxn", txn, nil)
 		if err != nil {
 			panic(err)
