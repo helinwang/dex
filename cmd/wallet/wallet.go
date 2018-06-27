@@ -3,8 +3,10 @@ package main
 import (
 	"bytes"
 	"encoding/base64"
+	"encoding/gob"
 	"encoding/hex"
 	"fmt"
+	"io/ioutil"
 	"math"
 	"net/rpc"
 	"os"
@@ -71,17 +73,12 @@ func printAccount(c *cli.Context) error {
 	var addr consensus.Addr
 	accountAddr := c.Args().First()
 	if accountAddr == "" {
-		c, err := consensus.LoadCredential(credentialPath)
+		c, err := loadCredential(credentialPath)
 		if err != nil {
 			return err
 		}
 
-		pk, err := c.SK.PK()
-		if err != nil {
-			return err
-		}
-
-		addr = pk.Addr()
+		addr = c.PK.Addr()
 	} else {
 		var err error
 		if len(accountAddr) == len(consensus.ZeroAddr.Hex()) {
@@ -219,13 +216,28 @@ func quantToStr(quant uint64, decimals int) string {
 	return intPart + "." + rest
 }
 
+func loadCredential(path string) (c dex.Credential, err error) {
+	b, err := ioutil.ReadFile(path)
+	if err != nil {
+		return
+	}
+
+	dec := gob.NewDecoder(bytes.NewReader(b))
+	err = dec.Decode(&c)
+	if err != nil {
+		return
+	}
+
+	return
+}
+
 func sendToken(c *cli.Context) error {
 	args := c.Args()
 	if len(args) < 3 {
 		return fmt.Errorf("send needs 3 arguments (received: %d), please check usage using ./wallet -h", len(args))
 	}
 
-	credential, err := consensus.LoadCredential(credentialPath)
+	credential, err := loadCredential(credentialPath)
 	if err != nil {
 		return err
 	}
@@ -237,7 +249,7 @@ func sendToken(c *cli.Context) error {
 		return fmt.Errorf("PUB_KEY (%s) must be encoded in base64, err: %v", recipient, err)
 	}
 
-	pk := consensus.PK(b)
+	pk := dex.PK(b)
 	quant, err := strconv.ParseFloat(args[2], 64)
 	if err != nil {
 		return err
@@ -269,12 +281,12 @@ func sendToken(c *cli.Context) error {
 		return fmt.Errorf("symbol not found: %s", symbol)
 	}
 
-	idx, val, err := nonce(client, credential.SK.MustPK().Addr())
+	idx, val, err := nonce(client, credential.PK.Addr())
 	if err != nil {
 		return err
 	}
 
-	txn := dex.MakeSendTokenTxn(credential.SK, pk, tokenID, uint64(quant*mul), idx, val)
+	txn := dex.MakeSendTokenTxn(credential.SK, credential.PK.Addr(), pk, tokenID, uint64(quant*mul), idx, val)
 	err = client.Call("WalletService.SendTxn", txn, nil)
 	if err != nil {
 		return err
@@ -394,12 +406,12 @@ func issueToken(c *cli.Context) error {
 		}
 	}
 
-	credential, err := consensus.LoadCredential(credentialPath)
+	credential, err := loadCredential(credentialPath)
 	if err != nil {
 		return err
 	}
 
-	idx, val, err := nonce(client, credential.SK.MustPK().Addr())
+	idx, val, err := nonce(client, credential.PK.Addr())
 	if err != nil {
 		return err
 	}
@@ -410,7 +422,7 @@ func issueToken(c *cli.Context) error {
 		TotalUnits: units,
 	}
 
-	txn := dex.MakeIssueTokenTxn(credential.SK, tokenInfo, idx, val)
+	txn := dex.MakeIssueTokenTxn(credential.SK, credential.PK.Addr(), tokenInfo, idx, val)
 	err = client.Call("WalletService.SendTxn", txn, nil)
 	if err != nil {
 		return err
@@ -451,7 +463,7 @@ func freezeToken(c *cli.Context) error {
 		return fmt.Errorf("freeze token needs 3 arguments (received: %d), please check usage using ./wallet -h", len(args))
 	}
 
-	credential, err := consensus.LoadCredential(credentialPath)
+	credential, err := loadCredential(credentialPath)
 	if err != nil {
 		return err
 	}
@@ -492,13 +504,13 @@ func freezeToken(c *cli.Context) error {
 		return fmt.Errorf("symbol not found: %s", symbol)
 	}
 
-	idx, val, err := nonce(client, credential.SK.MustPK().Addr())
+	idx, val, err := nonce(client, credential.PK.Addr())
 	if err != nil {
 		return err
 	}
 
 	t := dex.FreezeTokenTxn{TokenID: tokenID, AvailableRound: availableHeight, Quant: uint64(quant * mul)}
-	txn := dex.MakeFreezeTokenTxn(credential.SK, t, idx, val)
+	txn := dex.MakeFreezeTokenTxn(credential.SK, credential.PK.Addr(), t, idx, val)
 	err = client.Call("WalletService.SendTxn", txn, nil)
 	if err != nil {
 		return err
@@ -515,7 +527,7 @@ func cancelOrder(c *cli.Context) error {
 		return err
 	}
 
-	credential, err := consensus.LoadCredential(credentialPath)
+	credential, err := loadCredential(credentialPath)
 	if err != nil {
 		return err
 	}
@@ -525,12 +537,12 @@ func cancelOrder(c *cli.Context) error {
 		return err
 	}
 
-	idx, val, err := nonce(client, credential.SK.MustPK().Addr())
+	idx, val, err := nonce(client, credential.PK.Addr())
 	if err != nil {
 		return err
 	}
 
-	txn := dex.MakeCancelOrderTxn(credential.SK, id, idx, val)
+	txn := dex.MakeCancelOrderTxn(credential.SK, credential.PK.Addr(), id, idx, val)
 	err = client.Call("WalletService.SendTxn", txn, nil)
 	if err != nil {
 		return err
@@ -545,7 +557,7 @@ func placeOrder(c *cli.Context) error {
 		return fmt.Errorf("send needs 5 arguments (received: %d), please check usage using ./wallet -h", len(args))
 	}
 
-	credential, err := consensus.LoadCredential(credentialPath)
+	credential, err := loadCredential(credentialPath)
 	if err != nil {
 		return err
 	}
@@ -612,7 +624,7 @@ func placeOrder(c *cli.Context) error {
 	quantUnit := uint64(amount * math.Pow10(int(baseToken.Decimals)))
 	priceUnit := uint64(price * math.Pow10(int(dex.OrderPriceDecimals)))
 
-	idx, val, err := nonce(client, credential.SK.MustPK().Addr())
+	idx, val, err := nonce(client, credential.PK.Addr())
 	if err != nil {
 		return err
 	}
@@ -630,7 +642,7 @@ func placeOrder(c *cli.Context) error {
 		ExpireRound: expireRound,
 		Market:      market,
 	}
-	txn := dex.MakePlaceOrderTxn(credential.SK, placeOrderTxn, idx, val)
+	txn := dex.MakePlaceOrderTxn(credential.SK, credential.PK.Addr(), placeOrderTxn, idx, val)
 	err = client.Call("WalletService.SendTxn", txn, nil)
 	if err != nil {
 		return err

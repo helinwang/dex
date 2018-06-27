@@ -51,8 +51,8 @@ func nonce(client *rpc.Client, addr consensus.Addr) (uint8, uint64, error) {
 	return slot.Idx, slot.Val, nil
 }
 
-func loadCredentials(dir string) ([]consensus.SK, error) {
-	var r []consensus.SK
+func loadCredentials(dir string) ([]dex.Credential, error) {
+	var r []dex.Credential
 	files, err := ioutil.ReadDir(dir)
 	if err != nil {
 		log.Fatal(err)
@@ -74,14 +74,14 @@ func loadCredentials(dir string) ([]consensus.SK, error) {
 		}
 
 		dec := gob.NewDecoder(bytes.NewReader(b))
-		var c consensus.NodeCredentials
+		var c dex.Credential
 		err = dec.Decode(&c)
 		if err != nil {
 			fmt.Printf("error decode credential from file: %s, err: %v, skip\n", path, err)
 			continue
 		}
 
-		r = append(r, c.SK)
+		r = append(r, c)
 	}
 
 	return r, nil
@@ -182,7 +182,7 @@ func main() {
 		quantMul := math.Pow10(int(quoteToken.Decimals))
 		quantUnit := uint64(quant * quantMul)
 
-		nonceIdx, nonceVal, err := nonce(client, credential.MustPK().Addr())
+		nonceIdx, nonceVal, err := nonce(client, credential.PK.Addr())
 		if err != nil {
 			panic(err)
 		}
@@ -194,7 +194,7 @@ func main() {
 			ExpireRound: 0,
 			Market:      dex.MarketSymbol{Base: baseToken.ID, Quote: quoteToken.ID},
 		}
-		txn := dex.MakePlaceOrderTxn(credential, t, nonceIdx, nonceVal)
+		txn := dex.MakePlaceOrderTxn(credential.SK, credential.PK.Addr(), t, nonceIdx, nonceVal)
 		err = client.Call("WalletService.SendTxn", txn, nil)
 		if err != nil {
 			panic(err)

@@ -6,12 +6,11 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/helinwang/dex/pkg/consensus"
+	"github.com/helinwang/dex/pkg/dex"
 )
 
 func main() {
-	num := flag.Int("N", 100, "number of credentials to generate")
-	seed := flag.String("seed", "dex-credentials", "random seed")
+	num := flag.Int("N", 1000, "number of credentials to generate")
 	dir := flag.String("dir", "./credentials", "output directory name")
 	flag.Parse()
 
@@ -20,12 +19,11 @@ func main() {
 		panic(err)
 	}
 
-	rand := consensus.Rand(consensus.SHA3([]byte(*seed)))
-
-	credentials := make([]consensus.NodeCredentials, *num)
+	credentials := make([]dex.Credential, *num)
 	for i := 0; i < *num; i++ {
-		credentials[i].SK = rand.SK()
-		rand = rand.Derive(rand[:])
+		pk, sk := dex.RandKeyPair()
+		credentials[i].SK = sk
+		credentials[i].PK = pk
 	}
 
 	for i, n := range credentials {

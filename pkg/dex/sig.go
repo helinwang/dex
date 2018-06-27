@@ -14,6 +14,11 @@ type SK []byte
 type PK []byte
 type Sig []byte
 
+type Credential struct {
+	PK PK
+	SK SK
+}
+
 func RandKeyPair() (PK, SK) {
 	key, err := ecdsa.GenerateKey(secp256k1.S256(), rand.Reader)
 	if err != nil {

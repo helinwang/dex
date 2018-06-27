@@ -46,8 +46,8 @@ func makeShares(t int, idVec []bls.ID, rand consensus.Rand) (bls.PublicKey, []bl
 	return *sk.GetPublicKey(), skShares, rand
 }
 
-func loadCredentials(dir string) ([]consensus.PK, error) {
-	var r []consensus.PK
+func loadCredentials(dir string) ([]dex.PK, error) {
+	var r []dex.PK
 	files, err := ioutil.ReadDir(dir)
 	if err != nil {
 		log.Fatal(err)
@@ -69,14 +69,14 @@ func loadCredentials(dir string) ([]consensus.PK, error) {
 		}
 
 		dec := gob.NewDecoder(bytes.NewReader(b))
-		var c consensus.NodeCredentials
+		var c dex.Credential
 		err = dec.Decode(&c)
 		if err != nil {
 			fmt.Printf("error decode credential from file: %s, err: %v, skip\n", path, err)
 			continue
 		}
 
-		r = append(r, c.SK.MustPK())
+		r = append(r, c.PK)
 	}
 
 	return r, nil
