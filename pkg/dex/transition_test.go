@@ -151,7 +151,7 @@ func TestOrderAlreadyExpired(t *testing.T) {
 	assert.False(t, success)
 	s = trans.Commit().(*State)
 	acc := s.Account(addr)
-	assert.Equal(t, 0, len(acc.pendingOrders))
+	assert.Equal(t, 0, len(acc.PendingOrders()))
 }
 
 func TestOrderExpire(t *testing.T) {
@@ -179,12 +179,12 @@ func TestOrderExpire(t *testing.T) {
 	// the next round.
 	s = trans.Commit().(*State)
 	acc = s.Account(addr)
-	assert.Equal(t, 1, len(acc.pendingOrders))
+	assert.Equal(t, 1, len(acc.PendingOrders()))
 	trans = s.Transition(2)
 	s = trans.Commit().(*State)
 
 	acc = s.Account(addr)
-	assert.Equal(t, 0, len(acc.pendingOrders))
+	assert.Equal(t, 0, len(acc.PendingOrders()))
 }
 
 func TestPlaceOrder(t *testing.T) {

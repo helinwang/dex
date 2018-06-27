@@ -21,6 +21,7 @@ type MarketSymbol struct {
 	Quote TokenID // the unit of the order's price
 }
 
+// Valid checks if the market symbol is valid.
 func (m *MarketSymbol) Valid() bool {
 	return m.Base != m.Quote
 }
@@ -151,9 +152,20 @@ func addrBalancePath(addr consensus.Addr) []byte {
 	return append(p, byte(balancePrefix))
 }
 
+func addrPendingOrderPath(addr consensus.Addr, orderID OrderID) []byte {
+	orderBytes := orderID.Bytes()
+	p := make([]byte, 0, len(accountPrefix)+len(addr)+1+len(orderBytes))
+	p = append(p, accountPrefix...)
+	p = append(p, addr[:]...)
+	p = append(p, byte(pendingOrdersPrefix))
+	p = append(p, orderBytes...)
+	return p
+}
+
 func addrPendingOrdersPath(addr consensus.Addr) []byte {
 	p := append(accountPrefix, addr[:]...)
-	return append(p, byte(pendingOrdersPrefix))
+	p = append(p, byte(pendingOrdersPrefix))
+	return p
 }
 
 func addrExecutionReportsPath(addr consensus.Addr) []byte {
@@ -320,35 +332,70 @@ func (s *State) Balances(addr consensus.Addr) ([]Balance, []TokenID) {
 	return v.B, v.I
 }
 
-func (s *State) UpdatePendingOrders(addr consensus.Addr, ps []PendingOrder) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+func (s *State) PendingOrder(addr consensus.Addr, id OrderID) (p PendingOrder, ok bool) {
+	b := s.trie.Get(addrPendingOrderPath(addr, id))
+	if len(b) == 0 {
+		return
+	}
 
-	b, err := rlp.EncodeToBytes(ps)
+	err := rlp.DecodeBytes(b, &p)
 	if err != nil {
 		panic(err)
 	}
 
-	path := addrPendingOrdersPath(addr)
-	s.trie.Update(path, b)
+	return p, true
+}
+
+func (s *State) UpdatePendingOrder(addr consensus.Addr, p PendingOrder) {
+	b, err := rlp.EncodeToBytes(p)
+	if err != nil {
+		panic(err)
+	}
+
+	s.trie.Update(addrPendingOrderPath(addr, p.ID), b)
+}
+
+func (s *State) RemovePendingOrder(addr consensus.Addr, id OrderID) {
+	s.trie.Delete(addrPendingOrderPath(addr, id))
 }
 
 func (s *State) PendingOrders(addr consensus.Addr) []PendingOrder {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	prefix := encodePath(addrPendingOrdersPath(addr))
+	iter := s.trie.NodeIterator(prefix)
 
-	b := s.trie.Get(addrPendingOrdersPath(addr))
-	if len(b) == 0 {
-		return nil
+	var r []PendingOrder
+	hasNext := true
+	foundPrefix := false
+
+	for ; hasNext; hasNext = iter.Next(true) {
+		if err := iter.Error(); err != nil {
+			log.Error("error iterating state trie's tokens", "err", err)
+			break
+		}
+
+		if !iter.Leaf() {
+			continue
+		}
+
+		path := iter.Path()
+		if !bytes.HasPrefix(path, prefix) {
+			if foundPrefix {
+				break
+			}
+
+			continue
+		}
+		foundPrefix = true
+
+		var order PendingOrder
+		err := rlp.DecodeBytes(iter.LeafBlob(), &order)
+		if err != nil {
+			panic(err)
+		}
+
+		r = append(r, order)
 	}
-
-	var ps []PendingOrder
-	err := rlp.DecodeBytes(b, &ps)
-	if err != nil {
-		panic(err)
-	}
-
-	return ps
+	return r
 }
 
 func (s *State) UpdateExecutionReports(addr consensus.Addr, es []ExecutionReport) {
@@ -443,8 +490,10 @@ func (s *State) saveOrderBook(m MarketSymbol, book *orderBook) {
 		panic(err)
 	}
 
+	s.mu.Lock()
 	path := marketPath(m.Encode())
 	s.trie.Update(path, b)
+	s.mu.Unlock()
 }
 
 // Tokens returns all issued tokens

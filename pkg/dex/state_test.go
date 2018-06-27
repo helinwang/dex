@@ -103,10 +103,29 @@ func TestStateBalances(t *testing.T) {
 func TestStatePendingOrders(t *testing.T) {
 	s := NewState(ethdb.NewMemDatabase())
 	addr := consensus.RandSK().MustPK().Addr()
+	order := PendingOrder{ID: OrderID{ID: 1}, Executed: 100}
+	order1 := PendingOrder{ID: OrderID{ID: 2}, Executed: 1000}
+	_, ok := s.PendingOrder(addr, order.ID)
+	assert.False(t, ok)
+	s.UpdatePendingOrder(addr, order)
+	s.UpdatePendingOrder(addr, order1)
+
+	o, ok := s.PendingOrder(addr, order.ID)
+	assert.True(t, ok)
+	assert.Equal(t, order, o)
+	o1, ok := s.PendingOrder(addr, order1.ID)
+	assert.True(t, ok)
+	assert.Equal(t, order1, o1)
+	assert.Equal(t, []PendingOrder{o, o1}, s.PendingOrders(addr))
+
+	s.RemovePendingOrder(addr, o.ID)
+	_, ok = s.PendingOrder(addr, o.ID)
+	assert.False(t, ok)
+	assert.Equal(t, []PendingOrder{o1}, s.PendingOrders(addr))
+	s.RemovePendingOrder(addr, o1.ID)
+	_, ok = s.PendingOrder(addr, o1.ID)
+	assert.False(t, ok)
 	assert.Equal(t, 0, len(s.PendingOrders(addr)))
-	ps := []PendingOrder{{Executed: 100}}
-	s.UpdatePendingOrders(addr, ps)
-	assert.Equal(t, ps, s.PendingOrders(addr))
 }
 
 func TestStateExecutionReports(t *testing.T) {

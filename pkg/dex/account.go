@@ -1,6 +1,7 @@
 package dex
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"sort"
@@ -28,6 +29,13 @@ type Balance struct {
 type OrderID struct {
 	ID     uint64
 	Market MarketSymbol
+}
+
+func (o *OrderID) Bytes() []byte {
+	m := o.Market.Encode()
+	buf := make([]byte, 64)
+	binary.LittleEndian.PutUint64(buf, uint64(o.ID))
+	return append(m, buf...)
 }
 
 func (o *OrderID) Encode() string {
@@ -78,8 +86,6 @@ type Account struct {
 	nonceVecDirty         bool
 	balances              map[TokenID]Balance
 	balanceDirty          bool
-	pendingOrders         map[OrderID]PendingOrder
-	pendingOrdersDirty    bool
 	executionReports      []ExecutionReport
 	executionReportsDirty bool
 }
@@ -127,51 +133,19 @@ func (a *Account) loadNonceVec() {
 }
 
 func (a *Account) PendingOrder(id OrderID) (PendingOrder, bool) {
-	if a.pendingOrders == nil {
-		a.loadPendingOrders()
-	}
-	o, ok := a.pendingOrders[id]
-	return o, ok
-}
-
-func (a *Account) loadPendingOrders() {
-	a.pendingOrders = make(map[OrderID]PendingOrder)
-	if !a.newAccount {
-		ps := a.state.PendingOrders(a.addr)
-		for _, p := range ps {
-			a.pendingOrders[p.ID] = p
-		}
-	}
+	return a.state.PendingOrder(a.addr, id)
 }
 
 func (a *Account) UpdatePendingOrder(p PendingOrder) {
-	if a.pendingOrders == nil {
-		a.loadPendingOrders()
-	}
-	a.pendingOrders[p.ID] = p
-	a.pendingOrdersDirty = true
+	a.state.UpdatePendingOrder(a.addr, p)
 }
 
 func (a *Account) RemovePendingOrder(id OrderID) {
-	if a.pendingOrders == nil {
-		a.loadPendingOrders()
-	}
-	delete(a.pendingOrders, id)
-	a.pendingOrdersDirty = true
+	a.state.RemovePendingOrder(a.addr, id)
 }
 
 func (a *Account) PendingOrders() []PendingOrder {
-	if a.pendingOrders == nil {
-		a.loadPendingOrders()
-	}
-
-	pendingOrders := make([]PendingOrder, len(a.pendingOrders))
-	i := 0
-	for _, v := range a.pendingOrders {
-		pendingOrders[i] = v
-		i++
-	}
-	return pendingOrders
+	return a.state.PendingOrders(a.addr)
 }
 
 func (a *Account) CheckAndIncrementNonce(idx int, val uint64) bool {
@@ -253,41 +227,6 @@ func (a *Account) CommitCache(s *State) {
 
 		a.state.UpdateBalances(a.addr, balances, ids)
 		a.balanceDirty = false
-	}
-
-	if a.pendingOrdersDirty {
-		orders := make([]PendingOrder, len(a.pendingOrders))
-		ids := make([]OrderID, len(a.pendingOrders))
-		i := 0
-		for id := range a.pendingOrders {
-			ids[i] = id
-			i++
-		}
-
-		// make the resulting slice deterministic
-		sort.Slice(ids, func(i, j int) bool {
-			a := ids[i]
-			b := ids[j]
-			if a.Market == b.Market {
-				return a.ID < b.ID
-			}
-
-			if a.Market.Base < b.Market.Base {
-				return true
-			}
-
-			if a.Market.Base > b.Market.Base {
-				return false
-			}
-
-			return a.Market.Quote < b.Market.Quote
-		})
-
-		for i := range ids {
-			orders[i] = a.pendingOrders[ids[i]]
-		}
-		a.state.UpdatePendingOrders(a.addr, orders)
-		a.pendingOrdersDirty = false
 	}
 
 	if a.executionReportsDirty {
