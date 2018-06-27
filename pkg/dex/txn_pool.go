@@ -12,7 +12,7 @@ import (
 )
 
 type pker interface {
-	PK(addr consensus.Addr) consensus.PK
+	PK(addr consensus.Addr) PK
 }
 
 type TxnPool struct {
@@ -84,7 +84,7 @@ func parseTxn(b []byte, pker pker) (*consensus.Txn, error) {
 		return nil, fmt.Errorf("unknown txn type: %v", txn.T)
 	}
 
-	if !txn.Sig.Verify(pker.PK(txn.Owner), txn.Encode(false)) {
+	if !txn.Sig.Verify(txn.Encode(false), pker.PK(txn.Owner)) {
 		return nil, fmt.Errorf("txn signature verification failed")
 	}
 

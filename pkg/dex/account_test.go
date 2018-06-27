@@ -11,7 +11,7 @@ import (
 
 func TestAccountCommitCache(t *testing.T) {
 	s := NewState(ethdb.NewMemDatabase())
-	pk := consensus.RandSK().MustPK()
+	pk, _ := RandKeyPair()
 	acc := s.NewAccount(pk)
 	acc.CheckAndIncrementNonce(0, 0)
 	assert.Equal(t, []uint64{1}, acc.NonceVec())
@@ -33,7 +33,7 @@ func TestOrderIDEncodeDecode(t *testing.T) {
 
 func TestAccountHashDeterministic(t *testing.T) {
 	a := Account{
-		pk:       consensus.PK{1, 2, 3},
+		pk:       PK{1, 2, 3},
 		nonceVec: []uint64{4, 5},
 		balances: map[TokenID]Balance{
 			0: Balance{Available: 100, Pending: 20},

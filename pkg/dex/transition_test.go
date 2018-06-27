@@ -8,30 +8,28 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func createAccount(s *State, quant uint64) (consensus.SK, consensus.Addr) {
-	sk := consensus.RandSK()
-	acc := s.NewAccount(sk.MustPK())
-	addr := acc.PK().Addr()
+func createAccount(s *State, quant uint64) (SK, PK) {
+	pk, sk := RandKeyPair()
+	acc := s.NewAccount(pk)
 	acc.UpdateBalance(0, Balance{Available: quant})
 	s.CommitCache()
-	return sk, addr
+	return sk, pk
 }
 
 func TestSendToken(t *testing.T) {
 	s := NewState(ethdb.NewMemDatabase())
-	sk, addr := createAccount(s, 100)
+	sk, pk := createAccount(s, 100)
+	addr := pk.Addr()
 
 	// check balance not changed before commiting the txn
 	newAcc := s.Account(addr)
 	assert.Equal(t, 100, int(newAcc.balances[0].Available))
 
-	skRecv := consensus.RandSK()
-	to := skRecv.MustPK()
-	txn := MakeSendTokenTxn(sk, to, 0, 20, 0, 0)
+	to, _ := RandKeyPair()
+	txn := MakeSendTokenTxn(sk, addr, to, 0, 20, 0, 0)
 	trans := s.Transition(1)
-	pk := sk.MustPK()
-	pt, err := parseTxn(txn, &myPKer{m: map[consensus.Addr]consensus.PK{
-		pk.Addr(): pk,
+	pt, err := parseTxn(txn, &myPKer{m: map[consensus.Addr]PK{
+		addr: pk,
 	}})
 	if err != nil {
 		panic(err)
@@ -53,17 +51,17 @@ func TestSendToken(t *testing.T) {
 
 func TestFreezeToken(t *testing.T) {
 	s := NewState(ethdb.NewMemDatabase())
-	sk, addr := createAccount(s, 100)
+	sk, pk := createAccount(s, 100)
+	addr := pk.Addr()
 
 	// check balance not changed before commiting the txn
 	newAcc := s.Account(addr)
 	assert.Equal(t, 100, int(newAcc.balances[0].Available))
-	txn := MakeFreezeTokenTxn(sk, FreezeTokenTxn{TokenID: 0, AvailableRound: 3, Quant: 50}, 0, 0)
+	txn := MakeFreezeTokenTxn(sk, addr, FreezeTokenTxn{TokenID: 0, AvailableRound: 3, Quant: 50}, 0, 0)
 
 	trans := s.Transition(1)
-	pk := sk.MustPK()
-	pt, err := parseTxn(txn, &myPKer{m: map[consensus.Addr]consensus.PK{
-		pk.Addr(): pk,
+	pt, err := parseTxn(txn, &myPKer{m: map[consensus.Addr]PK{
+		addr: pk,
 	}})
 	if err != nil {
 		panic(err)
@@ -87,7 +85,8 @@ func TestFreezeToken(t *testing.T) {
 func TestTransitionNotCommitToDB(t *testing.T) {
 	memDB := ethdb.NewMemDatabase()
 	s := NewState(memDB)
-	sk, addr := createAccount(s, 100)
+	sk, pk := createAccount(s, 100)
+	addr := pk.Addr()
 	h, err := s.trie.Commit(nil)
 	if err != nil {
 		panic(err)
@@ -104,15 +103,13 @@ func TestTransitionNotCommitToDB(t *testing.T) {
 	newAcc := s.Account(addr)
 	assert.Equal(t, 100, int(newAcc.balances[0].Available))
 	trans := s.Transition(1)
-	pk := sk.MustPK()
-	pker := &myPKer{m: map[consensus.Addr]consensus.PK{
-		pk.Addr(): pk,
+	pker := &myPKer{m: map[consensus.Addr]PK{
+		addr: pk,
 	}}
 
 	for i := 0; i < 99; i++ {
-		skRecv := consensus.RandSK()
-		to := skRecv.MustPK()
-		txn := MakeSendTokenTxn(sk, to, 0, 1, uint8(i), 0)
+		to, _ := RandKeyPair()
+		txn := MakeSendTokenTxn(sk, addr, to, 0, 1, uint8(i), 0)
 		pt, err := parseTxn(txn, pker)
 		if err != nil {
 			panic(err)
@@ -142,12 +139,12 @@ func TestIssueToken(t *testing.T) {
 
 	s := NewState(ethdb.NewMemDatabase())
 	s.UpdateToken(Token{ID: 0, TokenInfo: BNBInfo})
-	sk, addr := createAccount(s, 100)
+	sk, pk := createAccount(s, 100)
+	addr := pk.Addr()
 	trans := s.Transition(1)
-	txn := MakeIssueTokenTxn(sk, btcInfo, 0, 0)
-	pk := sk.MustPK()
-	pt, err := parseTxn(txn, &myPKer{m: map[consensus.Addr]consensus.PK{
-		pk.Addr(): pk,
+	txn := MakeIssueTokenTxn(sk, addr, btcInfo, 0, 0)
+	pt, err := parseTxn(txn, &myPKer{m: map[consensus.Addr]PK{
+		addr: pk,
 	}})
 	if err != nil {
 		panic(err)
@@ -169,7 +166,8 @@ func TestIssueToken(t *testing.T) {
 func TestOrderAlreadyExpired(t *testing.T) {
 	s := NewState(ethdb.NewMemDatabase())
 	s.UpdateToken(Token{ID: 0, TokenInfo: BNBInfo})
-	sk, addr := createAccount(s, 100)
+	sk, pk := createAccount(s, 100)
+	addr := pk.Addr()
 	order := PlaceOrderTxn{
 		SellSide:    false,
 		Quant:       40,
@@ -179,9 +177,8 @@ func TestOrderAlreadyExpired(t *testing.T) {
 	}
 
 	trans := s.Transition(1)
-	pk := sk.MustPK()
-	pt, err := parseTxn(MakePlaceOrderTxn(sk, order, 0, 0), &myPKer{m: map[consensus.Addr]consensus.PK{
-		pk.Addr(): pk,
+	pt, err := parseTxn(MakePlaceOrderTxn(sk, addr, order, 0, 0), &myPKer{m: map[consensus.Addr]PK{
+		addr: pk,
 	}})
 	if err != nil {
 		panic(err)
@@ -199,7 +196,8 @@ func TestOrderExpire(t *testing.T) {
 	s := NewState(ethdb.NewMemDatabase())
 	s.UpdateToken(Token{ID: 0, TokenInfo: BNBInfo})
 	s.UpdateToken(Token{ID: 1, TokenInfo: BNBInfo})
-	sk, addr := createAccount(s, 100)
+	sk, pk := createAccount(s, 100)
+	addr := pk.Addr()
 	acc := s.Account(addr)
 	acc.UpdateBalance(1, Balance{Available: 100})
 	s.CommitCache()
@@ -213,9 +211,8 @@ func TestOrderExpire(t *testing.T) {
 	}
 
 	trans := s.Transition(1)
-	pk := sk.MustPK()
-	pt, err := parseTxn(MakePlaceOrderTxn(sk, order, 0, 0), &myPKer{m: map[consensus.Addr]consensus.PK{
-		pk.Addr(): pk,
+	pt, err := parseTxn(MakePlaceOrderTxn(sk, addr, order, 0, 0), &myPKer{m: map[consensus.Addr]PK{
+		addr: pk,
 	}})
 	if err != nil {
 		panic(err)
@@ -240,7 +237,8 @@ func TestPlaceOrder(t *testing.T) {
 	s := NewState(ethdb.NewMemDatabase())
 	s.UpdateToken(Token{ID: 0, TokenInfo: BNBInfo})
 	s.UpdateToken(Token{ID: 1, TokenInfo: BNBInfo})
-	sk, addr := createAccount(s, 100)
+	sk, pk := createAccount(s, 100)
+	addr := pk.Addr()
 	acc := s.Account(addr)
 	acc.UpdateBalance(1, Balance{Available: 100})
 	s.CommitCache()
@@ -253,11 +251,10 @@ func TestPlaceOrder(t *testing.T) {
 		Market:      MarketSymbol{Quote: 0, Base: 1},
 	}
 	trans := s.Transition(1)
-	pk := sk.MustPK()
-	pker := &myPKer{m: map[consensus.Addr]consensus.PK{
-		pk.Addr(): pk,
+	pker := &myPKer{m: map[consensus.Addr]PK{
+		addr: pk,
 	}}
-	pt, err := parseTxn(MakePlaceOrderTxn(sk, order, 0, 0), pker)
+	pt, err := parseTxn(MakePlaceOrderTxn(sk, addr, order, 0, 0), pker)
 	if err != nil {
 		panic(err)
 	}
@@ -278,7 +275,7 @@ func TestPlaceOrder(t *testing.T) {
 		ExpireRound: 3,
 		Market:      MarketSymbol{Quote: 0, Base: 1},
 	}
-	pt, err = parseTxn(MakePlaceOrderTxn(sk, order, 0, 1), pker)
+	pt, err = parseTxn(MakePlaceOrderTxn(sk, addr, order, 0, 1), pker)
 	if err != nil {
 		panic(err)
 	}

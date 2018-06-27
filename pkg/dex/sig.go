@@ -23,6 +23,10 @@ func RandKeyPair() (PK, SK) {
 	return PK(pubkey), SK(math.PaddedBigBytes(key.D, 32))
 }
 
+func (p PK) Addr() consensus.Addr {
+	return consensus.SHA3(p).Addr()
+}
+
 func (s SK) Sign(msg []byte) Sig {
 	in := consensus.SHA3(msg)
 	sig, err := secp256k1.Sign(in[:], s)

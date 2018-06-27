@@ -79,7 +79,7 @@ type PendingOrder struct {
 type Account struct {
 	state      *State
 	addr       consensus.Addr
-	pk         consensus.PK
+	pk         PK
 	newAccount bool
 	// a vector of nonce that enables concurrent transactions.
 	nonceVec       []uint64
@@ -185,7 +185,7 @@ func (a *Account) UpdateBalance(tokenID TokenID, balance Balance) {
 	a.balanceDirty = true
 }
 
-func (a *Account) PK() consensus.PK {
+func (a *Account) PK() PK {
 	return a.pk
 }
 

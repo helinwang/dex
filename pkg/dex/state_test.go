@@ -43,10 +43,10 @@ func TestStateTokens(t *testing.T) {
 }
 
 func TestStateSerialize(t *testing.T) {
-	owner := consensus.RandSK().MustPK()
+	owner, _ := RandKeyPair()
 	token0 := Token{ID: 1, TokenInfo: TokenInfo{Symbol: "BTC", Decimals: 8, TotalUnits: 10000000000}}
 	token1 := Token{ID: 2, TokenInfo: TokenInfo{Symbol: "ETH", Decimals: 8, TotalUnits: 1000000000}}
-	s := CreateGenesisState([]consensus.PK{owner}, []TokenInfo{token0.TokenInfo, token1.TokenInfo})
+	s := CreateGenesisState([]PK{owner}, []TokenInfo{token0.TokenInfo, token1.TokenInfo})
 	nativeToken := Token{ID: 0, TokenInfo: BNBInfo}
 	s.UpdateToken(token0)
 	s.UpdateToken(token1)

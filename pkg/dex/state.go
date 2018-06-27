@@ -68,7 +68,7 @@ var BNBInfo = TokenInfo{
 	TotalUnits: 200000000 * 100000000,
 }
 
-func CreateGenesisState(recipients []consensus.PK, additionalTokens []TokenInfo) *State {
+func CreateGenesisState(recipients []PK, additionalTokens []TokenInfo) *State {
 	memDB := ethdb.NewMemDatabase()
 	s := NewState(memDB)
 	tokens := make([]Token, len(additionalTokens)+1)
@@ -234,7 +234,7 @@ func (s *State) CommitCache() {
 	}
 }
 
-func (s *State) NewAccount(pk consensus.PK) *Account {
+func (s *State) NewAccount(pk PK) *Account {
 	account := &Account{
 		addr:       pk.Addr(),
 		pk:         pk,
@@ -248,18 +248,18 @@ func (s *State) NewAccount(pk consensus.PK) *Account {
 	return account
 }
 
-func (s *State) pk(addr consensus.Addr) consensus.PK {
+func (s *State) pk(addr consensus.Addr) PK {
 	b := s.trie.Get(addrPKPath(addr))
-	return consensus.PK(b)
+	return PK(b)
 }
 
-func (s *State) PK(addr consensus.Addr) consensus.PK {
+func (s *State) PK(addr consensus.Addr) PK {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.pk(addr)
 }
 
-func (s *State) UpdatePK(pk consensus.PK) {
+func (s *State) UpdatePK(pk PK) {
 	addr := pk.Addr()
 
 	s.mu.Lock()
