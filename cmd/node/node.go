@@ -30,13 +30,7 @@ func decodeFromFile(path string, v interface{}) {
 	}
 }
 
-func createNode(c consensus.NodeCredentials, genesis consensus.Genesis, u consensus.Updater, t, g int) *consensus.Node {
-	cfg := consensus.Config{
-		BlockTime:      time.Second,
-		GroupSize:      g,
-		GroupThreshold: t,
-	}
-
+func createNode(c consensus.NodeCredentials, genesis consensus.Genesis, u consensus.Updater, cfg consensus.Config) *consensus.Node {
 	state := dex.NewState(ethdb.NewMemDatabase())
 	return consensus.MakeNode(c, cfg, genesis, state, dex.NewTxnPool(state), u)
 }
@@ -92,8 +86,15 @@ func main() {
 		panic(err)
 	}
 
+	cfg := consensus.Config{
+		BlockTime:      time.Second,
+		GroupSize:      *groupSize,
+		GroupThreshold: *threshold,
+		ShardCount:     3,
+	}
+
 	server := dex.NewRPCServer()
-	n := createNode(credential, genesis, server, *threshold, *groupSize)
+	n := createNode(credential, genesis, server, cfg)
 	server.SetSender(n)
 	server.SetStater(n.Chain())
 	err = server.Start(*rpcAddr)
@@ -107,7 +108,8 @@ func main() {
 		return
 	}
 
-	log15.Info("node info", "addr", credential.SK.MustPK().Addr(), "member of groups", credential.Groups)
+	pk := credential.SK.MustPK()
+	log15.Info("node info", "addr", pk.Addr(), "shard index", pk.Shard(cfg.ShardCount), "total shard", cfg.ShardCount, "member of groups", credential.Groups)
 	n.EndRound(0)
 
 	select {}

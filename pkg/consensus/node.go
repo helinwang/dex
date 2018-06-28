@@ -17,11 +17,12 @@ import (
 // Nodes form a group randomly, the randomness comes from the random
 // beacon.
 type Node struct {
-	addr    Addr
-	cfg     Config
-	sk      SK
-	gateway *gateway
-	chain   *Chain
+	addr     Addr
+	shardIdx int
+	cfg      Config
+	sk       SK
+	gateway  *gateway
+	chain    *Chain
 
 	mu sync.Mutex
 	// the memberships of different groups
@@ -40,6 +41,8 @@ type NodeCredentials struct {
 	GroupShares []SK
 }
 
+// TODO: make sure nodes from the same shard is in the same group.
+
 type membership struct {
 	skShare SK
 	groupID int
@@ -50,10 +53,11 @@ type Config struct {
 	BlockTime      time.Duration
 	GroupSize      int
 	GroupThreshold int
+	ShardCount     int
 }
 
 // NewNode creates a new node.
-func NewNode(chain *Chain, sk SK, net *gateway, cfg Config) *Node {
+func NewNode(chain *Chain, sk SK, net *gateway, cfg Config, shardIdx int) *Node {
 	pk, err := sk.PK()
 	if err != nil {
 		panic(err)
@@ -62,6 +66,7 @@ func NewNode(chain *Chain, sk SK, net *gateway, cfg Config) *Node {
 	addr := pk.Addr()
 	n := &Node{
 		addr:           addr,
+		shardIdx:       shardIdx,
 		cfg:            cfg,
 		sk:             sk,
 		chain:          chain,
@@ -243,6 +248,11 @@ func (n *Node) SendTxn(t []byte) {
 
 // MakeNode makes a new node with the given configurations.
 func MakeNode(credentials NodeCredentials, cfg Config, genesis Genesis, state State, txnPool TxnPool, u Updater) *Node {
+	if cfg.ShardCount <= 0 {
+		panic(fmt.Errorf("must have a positive shard count, current: %d", cfg.ShardCount))
+	}
+	shardIdx := credentials.SK.MustPK().Shard(cfg.ShardCount)
+
 	randSeed := Rand(SHA3([]byte("dex")))
 	err := state.Deserialize(genesis.State)
 	if err != nil {
@@ -250,9 +260,9 @@ func MakeNode(credentials NodeCredentials, cfg Config, genesis Genesis, state St
 	}
 
 	chain := NewChain(&genesis.Block, state, randSeed, cfg, txnPool, u)
-	net := newNetwork(credentials.SK)
+	net := newNetwork(credentials.SK, shardIdx, cfg.ShardCount)
 	gateway := newGateway(net, chain)
-	node := NewNode(chain, credentials.SK, gateway, cfg)
+	node := NewNode(chain, credentials.SK, gateway, cfg, shardIdx)
 	for j := range credentials.Groups {
 		share := credentials.GroupShares[j]
 		m := membership{groupID: credentials.Groups[j], skShare: share}

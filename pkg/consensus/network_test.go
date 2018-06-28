@@ -4,14 +4,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dfinity/go-dfinity-crypto/bls"
 	"github.com/stretchr/testify/assert"
 )
 
 func makeNetwork() *network {
-	var sk bls.SecretKey
-	sk.SetByCSPRNG()
-	return newNetwork(SK(sk.GetLittleEndian()))
+	const shardCount = 1
+	sk := RandSK()
+	shardIdx := sk.MustPK().Shard(shardCount)
+	return newNetwork(sk, shardIdx, shardCount)
 }
 
 func TestNetworkConnectSeed(t *testing.T) {

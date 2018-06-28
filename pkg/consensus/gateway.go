@@ -283,6 +283,11 @@ func (n *gateway) recvData() {
 	}
 }
 
+// shardBroadcast broadcasts the item to peers in the same shard.
+func (n *gateway) shardBroadcast(item Item) {
+	n.net.Send(shardBroadcast{}, packet{Data: item})
+}
+
 func (n *gateway) broadcast(item Item) {
 	n.net.Send(broadcast{}, packet{Data: item})
 }
@@ -290,7 +295,7 @@ func (n *gateway) broadcast(item Item) {
 func (n *gateway) recvTxn(t []byte) {
 	txn, broadcast := n.chain.txnPool.Add(t)
 	if broadcast {
-		go n.broadcast(Item{T: txnItem, Hash: SHA3(txn.Raw)})
+		go n.shardBroadcast(Item{T: txnItem, Hash: SHA3(txn.Raw)})
 	}
 }
 
@@ -373,7 +378,7 @@ func (n *gateway) recvBlock(addr unicastAddr, b *Block) {
 	}
 
 	if broadcast {
-		go n.broadcast(Item{T: blockItem, Hash: b.Hash()})
+		go n.shardBroadcast(Item{T: blockItem, Hash: b.Hash()})
 	}
 }
 
@@ -395,7 +400,7 @@ func (n *gateway) recvBlockProposal(addr unicastAddr, bp *BlockProposal) {
 	}
 
 	if broadcast {
-		go n.broadcast(Item{T: blockProposalItem, Hash: bp.Hash()})
+		go n.shardBroadcast(Item{T: blockProposalItem, Hash: bp.Hash()})
 	}
 }
 
@@ -436,7 +441,7 @@ func (n *gateway) recvNtShare(addr unicastAddr, s *NtShare) {
 	}
 
 	if broadcast {
-		go n.broadcast(Item{T: ntShareItem, Hash: s.Hash()})
+		go n.shardBroadcast(Item{T: ntShareItem, Hash: s.Hash()})
 	}
 }
 
