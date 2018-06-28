@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"time"
 
 	log "github.com/helinwang/log15"
 )
@@ -102,10 +103,12 @@ func (n *Notary) notarize(bp *BlockProposal, pool TxnPool) *NtShare {
 		panic(fmt.Errorf("should not happen: can not find the state of pre block %v, bp: %v", bp.PrevBlock, bp.Hash()))
 	}
 
+	start := time.Now()
 	trans, err := recordTxns(state, pool, bp.Data, bp.Round)
 	if err != nil {
 		panic("should not happen, record block proposal transaction error, could be due to adversary: " + err.Error())
 	}
+	log.Info("notarize record txns done", "round", nts.Round, "bp", nts.BP, "dur", time.Now().Sub(start))
 
 	blk := &Block{
 		Owner:         bp.Owner,

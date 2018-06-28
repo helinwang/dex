@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"sync"
 	"time"
+
+	log "github.com/helinwang/log15"
 )
 
 const (
@@ -145,7 +147,9 @@ func (s *syncer) syncBlock(addr unicastAddr, hash Hash, round uint64) (b *Block,
 	weight = rankToWeight(rank)
 
 	state := s.chain.BlockState(b.PrevBlock)
+	start := time.Now()
 	trans, err := recordTxns(state, s.chain.txnPool, bp.Data, bp.Round)
+	log.Info("sync block record txns done", "round", bp.Round, "bp", bp.Hash(), "dur", time.Now().Sub(start))
 	if err != nil {
 		return
 	}

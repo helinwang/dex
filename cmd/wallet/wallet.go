@@ -350,7 +350,7 @@ func printStatus(c *cli.Context) error {
 	fmt.Printf("%s, round: %d\n", str, state.Round)
 	fmt.Println("Metrics of last 10 rounds:")
 	tw := tabwriter.NewWriter(os.Stdout, 0, 0, 1, ' ', tabwriter.AlignRight|tabwriter.Debug)
-	_, err = fmt.Fprintln(tw, "\tRound\tBlock Time\tTransaction count\t")
+	_, err = fmt.Fprintln(tw, "\tRound\tBlock Time\tTransaction Count\t")
 	if err != nil {
 		return err
 	}
@@ -369,7 +369,7 @@ func printStatus(c *cli.Context) error {
 
 	fmt.Println("Stats")
 	tw = tabwriter.NewWriter(os.Stdout, 0, 0, 1, ' ', tabwriter.AlignRight|tabwriter.Debug)
-	_, err = fmt.Fprintln(tw, "\tNumber of rounds\tAverage Block Time\tTransaction per second\t")
+	_, err = fmt.Fprintln(tw, "\tNumber of Rounds\tAverage Block Time\tTransaction per Second\t")
 	if err != nil {
 		return err
 	}
