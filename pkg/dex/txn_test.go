@@ -29,3 +29,18 @@ func TestOrderEncodeDecode(t *testing.T) {
 
 	assert.Equal(t, o, o1)
 }
+
+func TestPlaceOrderEncodeDecode(t *testing.T) {
+	p := PlaceOrderTxn{
+		SellSide:    true,
+		Quant:       100,
+		Price:       1000,
+		ExpireRound: 5,
+		Market:      MarketSymbol{Base: 1, Quote: 2},
+	}
+	b := p.Encode()
+	var p0 PlaceOrderTxn
+	err := p0.Decode(b)
+	assert.Nil(t, err)
+	assert.Equal(t, p, p0)
+}

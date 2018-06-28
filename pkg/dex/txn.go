@@ -2,7 +2,9 @@ package dex
 
 import (
 	"bytes"
+	"encoding/binary"
 	"encoding/gob"
+	"fmt"
 
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/helinwang/dex/pkg/consensus"
@@ -103,6 +105,52 @@ type PlaceOrderTxn struct {
 	Market      MarketSymbol
 }
 
+func (p *PlaceOrderTxn) Encode() []byte {
+	var buf bytes.Buffer
+	b := make([]byte, 64)
+	n := binary.PutUvarint(b, p.Quant)
+	buf.Write(b[:n])
+	n = binary.PutUvarint(b, p.Price)
+	buf.Write(b[:n])
+	n = binary.PutUvarint(b, p.ExpireRound)
+	buf.Write(b[:n])
+	buf.Write(p.Market.Encode())
+	if p.SellSide {
+		buf.Write([]byte{1})
+	}
+	return buf.Bytes()
+}
+
+func (p *PlaceOrderTxn) Decode(b []byte) error {
+	var t PlaceOrderTxn
+	v, n := binary.Uvarint(b)
+	t.Quant = v
+	b = b[n:]
+
+	v, n = binary.Uvarint(b)
+	t.Price = v
+	b = b[n:]
+
+	v, n = binary.Uvarint(b)
+	t.ExpireRound = v
+	b = b[n:]
+
+	n, err := t.Market.Decode(b)
+	if err != nil {
+		return err
+	}
+
+	b = b[n:]
+	if len(b) == 1 {
+		t.SellSide = true
+	} else if len(b) > 1 {
+		return fmt.Errorf("unexpected bytes remaining, count: %d", len(b))
+	}
+
+	*p = t
+	return nil
+}
+
 type CancelOrderTxn struct {
 	ID OrderID
 }
@@ -149,7 +197,7 @@ func MakePlaceOrderTxn(sk SK, owner consensus.Addr, t PlaceOrderTxn, nonceIdx ui
 		Owner:      owner,
 		NonceIdx:   nonceIdx,
 		NonceValue: nonceValue,
-		Data:       gobEncode(t),
+		Data:       t.Encode(),
 	}
 
 	txn.Sig = sk.Sign(txn.Encode(false))

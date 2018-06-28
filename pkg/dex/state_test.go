@@ -24,7 +24,7 @@ func TestMarketSymbolBytes(t *testing.T) {
 func TestMarketEncodeDecode(t *testing.T) {
 	m := MarketSymbol{Base: 1<<64 - 1, Quote: 1}
 	var m1 MarketSymbol
-	err := m1.Decode(m.Encode())
+	_, err := m1.Decode(m.Encode())
 	if err != nil {
 		panic(err)
 	}

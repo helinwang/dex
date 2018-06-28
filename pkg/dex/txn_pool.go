@@ -36,7 +36,6 @@ func parseTxn(b []byte, pker pker) (*consensus.Txn, error) {
 		return nil, fmt.Errorf("error decode txn: %v", err)
 	}
 
-	dec := gob.NewDecoder(bytes.NewReader(txn.Data))
 	ret := &consensus.Txn{
 		Raw:      b,
 		Owner:    txn.Owner,
@@ -46,13 +45,14 @@ func parseTxn(b []byte, pker pker) (*consensus.Txn, error) {
 
 	switch txn.T {
 	case PlaceOrder:
-		var txn PlaceOrderTxn
-		err := dec.Decode(&txn)
+		var t PlaceOrderTxn
+		err := t.Decode(txn.Data)
 		if err != nil {
 			return nil, fmt.Errorf("PlaceOrderTxn decode failed: %v", err)
 		}
-		ret.Decoded = &txn
+		ret.Decoded = &t
 	case CancelOrder:
+		dec := gob.NewDecoder(bytes.NewReader(txn.Data))
 		var txn CancelOrderTxn
 		err := dec.Decode(&txn)
 		if err != nil {
@@ -60,6 +60,7 @@ func parseTxn(b []byte, pker pker) (*consensus.Txn, error) {
 		}
 		ret.Decoded = &txn
 	case IssueToken:
+		dec := gob.NewDecoder(bytes.NewReader(txn.Data))
 		var txn IssueTokenTxn
 		err := dec.Decode(&txn)
 		if err != nil {
@@ -67,6 +68,7 @@ func parseTxn(b []byte, pker pker) (*consensus.Txn, error) {
 		}
 		ret.Decoded = &txn
 	case SendToken:
+		dec := gob.NewDecoder(bytes.NewReader(txn.Data))
 		var txn SendTokenTxn
 		err := dec.Decode(&txn)
 		if err != nil {
@@ -74,6 +76,7 @@ func parseTxn(b []byte, pker pker) (*consensus.Txn, error) {
 		}
 		ret.Decoded = &txn
 	case FreezeToken:
+		dec := gob.NewDecoder(bytes.NewReader(txn.Data))
 		var txn FreezeTokenTxn
 		err := dec.Decode(&txn)
 		if err != nil {
@@ -93,12 +96,12 @@ func parseTxn(b []byte, pker pker) (*consensus.Txn, error) {
 
 func (t *TxnPool) Add(b []byte) (r *consensus.Txn, boardcast bool) {
 	t.mu.Lock()
-	defer t.mu.Unlock()
-
 	hash := consensus.SHA3(b)
 	if _, ok := t.txns[hash]; ok {
+		t.mu.Unlock()
 		return
 	}
+	t.mu.Unlock()
 
 	ret, err := parseTxn(b, t.pker)
 	if err != nil {
@@ -106,7 +109,9 @@ func (t *TxnPool) Add(b []byte) (r *consensus.Txn, boardcast bool) {
 		return nil, false
 	}
 
+	t.mu.Lock()
 	t.txns[hash] = ret
+	t.mu.Unlock()
 	return ret, true
 }
 

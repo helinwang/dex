@@ -3,7 +3,6 @@ package dex
 import (
 	"bytes"
 	"encoding/binary"
-	"fmt"
 	"sync"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -33,21 +32,18 @@ func (m *MarketSymbol) Valid() bool {
 // path. The path lead to the pending orders of an account in the
 // market.
 func (m *MarketSymbol) Encode() []byte {
-	bufA := make([]byte, 64)
-	bufB := make([]byte, 64)
-	binary.LittleEndian.PutUint64(bufA, uint64(m.Quote))
-	binary.LittleEndian.PutUint64(bufB, uint64(m.Base))
-	return append(bufA, bufB...)
+	buf := make([]byte, 128)
+	n0 := binary.PutUvarint(buf, uint64(m.Quote))
+	n1 := binary.PutUvarint(buf[n0:], uint64(m.Base))
+	return buf[:n0+n1]
 }
 
-func (m *MarketSymbol) Decode(b []byte) error {
-	if len(b) != 128 {
-		return fmt.Errorf("bytes len not correct, expected 128, received %d", len(b))
-	}
-
-	m.Quote = TokenID(binary.LittleEndian.Uint64(b[:64]))
-	m.Base = TokenID(binary.LittleEndian.Uint64(b[64:]))
-	return nil
+func (m *MarketSymbol) Decode(b []byte) (int, error) {
+	v, n0 := binary.Uvarint(b)
+	m.Quote = TokenID(v)
+	v, n1 := binary.Uvarint(b[n0:])
+	m.Base = TokenID(v)
+	return n0 + n1, nil
 }
 
 // State is the state of the DEX.
