@@ -83,8 +83,8 @@ func loadCredentials(dir string) ([]dex.PK, error) {
 }
 
 func main() {
-	numNode := flag.Int("N", 30, "number of nodes registered in the genesis block")
-	numGroup := flag.Int("g", 20, "number of groups registered in the genesis block")
+	numNode := flag.Int("N", 9, "number of nodes registered in the genesis block")
+	numGroup := flag.Int("g", 3, "number of groups registered in the genesis block")
 	groupSize := flag.Int("n", 3, "group size")
 	threshold := flag.Int("t", 2, "group threshold size")
 	outDir := flag.String("dir", "./genesis", "output directoy name")
@@ -172,11 +172,13 @@ func main() {
 
 	groupIDs := make([]int, *numGroup)
 	for i := range groupIDs {
-		perm := rand.Perm(*groupSize, *numNode)
-		rand = rand.Derive(rand[:])
+		idxs := make([]int, *groupSize)
+		for j := range idxs {
+			idxs[j] = (i**groupSize + j) % *numNode
+		}
 		idVec := make([]bls.ID, *groupSize)
 		for i := range idVec {
-			pk := nodePKs[perm[i]]
+			pk := nodePKs[idxs[i]]
 			idVec[i] = pk.Addr().ID()
 		}
 		var groupPK bls.PublicKey
@@ -190,14 +192,14 @@ func main() {
 		}
 
 		for j := range shares {
-			nodes[perm[j]].GroupShares = append(nodes[perm[j]].GroupShares, shares[j].GetLittleEndian())
-			nodes[perm[j]].Groups = append(nodes[perm[j]].Groups, i)
+			nodes[idxs[j]].GroupShares = append(nodes[idxs[j]].GroupShares, shares[j].GetLittleEndian())
+			nodes[idxs[j]].Groups = append(nodes[idxs[j]].Groups, i)
 		}
 
 		txn := consensus.RegGroupTxn{
 			ID:         i,
 			PK:         consensus.PK(groupPK.Serialize()),
-			MemberIDs:  perm,
+			MemberIDs:  idxs,
 			MemberVVec: memberVVec,
 		}
 		sysTxns = append(sysTxns, consensus.SysTxn{

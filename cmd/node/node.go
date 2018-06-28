@@ -30,11 +30,11 @@ func decodeFromFile(path string, v interface{}) {
 	}
 }
 
-func createNode(c consensus.NodeCredentials, genesis consensus.Genesis, u consensus.Updater) *consensus.Node {
+func createNode(c consensus.NodeCredentials, genesis consensus.Genesis, u consensus.Updater, t, g int) *consensus.Node {
 	cfg := consensus.Config{
 		BlockTime:      time.Second,
-		GroupSize:      3,
-		GroupThreshold: 2,
+		GroupSize:      g,
+		GroupThreshold: t,
 	}
 
 	state := dex.NewState(ethdb.NewMemDatabase())
@@ -43,6 +43,8 @@ func createNode(c consensus.NodeCredentials, genesis consensus.Genesis, u consen
 
 func main() {
 	rand.Seed(time.Now().UnixNano())
+	groupSize := flag.Int("g", 3, "group size")
+	threshold := flag.Int("t", 2, "group signature threshold size")
 	profileDur := flag.Duration("profile-dur", 0, "profile duration")
 	lvl := flag.String("lvl", "info", "log level, possible values: debug, info, warn, error, crit")
 	c := flag.String("c", "./genesis", "path to the node credential file")
@@ -91,7 +93,7 @@ func main() {
 	}
 
 	server := dex.NewRPCServer()
-	n := createNode(credential, genesis, server)
+	n := createNode(credential, genesis, server, *threshold, *groupSize)
 	server.SetSender(n)
 	server.SetStater(n.Chain())
 	err = server.Start(*rpcAddr)
