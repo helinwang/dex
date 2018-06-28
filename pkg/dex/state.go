@@ -603,17 +603,8 @@ func (s *State) Transition(round uint64) consensus.Transition {
 
 	s.commitCache()
 
-	root, err := s.trie.Commit(nil)
-	if err != nil {
-		panic(err)
-	}
-
-	trie, err := trie.New(root, s.db)
-	if err != nil {
-		panic(err)
-	}
-
-	state := newState(trie, s.db, s.diskDB)
+	newTrie := *s.trie
+	state := newState(&newTrie, s.db, s.diskDB)
 	return newTransition(state, round)
 }
 
