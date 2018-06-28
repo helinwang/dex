@@ -285,12 +285,11 @@ func (n *gateway) broadcast(item Item) {
 	n.net.Send(broadcast{}, packet{Data: item})
 }
 
-func (n *gateway) recvTxn(t []byte) error {
+func (n *gateway) recvTxn(t []byte) {
 	txn, broadcast := n.chain.txnPool.Add(t)
 	if broadcast {
 		go n.broadcast(Item{T: txnItem, Hash: SHA3(txn.Raw)})
 	}
-	return nil
 }
 
 func (n *gateway) recvSysTxn(t *SysTxn) {

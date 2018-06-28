@@ -217,8 +217,8 @@ func (n *Node) recvBPForNotary(bp *BlockProposal) {
 	}
 }
 
-func (n *Node) SendTxn(t []byte) error {
-	return n.gateway.recvTxn(t)
+func (n *Node) SendTxn(t []byte) {
+	n.gateway.recvTxn(t)
 }
 
 // MakeNode makes a new node with the given configurations.

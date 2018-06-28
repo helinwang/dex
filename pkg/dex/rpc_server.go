@@ -13,7 +13,7 @@ import (
 )
 
 type TxnSender interface {
-	SendTxn([]byte) error
+	SendTxn([]byte)
 }
 
 type ChainStater interface {
@@ -136,7 +136,8 @@ func (r *RPCServer) tokens(_ int, t *TokenState) error {
 }
 
 func (r *RPCServer) sendTxn(t []byte, _ *int) error {
-	return r.sender.SendTxn(t)
+	go r.sender.SendTxn(t)
+	return nil
 }
 
 type NonceSlot struct {
