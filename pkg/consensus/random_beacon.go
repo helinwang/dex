@@ -190,7 +190,7 @@ func (r *RandomBeacon) WaitUntil(round uint64) {
 
 // Rank returns the rank for the given member in the current block
 // proposal committee.
-func (r *RandomBeacon) Rank(addr Addr, round uint64) (int, error) {
+func (r *RandomBeacon) Rank(addr Addr, round uint64) (uint16, error) {
 	if round < 1 {
 		panic("should not happen")
 	}
@@ -213,7 +213,7 @@ func (r *RandomBeacon) Rank(addr Addr, round uint64) (int, error) {
 
 	perm := r.nextBPRandHistory[round].Perm(idx+1, len(g.Members))
 	r.mu.Unlock()
-	return perm[idx], nil
+	return uint16(perm[idx]), nil
 }
 
 func (r *RandomBeacon) deriveRand(h Hash) {

@@ -427,10 +427,15 @@ func (c *Chain) addNtShare(n *NtShare, groupID int) (b *Block, added, success bo
 			panic(err)
 		}
 
-		// TODO: make sure the fields (except signature and
-		// owner) of all nt shares are same
+		rank, err := c.randomBeacon.Rank(bp.Owner, bp.Round)
+		if err != nil {
+			panic(err)
+		}
+
+		// TODO: make sure the related fields of all nt shares
+		// are same.
 		b = &Block{
-			Owner:         bp.Owner,
+			Rank:          rank,
 			Round:         bp.Round,
 			BlockProposal: bp.Hash(),
 			PrevBlock:     bp.PrevBlock,

@@ -378,7 +378,7 @@ func (n *gateway) recvBlock(addr unicastAddr, b *Block) {
 	}
 
 	if broadcast {
-		go n.shardBroadcast(Item{T: blockItem, Hash: b.Hash()})
+		go n.broadcast(Item{T: blockItem, Hash: b.Hash()})
 	}
 }
 

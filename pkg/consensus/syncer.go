@@ -139,13 +139,7 @@ func (s *syncer) syncBlock(addr unicastAddr, hash Hash, round uint64) (b *Block,
 		return
 	}
 
-	rank, err := s.chain.randomBeacon.Rank(b.Owner, b.Round)
-	if err != nil {
-		err = fmt.Errorf("error get rank, but group sig is valid: %v", err)
-		return
-	}
-	weight = rankToWeight(rank)
-
+	weight = rankToWeight(b.Rank)
 	state := s.chain.BlockState(b.PrevBlock)
 	start := time.Now()
 	trans, err := recordTxns(state, s.chain.txnPool, bp.Data, bp.Round)

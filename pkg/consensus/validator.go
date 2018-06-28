@@ -15,7 +15,7 @@ func newValidator(chain *Chain) *validator {
 	return &validator{chain: chain}
 }
 
-func rankToWeight(rank int) float64 {
+func rankToWeight(rank uint16) float64 {
 	if rank < 0 {
 		panic(rank)
 	}
@@ -48,13 +48,7 @@ func (v *validator) ValidateBlock(b *Block) (float64, bool) {
 		return 0, false
 	}
 
-	rank, err := v.chain.randomBeacon.Rank(b.Owner, b.Round)
-	if err != nil {
-		log.Error("error get rank, but group sig is valid", "err", err)
-		return 0, false
-	}
-
-	return rankToWeight(rank), true
+	return rankToWeight(b.Rank), true
 }
 
 // TODO: validator should not check round information, and signature

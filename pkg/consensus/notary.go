@@ -31,7 +31,7 @@ func NewNotary(owner Addr, sk, share SK, chain *Chain) *Notary {
 // nolint: gocyclo
 func (n *Notary) Notarize(ctx, cancel context.Context, bCh chan *BlockProposal, onNotarize func(*NtShare, time.Duration)) {
 	var bestRankBPs []*BlockProposal
-	bestRank := math.MaxInt32
+	bestRank := uint16(math.MaxUint16)
 	recvBestRank := false
 	recvBestRankCh := make(chan struct{})
 	notarize := func() {
@@ -125,9 +125,13 @@ func (n *Notary) notarize(bp *BlockProposal, pool TxnPool) (*NtShare, time.Durat
 	}
 	dur := time.Now().Sub(start)
 	log.Info("notarize record txns done", "round", nts.Round, "bp", nts.BP, "dur", dur)
+	rank, err := n.chain.randomBeacon.Rank(bp.Owner, bp.Round)
+	if err != nil {
+		panic(err)
+	}
 
 	blk := &Block{
-		Owner:         bp.Owner,
+		Rank:          rank,
 		Round:         bp.Round,
 		BlockProposal: bp.Hash(),
 		PrevBlock:     bp.PrevBlock,

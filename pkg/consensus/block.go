@@ -179,7 +179,7 @@ type Genesis struct {
 // notarization committee, it is notarized by the notarization
 // signature.
 type Block struct {
-	Owner         Addr
+	Rank          uint16
 	Round         uint64
 	StateRoot     Hash
 	BlockProposal Hash
