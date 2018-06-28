@@ -374,7 +374,7 @@ func printStatus(c *cli.Context) error {
 		return err
 	}
 
-	numRounds := []int{10, 30, 100}
+	numRounds := []int{3, 10, 30, 100}
 	avgBlockTime := make([]time.Duration, len(numRounds))
 	avgTxnPerSec := make([]float64, len(numRounds))
 	ready := make([]bool, len(numRounds))
