@@ -29,6 +29,7 @@ type Node struct {
 	notarizeChs    map[uint64][]chan *BlockProposal
 	bpForNotary    map[uint64][]*BlockProposal
 	round          uint64
+	recvBlockTime  map[uint64]time.Time
 	cancelNotarize map[uint64]func()
 }
 
@@ -68,6 +69,7 @@ func NewNode(chain *Chain, sk SK, net *gateway, cfg Config) *Node {
 		bpForNotary:    make(map[uint64][]*BlockProposal),
 		notarizeChs:    make(map[uint64][]chan *BlockProposal),
 		cancelNotarize: make(map[uint64]func()),
+		recvBlockTime:  make(map[uint64]time.Time),
 	}
 	chain.n = n
 	return n
@@ -93,6 +95,12 @@ func (n *Node) StartRound(round uint64) {
 		return
 	}
 
+	startTime := time.Now()
+	lastRoundEndTime, ok := n.recvBlockTime[round-1]
+	if !ok {
+		lastRoundEndTime = startTime
+	}
+
 	n.round = round
 	var ntCancelCtx context.Context
 	rbGroup, bpGroup, ntGroup := n.chain.randomBeacon.Committees(round)
@@ -111,19 +119,19 @@ func (n *Node) StartRound(round uint64) {
 					return
 				}
 
-				// at most spend blockTime/2 for
+				// at most spend blockTime/3 for
 				// proposing block, to avoid the case
 				// that there are too many
 				// transactions to be included in the
 				// block proposal
-				ctx, cancel := context.WithTimeout(context.Background(), n.cfg.BlockTime/2)
+				ctx, cancel := context.WithTimeout(context.Background(), n.cfg.BlockTime/3)
 				defer cancel()
 
 				start := time.Now()
-				log.Debug("start propose block", "owner", n.addr, "round", round, "group", bpGroup)
+				log.Debug("start propose block", "owner", n.addr, "round", round, "group", bpGroup, "since round start", time.Now().Sub(startTime))
 				bp := n.chain.ProposeBlock(ctx, n.sk, round)
 				if bp != nil {
-					log.Info("propose block done", "owner", n.addr, "round", round, "bp round", bp.Round, "hash", bp.Hash(), "group", bpGroup, "dur", time.Now().Sub(start))
+					log.Info("propose block done", "owner", n.addr, "round", round, "bp round", bp.Round, "hash", bp.Hash(), "group", bpGroup, "dur", time.Now().Sub(start), "since round start", time.Now().Sub(startTime))
 					n.gateway.recvBlockProposal(n.gateway.addr, bp)
 				}
 			}()
@@ -134,14 +142,20 @@ func (n *Node) StartRound(round uint64) {
 				ntCancelCtx, n.cancelNotarize[round] = context.WithCancel(context.Background())
 			}
 
-			log.Debug("begin notarize", "group", ntGroup, "round", round)
+			log.Debug("begin notarize", "group", ntGroup, "round", round, "since round start", time.Now().Sub(startTime))
 			notary := NewNotary(n.addr, n.sk, m.skShare, n.chain)
 			inCh := make(chan *BlockProposal, 20)
 			n.notarizeChs[round] = append(n.notarizeChs[round], inCh)
 			go func() {
-				onNotarize := func(s *NtShare) {
-					log.Debug("produced one notarization share", "group", ntGroup, "bp", s.BP, "share round", s.Round, "round", round, "hash", s.Hash())
-					go n.gateway.recvNtShare(n.gateway.addr, s)
+				onNotarize := func(s *NtShare, spentTime time.Duration) {
+					log.Info("produced one notarization share", "group", ntGroup, "bp", s.BP, "share round", s.Round, "round", round, "hash", s.Hash(), "since round start", time.Now().Sub(startTime))
+					if diff := time.Now().Sub(lastRoundEndTime); diff >= n.cfg.BlockTime-spentTime {
+						go n.gateway.recvNtShare(n.gateway.addr, s)
+					} else {
+						time.AfterFunc(n.cfg.BlockTime-spentTime-diff, func() {
+							n.gateway.recvNtShare(n.gateway.addr, s)
+						})
+					}
 				}
 
 				ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(n.cfg.BlockTime))
@@ -163,12 +177,18 @@ func (n *Node) StartRound(round uint64) {
 	}
 }
 
-// EndRound marks the end of the given round. It happens when the
-// block for the given round is received.
-func (n *Node) EndRound(round uint64) {
+func (n *Node) BlockForRoundProduced(round uint64) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 
+	if _, ok := n.recvBlockTime[round]; !ok {
+		n.recvBlockTime[round] = time.Now()
+	}
+}
+
+// EndRound marks the end of the given round. It happens when the
+// block for the given round is received.
+func (n *Node) EndRound(round uint64) {
 	log.Info("end round", "round", round)
 	delete(n.notarizeChs, round)
 	if c := n.cancelNotarize[round]; c != nil {
@@ -231,14 +251,15 @@ func MakeNode(credentials NodeCredentials, cfg Config, genesis Genesis, state St
 
 	chain := NewChain(&genesis.Block, state, randSeed, cfg, txnPool, u)
 	net := newNetwork(credentials.SK)
-	networking := newGateway(net, chain)
-	node := NewNode(chain, credentials.SK, networking, cfg)
+	gateway := newGateway(net, chain)
+	node := NewNode(chain, credentials.SK, gateway, cfg)
 	for j := range credentials.Groups {
 		share := credentials.GroupShares[j]
 		m := membership{groupID: credentials.Groups[j], skShare: share}
 		node.memberships = append(node.memberships, m)
 	}
 	node.chain.randomBeacon.n = node
+	gateway.node = node
 	return node
 }
 

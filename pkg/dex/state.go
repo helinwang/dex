@@ -318,6 +318,8 @@ func (s *State) Balances(addr consensus.Addr) ([]Balance, []TokenID) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	// TODO: save balances directly into the trie, now it consumes
+	// 3s outof the 127s total profiling time.
 	b := s.trie.Get(addrBalancePath(addr))
 	if len(b) == 0 {
 		return nil, nil

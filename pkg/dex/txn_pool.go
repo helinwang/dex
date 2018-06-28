@@ -95,8 +95,8 @@ func parseTxn(b []byte, pker pker) (*consensus.Txn, error) {
 }
 
 func (t *TxnPool) Add(b []byte) (r *consensus.Txn, boardcast bool) {
-	t.mu.Lock()
 	hash := consensus.SHA3(b)
+	t.mu.Lock()
 	if _, ok := t.txns[hash]; ok {
 		t.mu.Unlock()
 		return

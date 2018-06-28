@@ -80,6 +80,7 @@ type gateway struct {
 	bpCache            *lru.Cache
 	randBeaconSigCache *lru.Cache
 	syncer             *syncer
+	node               *Node
 
 	mu             sync.Mutex
 	rbSigWaiters   map[uint64][]chan *RandBeaconSig
@@ -265,6 +266,7 @@ func (n *gateway) recvData() {
 		case *Block:
 			log.Debug("recvBlock", "round", v.Round, "hash", v.Hash(), "state root", v.StateRoot)
 			go n.recvBlock(addr, v)
+			go n.node.BlockForRoundProduced(v.Round)
 		case *BlockProposal:
 			log.Debug("recvBlockProposal", "round", v.Round, "hash", v.Hash(), "block", v.PrevBlock)
 			go n.recvBlockProposal(addr, v)

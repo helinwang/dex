@@ -29,44 +29,59 @@ func NewNotary(owner Addr, sk, share SK, chain *Chain) *Notary {
 // notarized block of the current round is received.
 // TODO: fix lint
 // nolint: gocyclo
-func (n *Notary) Notarize(ctx, cancel context.Context, bCh chan *BlockProposal, onNotarize func(*NtShare)) {
+func (n *Notary) Notarize(ctx, cancel context.Context, bCh chan *BlockProposal, onNotarize func(*NtShare, time.Duration)) {
 	var bestRankBPs []*BlockProposal
 	bestRank := math.MaxInt32
+	recvBestRank := false
+	recvBestRankCh := make(chan struct{})
+	notarize := func() {
+		for _, bp := range bestRankBPs {
+			s, dur := n.notarize(bp, n.chain.txnPool)
+			if s != nil {
+				onNotarize(s, dur)
+			}
+		}
+
+		for {
+			select {
+			case <-cancel.Done():
+				return
+			case bp := <-bCh:
+				rank, err := n.chain.randomBeacon.Rank(bp.Owner, bp.Round)
+				if err != nil {
+					log.Error("get rank error", "err", err, "bp round", bp.Round)
+					continue
+				}
+
+				if rank <= bestRank {
+					bestRank = rank
+					s, dur := n.notarize(bp, n.chain.txnPool)
+					if s != nil {
+						onNotarize(s, dur)
+					}
+				}
+			}
+		}
+	}
+
 	for {
 		select {
+		case <-recvBestRankCh:
+			notarize()
+			return
 		case <-ctx.Done():
-			for _, bp := range bestRankBPs {
-				s := n.notarize(bp, n.chain.txnPool)
-				if s != nil {
-					onNotarize(s)
-				}
-			}
-
-			for {
-				select {
-				case <-cancel.Done():
-					return
-				case bp := <-bCh:
-					rank, err := n.chain.randomBeacon.Rank(bp.Owner, bp.Round)
-					if err != nil {
-						log.Error("get rank error", "err", err, "bp round", bp.Round)
-						continue
-					}
-
-					if rank <= bestRank {
-						bestRank = rank
-						s := n.notarize(bp, n.chain.txnPool)
-						if s != nil {
-							onNotarize(s)
-						}
-					}
-				}
-			}
+			notarize()
+			return
 		case bp := <-bCh:
 			rank, err := n.chain.randomBeacon.Rank(bp.Owner, bp.Round)
 			if err != nil {
 				log.Error("get rank error", "err", err, "bp round", bp.Round)
 				continue
+			}
+
+			if rank == 0 && !recvBestRank {
+				recvBestRank = true
+				close(recvBestRankCh)
 			}
 
 			if len(bestRankBPs) == 0 {
@@ -87,7 +102,7 @@ func (n *Notary) Notarize(ctx, cancel context.Context, bCh chan *BlockProposal, 
 	}
 }
 
-func (n *Notary) notarize(bp *BlockProposal, pool TxnPool) *NtShare {
+func (n *Notary) notarize(bp *BlockProposal, pool TxnPool) (*NtShare, time.Duration) {
 	nts := &NtShare{
 		Round: bp.Round,
 		BP:    bp.Hash(),
@@ -108,7 +123,8 @@ func (n *Notary) notarize(bp *BlockProposal, pool TxnPool) *NtShare {
 	if err != nil {
 		panic("should not happen, record block proposal transaction error, could be due to adversary: " + err.Error())
 	}
-	log.Info("notarize record txns done", "round", nts.Round, "bp", nts.BP, "dur", time.Now().Sub(start))
+	dur := time.Now().Sub(start)
+	log.Info("notarize record txns done", "round", nts.Round, "bp", nts.BP, "dur", dur)
 
 	blk := &Block{
 		Owner:         bp.Owner,
@@ -123,5 +139,5 @@ func (n *Notary) notarize(bp *BlockProposal, pool TxnPool) *NtShare {
 	nts.SigShare = n.share.Sign(blk.Encode(false))
 	nts.Owner = n.owner
 	nts.Sig = n.sk.Sign(nts.Encode(false))
-	return nts
+	return nts, dur
 }
