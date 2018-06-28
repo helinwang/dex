@@ -427,16 +427,6 @@ func (c *Chain) addNtShare(n *NtShare, groupID int) (b *Block, added, success bo
 			panic(err)
 		}
 
-		state := c.blockState(bp.PrevBlock)
-		if state == nil {
-			panic("should never happen: can not find prev block, it should be already synced")
-		}
-
-		trans, err := recordTxns(state, c.txnPool, bp.Data, bp.Round)
-		if err != nil {
-			panic("should never happen: notarized block's txns should be all valid")
-		}
-
 		// TODO: make sure the fields (except signature and
 		// owner) of all nt shares are same
 		b = &Block{
@@ -445,7 +435,7 @@ func (c *Chain) addNtShare(n *NtShare, groupID int) (b *Block, added, success bo
 			BlockProposal: bp.Hash(),
 			PrevBlock:     bp.PrevBlock,
 			SysTxns:       bp.SysTxns,
-			StateRoot:     trans.StateHash(),
+			StateRoot:     n.StateRoot,
 		}
 
 		msg := b.Encode(false)

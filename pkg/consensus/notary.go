@@ -116,6 +116,7 @@ func (n *Notary) notarize(bp *BlockProposal, pool TxnPool) *NtShare {
 		StateRoot:     trans.StateHash(),
 	}
 
+	nts.StateRoot = blk.StateRoot
 	nts.SigShare = n.share.Sign(blk.Encode(false))
 	nts.Owner = n.owner
 	nts.Sig = n.sk.Sign(nts.Encode(false))
