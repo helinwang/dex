@@ -151,23 +151,22 @@ func TestOrderAlreadyExpired(t *testing.T) {
 	assert.Equal(t, 0, len(acc.PendingOrders()))
 }
 
-func TestOrderExpire(t *testing.T) {
+func TestBuyOrderExpire(t *testing.T) {
 	s := NewState(ethdb.NewMemDatabase())
 	s.UpdateToken(Token{ID: 0, TokenInfo: BNBInfo})
 	s.UpdateToken(Token{ID: 1, TokenInfo: BNBInfo})
 	pk, sk := RandKeyPair()
 	addr := pk.Addr()
 	acc := s.NewAccount(pk)
-	acc.UpdateBalance(1, Balance{Available: 100})
+	acc.UpdateBalance(1, Balance{Available: 300})
 
 	order := PlaceOrderTxn{
 		SellSide:    false,
 		Quant:       100,
-		Price:       100000000,
+		Price:       2 * uint64(math.Pow10(OrderPriceDecimals)),
 		ExpireRound: 3,
 		Market:      MarketSymbol{Quote: 1, Base: 0},
 	}
-
 	trans := s.Transition(1)
 	pt, err := parseTxn(MakePlaceOrderTxn(sk, addr, order, 0, 0), &myPKer{m: map[consensus.Addr]PK{
 		addr: pk,
@@ -175,7 +174,6 @@ func TestOrderExpire(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
-
 	valid, success := trans.Record(pt)
 	assert.True(t, valid)
 	assert.True(t, success)
@@ -184,10 +182,57 @@ func TestOrderExpire(t *testing.T) {
 	s = trans.Commit().(*State)
 	acc = s.Account(addr)
 	assert.Equal(t, 1, len(acc.PendingOrders()))
+	assert.Equal(t, 200, int(acc.Balance(1).Pending))
+	assert.Equal(t, 100, int(acc.Balance(1).Available))
+
 	trans = s.Transition(2)
 	s = trans.Commit().(*State)
 	acc = s.Account(addr)
 	assert.Equal(t, 0, len(acc.PendingOrders()))
+	assert.Equal(t, 0, int(acc.Balance(1).Pending))
+	assert.Equal(t, 300, int(acc.Balance(1).Available))
+}
+
+func TestSellOrderExpire(t *testing.T) {
+	s := NewState(ethdb.NewMemDatabase())
+	s.UpdateToken(Token{ID: 0, TokenInfo: BNBInfo})
+	s.UpdateToken(Token{ID: 1, TokenInfo: BNBInfo})
+	pk, sk := RandKeyPair()
+	addr := pk.Addr()
+	acc := s.NewAccount(pk)
+	acc.UpdateBalance(0, Balance{Available: 300})
+
+	order := PlaceOrderTxn{
+		SellSide:    true,
+		Quant:       100,
+		Price:       2 * uint64(math.Pow10(OrderPriceDecimals)),
+		ExpireRound: 3,
+		Market:      MarketSymbol{Quote: 1, Base: 0},
+	}
+	trans := s.Transition(1)
+	pt, err := parseTxn(MakePlaceOrderTxn(sk, addr, order, 0, 0), &myPKer{m: map[consensus.Addr]PK{
+		addr: pk,
+	}})
+	if err != nil {
+		panic(err)
+	}
+	valid, success := trans.Record(pt)
+	assert.True(t, valid)
+	assert.True(t, success)
+	// transition for the current round will expire the order for
+	// the next round.
+	s = trans.Commit().(*State)
+	acc = s.Account(addr)
+	assert.Equal(t, 1, len(acc.PendingOrders()))
+	assert.Equal(t, 100, int(acc.Balance(0).Pending))
+	assert.Equal(t, 200, int(acc.Balance(0).Available))
+
+	trans = s.Transition(2)
+	s = trans.Commit().(*State)
+	acc = s.Account(addr)
+	assert.Equal(t, 0, len(acc.PendingOrders()))
+	assert.Equal(t, 0, int(acc.Balance(0).Pending))
+	assert.Equal(t, 300, int(acc.Balance(0).Available))
 }
 
 func TestPlaceOrder(t *testing.T) {

@@ -161,22 +161,36 @@ func (t *Transition) cancelOrder(owner *Account, txn *CancelOrderTxn) bool {
 }
 
 func (t *Transition) refundAfterCancel(owner *Account, cancel PendingOrder, market MarketSymbol) {
-	var pendingQuant uint64
-	var token TokenID
-	if cancel.SellSide {
-		token = market.Base
-		pendingQuant = cancel.Quant
-	} else {
-		token = market.Quote
-		quoteInfo := t.tokenCache.idToInfo[market.Quote]
-		baseInfo := t.tokenCache.idToInfo[market.Base]
-		pendingQuant = calcBaseSellQuant(cancel.Quant, quoteInfo.Decimals, cancel.Price, OrderPriceDecimals, baseInfo.Decimals)
+	if cancel.Quant <= cancel.Executed {
+		panic(fmt.Errorf("pending order remain amount should be greater than 0, total: %d, executed: %d", cancel.Quant, cancel.Executed))
 	}
 
-	balance := owner.Balance(token)
-	balance.Pending -= pendingQuant
-	balance.Available += pendingQuant
-	owner.UpdateBalance(token, balance)
+	refund := cancel.Quant - cancel.Executed
+	if cancel.SellSide {
+		baseBalance := owner.Balance(market.Base)
+
+		if baseBalance.Pending < refund {
+			panic(fmt.Errorf("pending balance smaller than refund, pending: %d, refund: %d", baseBalance.Pending, refund))
+		}
+
+		baseBalance.Pending -= refund
+		baseBalance.Available += refund
+		owner.UpdateBalance(market.Base, baseBalance)
+	} else {
+		quoteBalance := owner.Balance(market.Quote)
+		fmt.Println(quoteBalance, market.Quote, refund)
+		quoteInfo := t.tokenCache.idToInfo[market.Quote]
+		baseInfo := t.tokenCache.idToInfo[market.Base]
+		pendingQuant := calcBaseSellQuant(refund, quoteInfo.Decimals, cancel.Price, OrderPriceDecimals, baseInfo.Decimals)
+
+		if quoteBalance.Pending < pendingQuant {
+			panic(fmt.Errorf("pending balance smaller than refund, pending: %d, refund: %d", quoteBalance.Pending, pendingQuant))
+		}
+
+		quoteBalance.Pending -= pendingQuant
+		quoteBalance.Available += pendingQuant
+		owner.UpdateBalance(market.Quote, quoteBalance)
+	}
 }
 
 type ExecutionReport struct {
