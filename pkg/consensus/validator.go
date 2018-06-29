@@ -44,7 +44,7 @@ func (v *validator) ValidateShardBlock(b *ShardBlock) (uint16, bool) {
 		return 0, false
 	}
 
-	_, _, nt := v.chain.randomBeacon.Committees(b.Round)
+	_, _, nt, _ := v.chain.randomBeacon.Committees(b.Round)
 	success := b.Notarization.Verify(v.chain.randomBeacon.groups[nt].PK, b.Encode(false))
 	if !success {
 		log.Warn("validate block group sig failed", "group", nt, "block", b.Hash())
@@ -57,7 +57,7 @@ func (v *validator) ValidateShardBlock(b *ShardBlock) (uint16, bool) {
 // TODO: validator should not check round information, and signature
 // validation should be a method of the data type.
 func (v *validator) ValidateNtShare(n *ShardNtShare) (int, bool) {
-	_, _, nt := v.chain.randomBeacon.Committees(n.Round)
+	_, _, nt, _ := v.chain.randomBeacon.Committees(n.Round)
 	group := v.chain.randomBeacon.groups[nt]
 	sharePK, ok := group.MemberPK[n.Owner]
 	if !ok {
@@ -87,7 +87,7 @@ func (v *validator) ValidateRandBeaconSigShare(r *RandBeaconSigShare) (int, bool
 		return 0, false
 	}
 
-	rb, _, _ := v.chain.randomBeacon.Committees(r.Round - 1)
+	rb, _, _, _ := v.chain.randomBeacon.Committees(r.Round - 1)
 	group := v.chain.randomBeacon.groups[rb]
 	sharePK, ok := group.MemberPK[r.Owner]
 	if !ok {

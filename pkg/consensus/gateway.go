@@ -23,7 +23,7 @@ type Item struct {
 
 func (i Item) String() string {
 	switch i.T {
-	case txnItem, sysTxnItem, blockItem, shardBlockProposalItem, ntShareItem:
+	case txnItem, sysTxnItem, blockItem, shardBlockProposalItem, shardBlockItem, ntShareItem:
 		return fmt.Sprintf("%v_hash_%v", i.T, i.Hash)
 	case randBeaconSigShareItem, randBeaconSigItem:
 		return fmt.Sprintf("%v_round_%v", i.T, i.Round)
@@ -327,15 +327,15 @@ func (n *gateway) recvData() {
 		case *ShardBlock:
 			h := v.Hash()
 			log.Debug("recvShardBlockProposal", "round", v.Round, "hash", h, "block", v.PrevBlock)
-			go n.RecvShardBlock(addr, v, h)
+			go n.recvShardBlock(addr, v, h)
 		case *ShardBlockProposal:
 			h := v.Hash()
 			log.Debug("recvShardBlockProposal", "round", v.Round, "hash", h, "block", v.PrevBlock)
-			go n.RecvShardBlockProposal(addr, v, h)
+			go n.recvShardBlockProposal(addr, v, h)
 		case *ShardNtShare:
 			h := v.Hash()
 			log.Debug("recvNtShare", "round", v.Round, "hash", h, "bp", v.BP)
-			go n.RecvShardNtShare(addr, v, h)
+			go n.recvShardNtShare(addr, v, h)
 		case Item:
 			go n.recvInventory(addr, v)
 		case itemRequest:
@@ -427,7 +427,7 @@ func (n *gateway) recvRandBeaconSigShare(addr unicastAddr, r *RandBeaconSigShare
 	}
 }
 
-func (n *gateway) RecvShardBlock(addr unicastAddr, b *ShardBlock, h Hash) {
+func (n *gateway) recvShardBlock(addr unicastAddr, b *ShardBlock, h Hash) {
 	n.shardBlockCache.Add(h, b)
 
 	n.mu.Lock()
@@ -444,7 +444,7 @@ func (n *gateway) RecvShardBlock(addr unicastAddr, b *ShardBlock, h Hash) {
 	}
 
 	if broadcast {
-		go n.broadcast(Item{T: blockItem, Hash: h})
+		go n.broadcast(Item{T: shardBlockItem, Hash: h})
 	}
 }
 
@@ -469,7 +469,7 @@ func (n *gateway) recvBlock(addr unicastAddr, b *Block, h Hash) {
 	}
 }
 
-func (n *gateway) RecvShardBlockProposal(addr unicastAddr, bp *ShardBlockProposal, h Hash) {
+func (n *gateway) recvShardBlockProposal(addr unicastAddr, bp *ShardBlockProposal, h Hash) {
 	n.bpCache.Add(h, bp)
 
 	n.mu.Lock()
@@ -490,7 +490,7 @@ func (n *gateway) RecvShardBlockProposal(addr unicastAddr, bp *ShardBlockProposa
 	}
 }
 
-func (n *gateway) RecvShardNtShare(addr unicastAddr, s *ShardNtShare, h Hash) {
+func (n *gateway) recvShardNtShare(addr unicastAddr, s *ShardNtShare, h Hash) {
 	round := n.chain.Round()
 	if round > s.Round {
 		return
@@ -511,7 +511,7 @@ func (n *gateway) RecvShardNtShare(addr unicastAddr, s *ShardNtShare, h Hash) {
 		n.shardNtShareCollector.Remove(s.BP)
 
 		shardBlock := recoverShardBlock(ss, bp, n.chain.randomBeacon, bp.ShardIdx)
-		go n.RecvShardBlock(addr, shardBlock, shardBlock.Hash())
+		go n.recvShardBlock(addr, shardBlock, shardBlock.Hash())
 		// will broadcast shard block instead of shard block
 		// nt share.
 		return
@@ -523,14 +523,14 @@ func (n *gateway) RecvShardNtShare(addr unicastAddr, s *ShardNtShare, h Hash) {
 }
 
 func recoverShardBlock(shares []*ShardNtShare, bp *ShardBlockProposal, rb *RandomBeacon, shardIdx uint16) *ShardBlock {
-	log.Debug("recovering shard block", "bp", shares[0].BP)
+	log.Debug("generating shard block from proposal and notarization", "bp", shares[0].BP)
 	sig, err := recoverNtSig(shares)
 	if err != nil {
 		// should not happen
 		panic(err)
 	}
 
-	_, bpGroup, _ := rb.Committees(bp.Round)
+	_, _, ntGroup, _ := rb.Committees(bp.Round)
 
 	b := &ShardBlock{
 		ShardIdx:  shardIdx,
@@ -541,8 +541,8 @@ func recoverShardBlock(shares []*ShardNtShare, bp *ShardBlockProposal, rb *Rando
 	}
 
 	msg := b.Encode(false)
-	if !sig.Verify(rb.groups[bpGroup].PK, msg) {
-		panic("should never happen: group sig not valid")
+	if !sig.Verify(rb.groups[ntGroup].PK, msg) {
+		panic(fmt.Errorf("should never happen: group %d sig not valid", ntGroup))
 	}
 
 	b.Notarization = sig
@@ -645,6 +645,12 @@ func (n *gateway) serveData(addr unicastAddr, item Item) {
 			return
 		}
 		go n.net.Send(addr, packet{Data: bp})
+	case shardBlockItem:
+		b := n.store.ShardBlock(item.Hash)
+		if b == nil {
+			return
+		}
+		go n.net.Send(addr, packet{Data: b})
 	case ntShareItem:
 		nts := n.shardNtShareCollector.Get(item.Hash)
 		if nts == nil {
@@ -665,6 +671,8 @@ func (n *gateway) serveData(addr unicastAddr, item Item) {
 
 		r := history[item.Round]
 		go n.net.Send(addr, packet{Data: r})
+	default:
+		panic(fmt.Errorf("unknow requested item type: %v", item.T))
 	}
 
 	log.Debug("serving item", "item", item, "addr", addr.Addr)

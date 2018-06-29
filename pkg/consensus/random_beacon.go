@@ -12,49 +12,55 @@ import (
 // The random beacon, block proposal, block notarization advance to
 // the next round in lockstep.
 type RandomBeacon struct {
-	cfg               Config
-	n                 *Node
-	mu                sync.Mutex
-	roundWaitCh       map[uint64]chan struct{}
-	nextRBCmteHistory []int
-	nextNtCmteHistory []int
-	nextBPCmteHistory []int
-	nextBPRandHistory []Rand
-	groups            []*Group
+	cfg                     Config
+	n                       *Node
+	mu                      sync.Mutex
+	roundWaitCh             map[uint64]chan struct{}
+	nextRBCmteHistory       []int
+	nextGlobalNtCmteHistory []int
+	nextNtCmteHistory       []int
+	nextBPCmteHistory       []int
+	nextBPRandHistory       []Rand
+	groups                  []*Group
 
-	rbRand Rand
-	ntRand Rand
-	bpRand Rand
+	globalNtRand Rand
+	rbRand       Rand
+	ntRand       Rand
+	bpRand       Rand
 
 	sigHistory []*RandBeaconSig
 }
 
 // NewRandomBeacon creates a new random beacon
 func NewRandomBeacon(seed Rand, groups []*Group, cfg Config) *RandomBeacon {
+	mod := len(groups)
+	if mod == 0 {
+		mod = 1
+	}
+
 	rbRand := seed.Derive([]byte("random beacon committee rand seed"))
 	bpRand := seed.Derive([]byte("block proposer committee rand seed"))
 	ntRand := seed.Derive([]byte("notarization committee rand seed"))
-	initRBGroup := 0
-	initNtGroup := 0
-	initBPGroup := 0
+	globalNtRand := seed.Derive([]byte("global notarization committee rand seed"))
 
-	if len(groups) > 0 {
-		initRBGroup = rbRand.Mod(len(groups))
-		initNtGroup = ntRand.Mod(len(groups))
-		initBPGroup = bpRand.Mod(len(groups))
-	}
+	initGlobalNtGroup := globalNtRand.Mod(mod)
+	initRBGroup := rbRand.Mod(mod)
+	initNtGroup := ntRand.Mod(mod)
+	initBPGroup := bpRand.Mod(mod)
 
 	return &RandomBeacon{
-		cfg:               cfg,
-		groups:            groups,
-		rbRand:            rbRand,
-		bpRand:            bpRand,
-		ntRand:            ntRand,
-		roundWaitCh:       make(map[uint64]chan struct{}),
-		nextRBCmteHistory: []int{initRBGroup},
-		nextNtCmteHistory: []int{initNtGroup},
-		nextBPCmteHistory: []int{initBPGroup},
-		nextBPRandHistory: []Rand{bpRand},
+		cfg:                     cfg,
+		groups:                  groups,
+		rbRand:                  rbRand,
+		bpRand:                  bpRand,
+		ntRand:                  ntRand,
+		globalNtRand:            globalNtRand,
+		roundWaitCh:             make(map[uint64]chan struct{}),
+		nextRBCmteHistory:       []int{initRBGroup},
+		nextNtCmteHistory:       []int{initNtGroup},
+		nextGlobalNtCmteHistory: []int{initGlobalNtGroup},
+		nextBPCmteHistory:       []int{initBPGroup},
+		nextBPRandHistory:       []Rand{bpRand},
 		sigHistory: []*RandBeaconSig{
 			{Sig: []byte("DEX random beacon 0th signature")},
 		},
@@ -190,6 +196,8 @@ func (r *RandomBeacon) Rank(addr Addr, round uint64) (uint16, error) {
 }
 
 func (r *RandomBeacon) deriveRand(h Hash) {
+	r.globalNtRand = r.globalNtRand.Derive(h[:])
+	r.nextGlobalNtCmteHistory = append(r.nextGlobalNtCmteHistory, r.globalNtRand.Mod(len(r.groups)))
 	r.rbRand = r.rbRand.Derive(h[:])
 	r.nextRBCmteHistory = append(r.nextRBCmteHistory, r.rbRand.Mod(len(r.groups)))
 	r.ntRand = r.ntRand.Derive(h[:])
@@ -201,11 +209,12 @@ func (r *RandomBeacon) deriveRand(h Hash) {
 
 // Committees returns the current random beacon, block proposal,
 // notarization committees.
-func (r *RandomBeacon) Committees(round uint64) (rb, bp, nt int) {
+func (r *RandomBeacon) Committees(round uint64) (rb, bp, nt, gnt int) {
 	r.mu.Lock()
 	rb = r.nextRBCmteHistory[round]
 	bp = r.nextBPCmteHistory[round]
 	nt = r.nextNtCmteHistory[round]
+	gnt = r.nextGlobalNtCmteHistory[round]
 	r.mu.Unlock()
 	return
 }

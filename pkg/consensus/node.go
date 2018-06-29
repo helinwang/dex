@@ -67,6 +67,7 @@ func NewNode(chain *Chain, sk SK, net *gateway, cfg Config, shardIdx uint16, sto
 	addr := pk.Addr()
 	n := &Node{
 		addr:           addr,
+		store:          store,
 		shardIdx:       shardIdx,
 		cfg:            cfg,
 		sk:             sk,
@@ -109,7 +110,7 @@ func (n *Node) StartRound(round uint64) {
 
 	n.round = round
 	var ntCancelCtx context.Context
-	rbGroup, bpGroup, ntGroup := n.chain.randomBeacon.Committees(round)
+	rbGroup, bpGroup, ntGroup, _ := n.chain.randomBeacon.Committees(round)
 	log.Info("start round", "round", round, "rb group", rbGroup, "bp group", bpGroup, "nt group", ntGroup, "rand beacon", SHA3(n.chain.randomBeacon.History()[round].Sig))
 
 	for _, m := range n.memberships {
@@ -138,8 +139,8 @@ func (n *Node) StartRound(round uint64) {
 				bp := n.chain.ProposeShardBlock(ctx, n.sk, round)
 				h := bp.Hash()
 				if bp != nil {
-					log.Info("propose block done", "owner", n.addr, "round", round, "bp round", bp.Round, "hash", h, "group", bpGroup, "dur", time.Now().Sub(start), "since round start", time.Now().Sub(startTime))
-					n.gateway.RecvShardBlockProposal(n.gateway.addr, bp, h)
+					log.Info("propose shard block done", "owner", n.addr, "round", round, "bp round", bp.Round, "hash", h, "group", bpGroup, "dur", time.Now().Sub(start), "since round start", time.Now().Sub(startTime))
+					n.gateway.recvShardBlockProposal(n.gateway.addr, bp, h)
 				}
 			}()
 		}
@@ -158,10 +159,10 @@ func (n *Node) StartRound(round uint64) {
 					h := s.Hash()
 					log.Info("produced one notarization share", "group", ntGroup, "bp", s.BP, "share round", s.Round, "round", round, "hash", h, "since round start", time.Now().Sub(startTime))
 					if diff := time.Now().Sub(lastRoundEndTime); diff >= n.cfg.BlockTime-spentTime {
-						go n.gateway.RecvShardNtShare(n.gateway.addr, s, h)
+						go n.gateway.recvShardNtShare(n.gateway.addr, s, h)
 					} else {
 						time.AfterFunc(n.cfg.BlockTime-spentTime-diff, func() {
-							n.gateway.RecvShardNtShare(n.gateway.addr, s, h)
+							n.gateway.recvShardNtShare(n.gateway.addr, s, h)
 						})
 					}
 				}
@@ -204,7 +205,7 @@ func (n *Node) EndRound(round uint64) {
 		delete(n.cancelNotarize, round)
 	}
 
-	rb, _, _ := n.chain.randomBeacon.Committees(round)
+	rb, _, _, _ := n.chain.randomBeacon.Committees(round)
 	for _, m := range n.memberships {
 		if m.groupID != rb {
 			continue
@@ -274,6 +275,7 @@ func MakeNode(credentials NodeCredentials, cfg Config, genesis Genesis, state St
 	}
 	node.chain.randomBeacon.n = node
 	gateway.node = node
+	gateway.syncer.node = node
 	return node
 }
 

@@ -45,8 +45,8 @@ type RoundMetric struct {
 // Chain is the blockchain.
 type Chain struct {
 	cfg          Config
-	randomBeacon *RandomBeacon
 	n            *Node
+	randomBeacon *RandomBeacon
 	store        *storage
 	txnPool      TxnPool
 	updater      Updater

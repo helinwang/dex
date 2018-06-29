@@ -28,16 +28,26 @@ func newStorage() *storage {
 	}
 }
 
-func (s *storage) AddBlock(b *Block, h Hash) {
+func (s *storage) AddBlock(b *Block, h Hash) bool {
 	s.mu.Lock()
-	s.blocks[h] = b
+	broadcast := false
+	if _, ok := s.blocks[h]; !ok {
+		broadcast = true
+		s.blocks[h] = b
+	}
 	s.mu.Unlock()
+	return broadcast
 }
 
-func (s *storage) AddShardBlock(b *ShardBlock, h Hash) {
+func (s *storage) AddShardBlock(b *ShardBlock, h Hash) bool {
 	s.mu.Lock()
-	s.shardBlocks[h] = b
+	broadcast := false
+	if _, ok := s.shardBlocks[h]; !ok {
+		s.shardBlocks[h] = b
+		broadcast = true
+	}
 	s.mu.Unlock()
+	return broadcast
 }
 
 func (s *storage) AddShardBlockProposal(bp *ShardBlockProposal, h Hash) bool {

@@ -28,8 +28,10 @@ type syncer struct {
 	chain     *Chain
 	requester requester
 	store     *storage
+	node      *Node
 
 	mu                    sync.Mutex
+	pendingSyncBlock      map[Hash][]chan syncBlockResult
 	pendingSyncShardBlock map[Hash][]chan syncShardBlockResult
 	pendingSyncBP         map[Hash][]chan syncBPResult
 	pendingSyncRB         map[uint64][]chan syncRBResult
@@ -40,10 +42,17 @@ func newSyncer(chain *Chain, requester requester, store *storage) *syncer {
 		chain:                 chain,
 		store:                 store,
 		requester:             requester,
+		pendingSyncBlock:      make(map[Hash][]chan syncBlockResult),
 		pendingSyncShardBlock: make(map[Hash][]chan syncShardBlockResult),
 		pendingSyncBP:         make(map[Hash][]chan syncBPResult),
 		pendingSyncRB:         make(map[uint64][]chan syncRBResult),
 	}
+}
+
+type syncBlockResult struct {
+	b         *Block
+	broadcast bool
+	err       error
 }
 
 type syncShardBlockResult struct {
@@ -73,7 +82,68 @@ type requester interface {
 var errCanNotConnectToChain = errors.New("can not connect to chain")
 
 func (s *syncer) SyncBlock(addr unicastAddr, hash Hash, round uint64) (b *Block, broadcast bool, err error) {
-	return nil, false, nil
+	s.mu.Lock()
+	chs := s.pendingSyncBlock[hash]
+	ch := make(chan syncBlockResult, 1)
+	chs = append(chs, ch)
+	s.pendingSyncBlock[hash] = chs
+	if len(chs) == 1 {
+		go func() {
+			b, broadcast, err := s.syncBlock(addr, hash, round)
+			result := syncBlockResult{b: b, broadcast: broadcast, err: err}
+			s.mu.Lock()
+			for _, ch := range s.pendingSyncBlock[hash] {
+				ch <- result
+			}
+			delete(s.pendingSyncBlock, hash)
+			s.mu.Unlock()
+		}()
+	}
+	s.mu.Unlock()
+
+	r := <-ch
+	return r.b, r.broadcast, r.err
+}
+
+func (s *syncer) syncBlock(addr unicastAddr, hash Hash, round uint64) (b *Block, broadcast bool, err error) {
+	b = s.store.Block(hash)
+	if b != nil {
+		return
+	}
+
+	if round <= s.chain.FinalizedRound() {
+		err = errCanNotConnectToChain
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
+	b, err = s.requester.RequestBlock(ctx, addr, hash)
+	cancel()
+	if err != nil {
+		return
+	}
+
+	prev, _, err := s.SyncBlock(addr, b.PrevBlock, b.Round-1)
+	if err != nil {
+		return
+	}
+
+	if prev.Round != b.Round-1 {
+		err = fmt.Errorf("invalid block, prev round: %d, cur round: %d", prev.Round, b.Round)
+		return
+	}
+
+	s.chain.randomBeacon.WaitUntil(b.Round)
+
+	_, _, _, gNt := s.chain.randomBeacon.Committees(b.Round)
+	success := b.Notarization.Verify(s.chain.randomBeacon.groups[gNt].PK, b.Encode(false))
+	if !success {
+		err = fmt.Errorf("validate shard block group sig failed, group: %d", gNt)
+		return
+	}
+
+	broadcast = s.store.AddBlock(b, hash)
+	return
 }
 
 func (s *syncer) SyncShardBlock(addr unicastAddr, hash Hash, round uint64) (b *ShardBlock, broadcast bool, err error) {
@@ -125,19 +195,19 @@ func (s *syncer) syncShardBlock(addr unicastAddr, hash Hash, round uint64) (b *S
 	}
 
 	if prev.Round != b.Round-1 {
-		err = fmt.Errorf("invalid block, prev round: %d, cur round: %d", prev.Round, b.Round)
+		err = fmt.Errorf("invalid shard block, prev round: %d, cur round: %d", prev.Round, b.Round)
 		return
 	}
 
 	s.chain.randomBeacon.WaitUntil(b.Round)
-
-	_, _, nt := s.chain.randomBeacon.Committees(b.Round)
+	_, _, nt, _ := s.chain.randomBeacon.Committees(b.Round)
 	success := b.Notarization.Verify(s.chain.randomBeacon.groups[nt].PK, b.Encode(false))
 	if !success {
-		err = fmt.Errorf("validate block group sig failed, group:%d", nt)
+		err = fmt.Errorf("validate shard block group sig failed, group: %d", nt)
 		return
 	}
 
+	broadcast = s.store.AddShardBlock(b, hash)
 	return
 }
 
@@ -216,6 +286,10 @@ func (s *syncer) syncShardBlockProposal(addr unicastAddr, hash Hash) (bp *ShardB
 	}
 
 	broadcast = s.store.AddShardBlockProposal(bp, hash)
+
+	if broadcast {
+		go s.node.recvBPForNotary(bp)
+	}
 	return
 }
 
