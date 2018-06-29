@@ -159,7 +159,7 @@ func (n *Node) StartRound(round uint64) {
 	n.round = round
 	var ntCancelCtx context.Context
 	rbGroup, bpGroup, ntGroup, globalNtGroup := n.chain.randomBeacon.Committees(round)
-	log.Info("start round", "round", round, "rb group", rbGroup, "bp group", bpGroup, "nt group", ntGroup, "rand beacon", SHA3(n.chain.randomBeacon.History()[round].Sig))
+	log.Info("start round", "round", round, "rb group", rbGroup, "bp group", bpGroup, "nt group", ntGroup, "global nt group", globalNtGroup, "rand beacon", SHA3(n.chain.randomBeacon.History()[round].Sig))
 
 	for _, m := range n.memberships {
 		if m.groupID == globalNtGroup {

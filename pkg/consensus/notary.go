@@ -29,8 +29,6 @@ func NewNotary(owner Addr, sk, share SK, chain *Chain, store *storage) *Notary {
 //
 // ctx will be cancelled when reaching the next round: when a
 // notarized block of the current round is received.
-// TODO: fix lint
-// nolint: gocyclo
 func (n *Notary) Notarize(ctx, cancel context.Context, bCh chan *ShardBlockProposal, onNotarize func(*ShardNtShare, time.Duration)) {
 	var bestRankBPs []*ShardBlockProposal
 	bestRank := uint16(math.MaxUint16)
