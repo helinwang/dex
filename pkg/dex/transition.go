@@ -282,22 +282,24 @@ func (t *Transition) placeOrder(owner *Account, txn *PlaceOrderTxn, round uint64
 				Quant:      exec.Quant,
 			}
 			acc.AddExecutionReport(report)
-			order, ok := acc.PendingOrder(orderID)
+			executedOrder, ok := acc.PendingOrder(orderID)
 			if !ok {
 				panic(fmt.Errorf("impossible: can not find matched order %d, market: %v, executed order: %v", exec.ID, txn.Market, exec))
 			}
 
-			order.Executed += exec.Quant
-			if order.Executed == order.Quant {
+			executedOrder.Executed += exec.Quant
+			if executedOrder.Executed == executedOrder.Quant {
 				acc.RemovePendingOrder(orderID)
+				t.filledOrders = append(t.filledOrders, executedOrder)
+			} else {
+				acc.UpdatePendingOrder(executedOrder)
 			}
-			t.filledOrders = append(t.filledOrders, order)
 
 			baseBalance := acc.Balance(txn.Market.Base)
 			quoteBalance := acc.Balance(txn.Market.Quote)
 			if exec.SellSide {
 				if baseBalance.Pending < exec.Quant {
-					panic(fmt.Errorf("insufficient pending balance, owner: %s, pending %d, executed: %d, sell side, taker: %t", exec.Owner.Hex(), baseBalance.Pending, exec.Quant, exec.Taker))
+					panic(fmt.Errorf("insufficient pending balance, owner: %v, pending %d, executed: %d, sell side, taker: %t", exec.Owner, baseBalance.Pending, exec.Quant, exec.Taker))
 				}
 
 				baseBalance.Pending -= exec.Quant
@@ -308,11 +310,11 @@ func (t *Transition) placeOrder(owner *Account, txn *PlaceOrderTxn, round uint64
 				acc.UpdateBalance(txn.Market.Quote, quoteBalance)
 			} else {
 				recvQuant := exec.Quant
-				pendingQuant := calcBaseSellQuant(exec.Quant, quoteInfo.Decimals, order.Price, OrderPriceDecimals, baseInfo.Decimals)
+				pendingQuant := calcBaseSellQuant(exec.Quant, quoteInfo.Decimals, executedOrder.Price, OrderPriceDecimals, baseInfo.Decimals)
 				givenQuant := calcBaseSellQuant(exec.Quant, quoteInfo.Decimals, exec.Price, OrderPriceDecimals, baseInfo.Decimals)
 
 				if quoteBalance.Pending < pendingQuant {
-					panic(fmt.Errorf("insufficient pending balance, owner: %s, pending %d, executed: %d, buy side, taker: %t", exec.Owner.Hex(), quoteBalance.Pending, exec.Quant, exec.Taker))
+					panic(fmt.Errorf("insufficient pending balance, owner: %v, pending %d, executed: %d, buy side, taker: %t", exec.Owner, quoteBalance.Pending, exec.Quant, exec.Taker))
 				}
 
 				quoteBalance.Pending -= pendingQuant

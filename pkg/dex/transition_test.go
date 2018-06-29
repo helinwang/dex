@@ -194,24 +194,28 @@ func TestPlaceOrder(t *testing.T) {
 	s := NewState(ethdb.NewMemDatabase())
 	s.UpdateToken(Token{ID: 0, TokenInfo: BNBInfo})
 	s.UpdateToken(Token{ID: 1, TokenInfo: BNBInfo})
-	pk, sk := RandKeyPair()
-	addr := pk.Addr()
-	acc := s.NewAccount(pk)
-	acc.UpdateBalance(0, Balance{Available: 200})
-	acc.UpdateBalance(1, Balance{Available: 100})
+	pkSell, skSell := RandKeyPair()
+	pkBuy, skBuy := RandKeyPair()
+	sellAcc := s.NewAccount(pkSell)
+	buyAcc := s.NewAccount(pkBuy)
+	buyAcc.UpdateBalance(1, Balance{Available: 200})
+	sellAcc.UpdateBalance(0, Balance{Available: 100})
 
-	order := PlaceOrderTxn{
-		SellSide:    false,
-		Quant:       40,
-		Price:       uint64(math.Pow10(OrderPriceDecimals)),
-		ExpireRound: 3,
-		Market:      MarketSymbol{Quote: 1, Base: 0},
-	}
-	trans := s.Transition(1)
 	pker := &myPKer{m: map[consensus.Addr]PK{
-		addr: pk,
+		pkBuy.Addr():  pkBuy,
+		pkSell.Addr(): pkSell,
 	}}
-	pt, err := parseTxn(MakePlaceOrderTxn(sk, addr, order, 0, 0), pker)
+	trans := s.Transition(1)
+
+	// buy 40
+	order := PlaceOrderTxn{
+		SellSide: false,
+		// will be pending 40*2
+		Quant:  40,
+		Price:  2 * uint64(math.Pow10(OrderPriceDecimals)),
+		Market: MarketSymbol{Quote: 1, Base: 0},
+	}
+	pt, err := parseTxn(MakePlaceOrderTxn(skBuy, pkBuy.Addr(), order, 0, 0), pker)
 	if err != nil {
 		panic(err)
 	}
@@ -221,33 +225,62 @@ func TestPlaceOrder(t *testing.T) {
 	assert.True(t, success)
 	s = trans.Commit().(*State)
 
-	acc = s.Account(addr)
-	assert.Equal(t, 40, int(acc.Balance(1).Pending))
-	assert.Equal(t, 60, int(acc.Balance(1).Available))
-	assert.Equal(t, 0, int(acc.Balance(0).Pending))
-	assert.Equal(t, 200, int(acc.Balance(0).Available))
+	buyAcc = s.Account(pkBuy.Addr())
+	assert.Equal(t, 80, int(buyAcc.Balance(1).Pending))
+	assert.Equal(t, 120, int(buyAcc.Balance(1).Available))
+	assert.Equal(t, 1, len(buyAcc.PendingOrders()))
 
+	// buy 20, sell 55
 	trans = s.Transition(2)
 	order = PlaceOrderTxn{
-		SellSide:    true,
-		Quant:       40,
-		Price:       uint64(math.Pow10(OrderPriceDecimals)),
-		ExpireRound: 3,
-		Market:      MarketSymbol{Quote: 1, Base: 0},
+		SellSide: false,
+		// will be pending 20*3
+		Quant:  20,
+		Price:  3 * uint64(math.Pow10(OrderPriceDecimals)),
+		Market: MarketSymbol{Quote: 1, Base: 0},
 	}
-	pt, err = parseTxn(MakePlaceOrderTxn(sk, addr, order, 0, 1), pker)
+	pt, err = parseTxn(MakePlaceOrderTxn(skBuy, pkBuy.Addr(), order, 0, 1), pker)
 	if err != nil {
 		panic(err)
 	}
-
 	valid, success = trans.Record(pt)
-	s = trans.Commit().(*State)
-
 	assert.True(t, valid)
 	assert.True(t, success)
-	acc = s.Account(addr)
-	assert.Equal(t, 0, int(acc.balances[1].Pending))
-	assert.Equal(t, 100, int(acc.balances[1].Available))
+
+	order = PlaceOrderTxn{
+		SellSide: true,
+		// 20 fill at 3.0, 35 fill at 2.0
+		Quant:  55,
+		Price:  2 * uint64(math.Pow10(OrderPriceDecimals)),
+		Market: MarketSymbol{Quote: 1, Base: 0},
+	}
+	pt, err = parseTxn(MakePlaceOrderTxn(skSell, pkSell.Addr(), order, 0, 0), pker)
+	if err != nil {
+		panic(err)
+	}
+	valid, success = trans.Record(pt)
+	assert.True(t, valid)
+	assert.True(t, success)
+
+	s = trans.Commit().(*State)
+	sellAcc = s.Account(pkSell.Addr())
+	assert.Equal(t, 0, int(sellAcc.Balance(0).Pending))
+	assert.Equal(t, 45, int(sellAcc.Balance(0).Available))
+	assert.Equal(t, 20*3+35*2, int(sellAcc.Balance(1).Available))
+	assert.Equal(t, 0, int(sellAcc.Balance(1).Pending))
+	assert.Equal(t, 2, len(sellAcc.ExecutionReports()))
+	assert.Equal(t, 0, len(sellAcc.PendingOrders()))
+
+	buyAcc = s.Account(pkBuy.Addr())
+	assert.Equal(t, 55, int(buyAcc.Balance(0).Available))
+	assert.Equal(t, 0, int(buyAcc.Balance(0).Pending))
+	assert.Equal(t, 60, int(buyAcc.Balance(1).Available))
+	assert.Equal(t, 10, int(buyAcc.Balance(1).Pending))
+	assert.Equal(t, 2, len(buyAcc.ExecutionReports()))
+	assert.Equal(t, 1, len(buyAcc.PendingOrders()))
+	po := buyAcc.PendingOrders()[0]
+	assert.Equal(t, 35, int(po.Executed))
+	assert.Equal(t, 40, int(po.Quant))
 }
 
 func TestCalcBaseSellQuant(t *testing.T) {
