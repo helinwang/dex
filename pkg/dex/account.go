@@ -77,10 +77,10 @@ type PendingOrder struct {
 // Account is a cached proxy to the account data inside the state
 // trie.
 type Account struct {
-	state      *State
-	addr       consensus.Addr
-	pk         PK
-	newAccount bool
+	state   *State
+	addr    consensus.Addr
+	pk      PK
+	pkDirty bool
 	// a vector of nonce that enables concurrent transactions.
 	nonceVec       []uint64
 	nonceVecDirty  bool
@@ -116,10 +116,7 @@ func (a *Account) NonceVec() []uint64 {
 }
 
 func (a *Account) loadNonceVec() {
-	if !a.newAccount {
-		a.nonceVec = a.state.NonceVec(a.addr)
-	}
-
+	a.nonceVec = a.state.NonceVec(a.addr)
 	if a.nonceVec == nil {
 		a.nonceVec = make([]uint64, 0)
 	}
@@ -158,22 +155,18 @@ func (a *Account) CheckAndIncrementNonce(idx int, val uint64) bool {
 	return true
 }
 
-func (a *Account) Balance(tokenID TokenID) (Balance, bool) {
+func (a *Account) Balance(tokenID TokenID) Balance {
 	if a.balances == nil {
 		a.loadBalances()
 	}
-	b, ok := a.balances[tokenID]
-	return b, ok
+	return a.balances[tokenID]
 }
 
 func (a *Account) loadBalances() {
 	a.balances = make(map[TokenID]Balance)
-
-	if !a.newAccount {
-		bs, ids := a.state.Balances(a.addr)
-		for i, b := range bs {
-			a.balances[ids[i]] = b
-		}
+	bs, ids := a.state.Balances(a.addr)
+	for i, b := range bs {
+		a.balances[ids[i]] = b
 	}
 }
 
@@ -190,9 +183,9 @@ func (a *Account) PK() PK {
 }
 
 func (a *Account) CommitCache(s *State) {
-	if a.newAccount {
+	if a.pkDirty {
 		a.state.UpdatePK(a.pk)
-		a.newAccount = false
+		a.pkDirty = false
 	}
 
 	if a.nonceVecDirty {

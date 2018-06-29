@@ -113,8 +113,7 @@ func (r *RPCServer) walletState(addr consensus.Addr, w *WalletState) error {
 	bs := make([]UserBalance, len(keys))
 	for i := range bs {
 		bs[i].Token = keys[i]
-		b, _ := acc.Balance(keys[i])
-		bs[i].Balance = b
+		bs[i].Balance = acc.Balance(keys[i])
 	}
 
 	w.PendingOrders = acc.PendingOrders()

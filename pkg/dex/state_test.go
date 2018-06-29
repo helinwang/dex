@@ -53,9 +53,9 @@ func TestStateSerialize(t *testing.T) {
 	assert.Equal(t, []Token{nativeToken, token0, token1}, s.Tokens())
 	acc := s.Account(owner.Addr())
 	assert.NotNil(t, acc)
-	b0, _ := acc.Balance(token0.ID)
+	b0 := acc.Balance(token0.ID)
 	assert.Equal(t, token0.TotalUnits, b0.Available)
-	b1, _ := acc.Balance(token1.ID)
+	b1 := acc.Balance(token1.ID)
 	assert.Equal(t, token1.TotalUnits, b1.Available)
 	b, err := s.Serialize()
 	if err != nil {
@@ -70,8 +70,8 @@ func TestStateSerialize(t *testing.T) {
 	assert.Equal(t, []Token{nativeToken, token0, token1}, s0.Tokens())
 	acc = s0.Account(owner.Addr())
 	assert.NotNil(t, acc)
-	b0, _ = acc.Balance(token0.ID)
-	b1, _ = acc.Balance(token1.ID)
+	b0 = acc.Balance(token0.ID)
+	b1 = acc.Balance(token1.ID)
 	assert.Equal(t, token0.TotalUnits, b0.Available)
 	assert.Equal(t, token1.TotalUnits, b1.Available)
 }
@@ -136,4 +136,14 @@ func TestStateExecutionReports(t *testing.T) {
 	s.AddExecutionReport(addr, es[0], 0)
 	s.AddExecutionReport(addr, es[1], 1)
 	assert.Equal(t, es, s.ExecutionReports(addr))
+}
+
+func TestStateUpdateBalance(t *testing.T) {
+	s := NewState(ethdb.NewMemDatabase())
+	pk, _ := RandKeyPair()
+	addr := pk.Addr()
+	s.NewAccount(pk)
+	s.UpdateBalances(addr, []Balance{{Available: 100}}, []TokenID{0})
+	acc := s.Account(addr)
+	assert.Equal(t, 100, int(acc.Balance(0).Available))
 }

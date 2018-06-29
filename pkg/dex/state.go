@@ -3,6 +3,7 @@ package dex
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"sync"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -232,10 +233,10 @@ func (s *State) CommitCache() {
 
 func (s *State) NewAccount(pk PK) *Account {
 	account := &Account{
-		addr:       pk.Addr(),
-		pk:         pk,
-		newAccount: true,
-		state:      s,
+		addr:    pk.Addr(),
+		pk:      pk,
+		pkDirty: true,
+		state:   s,
 	}
 
 	s.mu.Lock()
@@ -244,15 +245,24 @@ func (s *State) NewAccount(pk PK) *Account {
 	return account
 }
 
-func (s *State) pk(addr consensus.Addr) PK {
+func (s *State) pk(addr consensus.Addr) (PK, bool) {
 	b := s.trie.Get(addrPKPath(addr))
-	return PK(b)
+	if len(b) == 0 {
+		return PK{}, false
+	}
+
+	return PK(b), true
 }
 
 func (s *State) PK(addr consensus.Addr) PK {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.pk(addr)
+
+	pk, ok := s.pk(addr)
+	if !ok {
+		panic(fmt.Errorf("account for address %v does not exist", addr))
+	}
+	return pk
 }
 
 func (s *State) UpdatePK(pk PK) {
@@ -478,7 +488,10 @@ func (s *State) Account(addr consensus.Addr) *Account {
 		return cache
 	}
 
-	pk := s.pk(addr)
+	pk, ok := s.pk(addr)
+	if !ok {
+		return nil
+	}
 	account := &Account{
 		addr:  pk.Addr(),
 		pk:    pk,
@@ -596,12 +609,12 @@ func (s *State) Hash() consensus.Hash {
 
 // Transition returns the state change transition.
 func (s *State) Transition(round uint64) consensus.Transition {
+	s.CommitCache()
+
 	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	s.commitCache()
-
 	newTrie := *s.trie
+	s.mu.Unlock()
+
 	state := newState(&newTrie, s.db, s.diskDB)
 	return newTransition(state, round)
 }

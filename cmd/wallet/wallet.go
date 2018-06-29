@@ -684,7 +684,10 @@ func placeOrder(c *cli.Context) error {
 		return err
 	}
 
-	expireRound := state.Round + uint64(expire)
+	var expireRound uint64
+	if expire > 0 {
+		expireRound = state.Round + uint64(expire)
+	}
 	placeOrderTxn := dex.PlaceOrderTxn{
 		SellSide:    sellSide,
 		Quant:       quantUnit,

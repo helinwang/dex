@@ -1,6 +1,7 @@
 package dex
 
 import (
+	"math"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/ethdb"
@@ -8,22 +9,28 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func createAccount(s *State, quant uint64) (SK, PK) {
-	pk, sk := RandKeyPair()
+func TestAccountUpdateBalance(t *testing.T) {
+	s := NewState(ethdb.NewMemDatabase())
+	pk, _ := RandKeyPair()
 	acc := s.NewAccount(pk)
-	acc.UpdateBalance(0, Balance{Available: quant})
-	s.CommitCache()
-	return sk, pk
+	acc.UpdateBalance(0, Balance{Available: 100})
+	assert.Equal(t, 100, int(acc.Balance(0).Available))
+
+	addr := pk.Addr()
+	acc0 := s.Account(addr)
+	assert.Equal(t, 100, int(acc0.Balance(0).Available))
+
+	acc0.UpdateBalance(0, Balance{Available: 200})
+	assert.Equal(t, 200, int(acc.Balance(0).Available))
+	assert.Equal(t, 200, int(acc0.Balance(0).Available))
 }
 
 func TestSendToken(t *testing.T) {
 	s := NewState(ethdb.NewMemDatabase())
-	sk, pk := createAccount(s, 100)
+	pk, sk := RandKeyPair()
 	addr := pk.Addr()
-
-	// check balance not changed before commiting the txn
-	newAcc := s.Account(addr)
-	assert.Equal(t, 100, int(newAcc.balances[0].Available))
+	acc := s.NewAccount(pk)
+	acc.UpdateBalance(0, Balance{Available: 100})
 
 	to, _ := RandKeyPair()
 	txn := MakeSendTokenTxn(sk, addr, to, 0, 20, 0, 0)
@@ -38,25 +45,21 @@ func TestSendToken(t *testing.T) {
 	valid, success := trans.Record(pt)
 	assert.True(t, valid)
 	assert.True(t, success)
-
-	newAcc = s.Account(addr)
-	assert.Equal(t, 100, int(newAcc.balances[0].Available))
 	s = trans.Commit().(*State)
 
-	toAcc := s.Account(to.Addr())
-	assert.Equal(t, 20, int(toAcc.balances[0].Available))
-	newAcc = s.Account(addr)
-	assert.Equal(t, 80, int(newAcc.balances[0].Available))
+	send := s.Account(addr)
+	assert.Equal(t, 80, int(send.Balance(0).Available))
+	recv := s.Account(to.Addr())
+	assert.Equal(t, 20, int(recv.Balance(0).Available))
 }
 
 func TestFreezeToken(t *testing.T) {
 	s := NewState(ethdb.NewMemDatabase())
-	sk, pk := createAccount(s, 100)
-	addr := pk.Addr()
+	pk, sk := RandKeyPair()
+	acc := s.NewAccount(pk)
+	acc.UpdateBalance(0, Balance{Available: 100})
 
-	// check balance not changed before commiting the txn
-	newAcc := s.Account(addr)
-	assert.Equal(t, 100, int(newAcc.balances[0].Available))
+	addr := pk.Addr()
 	txn := MakeFreezeTokenTxn(sk, addr, FreezeTokenTxn{TokenID: 0, AvailableRound: 3, Quant: 50}, 0, 0)
 
 	trans := s.Transition(1)
@@ -71,63 +74,16 @@ func TestFreezeToken(t *testing.T) {
 	assert.True(t, valid)
 	assert.True(t, success)
 	s = trans.Commit().(*State)
-	newAcc = s.Account(addr)
-	assert.Equal(t, 50, int(newAcc.balances[0].Available))
-	assert.Equal(t, []Frozen([]Frozen{Frozen{AvailableRound: 3, Quant: 50}}), newAcc.balances[0].Frozen)
+
+	acc = s.Account(addr)
+	assert.Equal(t, 50, int(acc.Balance(0).Available))
+	assert.Equal(t, []Frozen([]Frozen{Frozen{AvailableRound: 3, Quant: 50}}), acc.Balance(0).Frozen)
 
 	trans = s.Transition(2)
 	s = trans.Commit().(*State)
-	newAcc = s.Account(addr)
-	assert.Equal(t, 100, int(newAcc.balances[0].Available))
-	assert.Equal(t, 0, len(newAcc.balances[0].Frozen))
-}
-
-func TestTransitionNotCommitToDB(t *testing.T) {
-	memDB := ethdb.NewMemDatabase()
-	s := NewState(memDB)
-	sk, pk := createAccount(s, 100)
-	addr := pk.Addr()
-	h, err := s.trie.Commit(nil)
-	if err != nil {
-		panic(err)
-	}
-
-	err = s.db.Commit(h, false)
-	if err != nil {
-		panic(err)
-	}
-
-	dbLen := memDB.Len()
-	assert.Equal(t, 4, dbLen)
-
-	newAcc := s.Account(addr)
-	assert.Equal(t, 100, int(newAcc.balances[0].Available))
-	trans := s.Transition(1)
-	pker := &myPKer{m: map[consensus.Addr]PK{
-		addr: pk,
-	}}
-
-	for i := 0; i < 99; i++ {
-		to, _ := RandKeyPair()
-		txn := MakeSendTokenTxn(sk, addr, to, 0, 1, uint8(i), 0)
-		pt, err := parseTxn(txn, pker)
-		if err != nil {
-			panic(err)
-		}
-
-		valid, success := trans.Record(pt)
-		assert.True(t, valid)
-		assert.True(t, success)
-	}
-
-	newAcc = s.Account(addr)
-	assert.Equal(t, 100, int(newAcc.balances[0].Available))
-	// test len does not change, transition not committed to DB
-	assert.Equal(t, 4, memDB.Len())
-
-	s = trans.Commit().(*State)
-	newAcc = s.Account(addr)
-	assert.Equal(t, 1, int(newAcc.balances[0].Available))
+	acc = s.Account(addr)
+	assert.Equal(t, 100, int(acc.Balance(0).Available))
+	assert.Equal(t, 0, len(acc.Balance(0).Frozen))
 }
 
 func TestIssueToken(t *testing.T) {
@@ -139,9 +95,10 @@ func TestIssueToken(t *testing.T) {
 
 	s := NewState(ethdb.NewMemDatabase())
 	s.UpdateToken(Token{ID: 0, TokenInfo: BNBInfo})
-	sk, pk := createAccount(s, 100)
-	addr := pk.Addr()
+	pk, sk := RandKeyPair()
+	acc := s.NewAccount(pk)
 	trans := s.Transition(1)
+	addr := pk.Addr()
 	txn := MakeIssueTokenTxn(sk, addr, btcInfo, 0, 0)
 	pt, err := parseTxn(txn, &myPKer{m: map[consensus.Addr]PK{
 		addr: pk,
@@ -158,15 +115,17 @@ func TestIssueToken(t *testing.T) {
 	assert.True(t, cache.Exists(btcInfo.Symbol))
 	assert.Equal(t, &btcInfo, cache.Info(1))
 
-	acc := s.Account(addr)
-	assert.Equal(t, btcInfo.TotalUnits, acc.balances[1].Available)
-	assert.Equal(t, uint64(0), acc.balances[1].Pending)
+	acc = s.Account(addr)
+	assert.Equal(t, btcInfo.TotalUnits, acc.Balance(1).Available)
+	assert.Equal(t, uint64(0), acc.Balance(1).Pending)
+	assert.Equal(t, 0, len(acc.Balance(1).Frozen))
 }
 
 func TestOrderAlreadyExpired(t *testing.T) {
 	s := NewState(ethdb.NewMemDatabase())
 	s.UpdateToken(Token{ID: 0, TokenInfo: BNBInfo})
-	sk, pk := createAccount(s, 100)
+	pk, sk := RandKeyPair()
+	acc := s.NewAccount(pk)
 	addr := pk.Addr()
 	order := PlaceOrderTxn{
 		SellSide:    false,
@@ -188,7 +147,7 @@ func TestOrderAlreadyExpired(t *testing.T) {
 	assert.False(t, valid)
 	assert.False(t, success)
 	s = trans.Commit().(*State)
-	acc := s.Account(addr)
+	acc = s.Account(addr)
 	assert.Equal(t, 0, len(acc.PendingOrders()))
 }
 
@@ -196,18 +155,17 @@ func TestOrderExpire(t *testing.T) {
 	s := NewState(ethdb.NewMemDatabase())
 	s.UpdateToken(Token{ID: 0, TokenInfo: BNBInfo})
 	s.UpdateToken(Token{ID: 1, TokenInfo: BNBInfo})
-	sk, pk := createAccount(s, 100)
+	pk, sk := RandKeyPair()
 	addr := pk.Addr()
-	acc := s.Account(addr)
+	acc := s.NewAccount(pk)
 	acc.UpdateBalance(1, Balance{Available: 100})
-	s.CommitCache()
 
 	order := PlaceOrderTxn{
 		SellSide:    false,
-		Quant:       40,
+		Quant:       100,
 		Price:       100000000,
 		ExpireRound: 3,
-		Market:      MarketSymbol{Quote: 0, Base: 1},
+		Market:      MarketSymbol{Quote: 1, Base: 0},
 	}
 
 	trans := s.Transition(1)
@@ -228,7 +186,6 @@ func TestOrderExpire(t *testing.T) {
 	assert.Equal(t, 1, len(acc.PendingOrders()))
 	trans = s.Transition(2)
 	s = trans.Commit().(*State)
-
 	acc = s.Account(addr)
 	assert.Equal(t, 0, len(acc.PendingOrders()))
 }
@@ -237,18 +194,18 @@ func TestPlaceOrder(t *testing.T) {
 	s := NewState(ethdb.NewMemDatabase())
 	s.UpdateToken(Token{ID: 0, TokenInfo: BNBInfo})
 	s.UpdateToken(Token{ID: 1, TokenInfo: BNBInfo})
-	sk, pk := createAccount(s, 100)
+	pk, sk := RandKeyPair()
 	addr := pk.Addr()
-	acc := s.Account(addr)
+	acc := s.NewAccount(pk)
+	acc.UpdateBalance(0, Balance{Available: 200})
 	acc.UpdateBalance(1, Balance{Available: 100})
-	s.CommitCache()
 
 	order := PlaceOrderTxn{
 		SellSide:    false,
 		Quant:       40,
-		Price:       100000000,
+		Price:       uint64(math.Pow10(OrderPriceDecimals)),
 		ExpireRound: 3,
-		Market:      MarketSymbol{Quote: 0, Base: 1},
+		Market:      MarketSymbol{Quote: 1, Base: 0},
 	}
 	trans := s.Transition(1)
 	pker := &myPKer{m: map[consensus.Addr]PK{
@@ -265,15 +222,18 @@ func TestPlaceOrder(t *testing.T) {
 	s = trans.Commit().(*State)
 
 	acc = s.Account(addr)
-	assert.Equal(t, 40, int(acc.balances[0].Pending))
+	assert.Equal(t, 40, int(acc.Balance(1).Pending))
+	assert.Equal(t, 60, int(acc.Balance(1).Available))
+	assert.Equal(t, 0, int(acc.Balance(0).Pending))
+	assert.Equal(t, 200, int(acc.Balance(0).Available))
 
 	trans = s.Transition(2)
 	order = PlaceOrderTxn{
 		SellSide:    true,
 		Quant:       40,
-		Price:       100000000,
+		Price:       uint64(math.Pow10(OrderPriceDecimals)),
 		ExpireRound: 3,
-		Market:      MarketSymbol{Quote: 0, Base: 1},
+		Market:      MarketSymbol{Quote: 1, Base: 0},
 	}
 	pt, err = parseTxn(MakePlaceOrderTxn(sk, addr, order, 0, 1), pker)
 	if err != nil {
@@ -282,12 +242,14 @@ func TestPlaceOrder(t *testing.T) {
 
 	valid, success = trans.Record(pt)
 	s = trans.Commit().(*State)
+
 	assert.True(t, valid)
 	assert.True(t, success)
 	acc = s.Account(addr)
-	assert.Equal(t, 0, int(acc.balances[0].Pending))
+	assert.Equal(t, 0, int(acc.balances[1].Pending))
+	assert.Equal(t, 100, int(acc.balances[1].Available))
 }
 
 func TestCalcBaseSellQuant(t *testing.T) {
-	assert.Equal(t, 40, int(calcBaseSellQuant(40, 8, 100000000, 8, 8)))
+	assert.Equal(t, 40, int(calcBaseSellQuant(40, 8, uint64(math.Pow10(OrderPriceDecimals)), 8, 8)))
 }

@@ -173,7 +173,7 @@ func (t *Transition) refundAfterCancel(owner *Account, cancel PendingOrder, mark
 		pendingQuant = calcBaseSellQuant(cancel.Quant, quoteInfo.Decimals, cancel.Price, OrderPriceDecimals, baseInfo.Decimals)
 	}
 
-	balance, _ := owner.Balance(token)
+	balance := owner.Balance(token)
 	balance.Pending -= pendingQuant
 	balance.Available += pendingQuant
 	owner.UpdateBalance(token, balance)
@@ -210,35 +210,44 @@ func (t *Transition) placeOrder(owner *Account, txn *PlaceOrderTxn, round uint64
 		return false
 	}
 
-	var sellQuantUnit uint64
-	var sell TokenID
 	if txn.SellSide {
-		sellQuantUnit = txn.Quant
-		sell = txn.Market.Base
+		if txn.Quant == 0 {
+			log.Warn("sell: can not sell 0 quantity")
+			return false
+		}
+
+		baseBalance := owner.Balance(txn.Market.Base)
+		if baseBalance.Available < txn.Quant {
+			log.Warn("sell failed: insufficient balance", "quant", txn.Quant, "available", baseBalance.Available)
+			return false
+		}
+
+		baseBalance.Available -= txn.Quant
+		baseBalance.Pending += txn.Quant
+		owner.UpdateBalance(txn.Market.Base, baseBalance)
 	} else {
-		sellQuantUnit = calcBaseSellQuant(txn.Quant, quoteInfo.Decimals, txn.Price, OrderPriceDecimals, baseInfo.Decimals)
-		sell = txn.Market.Quote
+		if txn.Quant == 0 {
+			log.Warn("buy failed: can not buy 0 quantity")
+			return false
+		}
+
+		pendingQuant := calcBaseSellQuant(txn.Quant, quoteInfo.Decimals, txn.Price, OrderPriceDecimals, baseInfo.Decimals)
+		if pendingQuant == 0 {
+			log.Warn("buy failed: converted quote quant is 0")
+			return false
+		}
+
+		quoteBalance := owner.Balance(txn.Market.Quote)
+		if quoteBalance.Available < pendingQuant {
+			log.Warn("buy failed, insufficient balance", "required", pendingQuant, "available", quoteBalance.Available)
+			return false
+		}
+
+		quoteBalance.Available -= pendingQuant
+		quoteBalance.Pending += pendingQuant
+		owner.UpdateBalance(txn.Market.Quote, quoteBalance)
 	}
 
-	sellBalance, ok := owner.Balance(sell)
-	if !ok {
-		log.Warn("does not have balance for the given token", "token", sell)
-		return false
-	}
-
-	if sellQuantUnit == 0 {
-		log.Warn("sell quant too small")
-		return false
-	}
-
-	if sellBalance.Available <= sellQuantUnit {
-		log.Warn("insufficient quant to sell", "token", sell, "quant unit", sellQuantUnit)
-		return false
-	}
-
-	sellBalance.Available -= sellQuantUnit
-	sellBalance.Pending += sellQuantUnit
-	owner.UpdateBalance(sell, sellBalance)
 	order := Order{
 		Owner:       owner.PK().Addr(),
 		SellSide:    txn.SellSide,
@@ -284,44 +293,34 @@ func (t *Transition) placeOrder(owner *Account, txn *PlaceOrderTxn, round uint64
 			}
 			t.filledOrders = append(t.filledOrders, order)
 
-			var soldQuant, boughtQuant, refund uint64
-			var sellSideBalance, buySideBalance Balance
+			baseBalance := acc.Balance(txn.Market.Base)
+			quoteBalance := acc.Balance(txn.Market.Quote)
 			if exec.SellSide {
-				// sold, deduct base pending balance,
-				// add quote available balance
-				sellSideBalance, _ = acc.Balance(txn.Market.Base)
-				buySideBalance, _ = acc.Balance(txn.Market.Quote)
-				soldQuant = exec.Quant
-				boughtQuant = calcBaseSellQuant(exec.Quant, quoteInfo.Decimals, exec.Price, OrderPriceDecimals, baseInfo.Decimals)
-
-				if sellSideBalance.Pending < soldQuant {
-					panic(fmt.Errorf("insufficient pending balance, owner: %s, pending %d, executed: %d, refund: %d, taker: %t, sellSideBalance: %d, buySideBalance: %d, soldQuant: %d, boughtQuant: %d", exec.Owner.Hex(), sellSideBalance.Pending, soldQuant, refund, exec.Taker, sellSideBalance, buySideBalance, soldQuant, boughtQuant))
+				if baseBalance.Pending < exec.Quant {
+					panic(fmt.Errorf("insufficient pending balance, owner: %s, pending %d, executed: %d, sell side, taker: %t", exec.Owner.Hex(), baseBalance.Pending, exec.Quant, exec.Taker))
 				}
 
-				sellSideBalance.Pending -= soldQuant
-				buySideBalance.Available += boughtQuant
-				acc.UpdateBalance(txn.Market.Base, sellSideBalance)
-				acc.UpdateBalance(txn.Market.Quote, buySideBalance)
+				baseBalance.Pending -= exec.Quant
+				// TODO: rename to calcQuoteQuant
+				recvQuant := calcBaseSellQuant(exec.Quant, quoteInfo.Decimals, exec.Price, OrderPriceDecimals, baseInfo.Decimals)
+				quoteBalance.Available += recvQuant
+				acc.UpdateBalance(txn.Market.Base, baseBalance)
+				acc.UpdateBalance(txn.Market.Quote, quoteBalance)
 			} else {
-				// bought, deduct quote pending
-				// balance, add base available balance
-				sellSideBalance, _ = acc.Balance(txn.Market.Quote)
-				buySideBalance, _ = acc.Balance(txn.Market.Base)
-				boughtQuant = exec.Quant
-				soldQuant = calcBaseSellQuant(exec.Quant, quoteInfo.Decimals, exec.Price, OrderPriceDecimals, baseInfo.Decimals)
-				if exec.Taker {
-					refund = calcBaseSellQuant(exec.Quant, quoteInfo.Decimals, order.Price-exec.Price, OrderPriceDecimals, baseInfo.Decimals)
+				recvQuant := exec.Quant
+				pendingQuant := calcBaseSellQuant(exec.Quant, quoteInfo.Decimals, order.Price, OrderPriceDecimals, baseInfo.Decimals)
+				givenQuant := calcBaseSellQuant(exec.Quant, quoteInfo.Decimals, exec.Price, OrderPriceDecimals, baseInfo.Decimals)
+
+				if quoteBalance.Pending < pendingQuant {
+					panic(fmt.Errorf("insufficient pending balance, owner: %s, pending %d, executed: %d, buy side, taker: %t", exec.Owner.Hex(), quoteBalance.Pending, exec.Quant, exec.Taker))
 				}
 
-				if sellSideBalance.Pending < soldQuant+refund {
-					panic(fmt.Errorf("insufficient pending balance, owner: %s, pending %d, executed: %d, refund: %d, taker: %t, sellSideBalance: %d, buySideBalance: %d, soldQuant: %d, boughtQuant: %d", exec.Owner.Hex(), sellSideBalance.Pending, soldQuant, refund, exec.Taker, sellSideBalance, buySideBalance, soldQuant, boughtQuant))
-				}
-
-				sellSideBalance.Pending -= (soldQuant + refund)
-				sellSideBalance.Available += refund
-				buySideBalance.Available += boughtQuant
-				acc.UpdateBalance(txn.Market.Quote, sellSideBalance)
-				acc.UpdateBalance(txn.Market.Base, buySideBalance)
+				quoteBalance.Pending -= pendingQuant
+				quoteBalance.Available += pendingQuant
+				quoteBalance.Available -= givenQuant
+				baseBalance.Available += recvQuant
+				acc.UpdateBalance(txn.Market.Base, baseBalance)
+				acc.UpdateBalance(txn.Market.Quote, quoteBalance)
 			}
 		}
 	}
@@ -357,12 +356,7 @@ func (t *Transition) sendToken(owner *Account, txn *SendTokenTxn) bool {
 		return false
 	}
 
-	b, ok := owner.Balance(txn.TokenID)
-	if !ok {
-		log.Warn("trying to send token that the owner does not have", "tokenID", txn.TokenID)
-		return false
-	}
-
+	b := owner.Balance(txn.TokenID)
 	if b.Available < txn.Quant {
 		log.Warn("insufficient available token balance", "tokenID", txn.TokenID, "quant", txn.Quant, "available", b.Available)
 		return false
@@ -376,7 +370,7 @@ func (t *Transition) sendToken(owner *Account, txn *SendTokenTxn) bool {
 
 	b.Available -= txn.Quant
 	owner.UpdateBalance(txn.TokenID, b)
-	toAccBalance, _ := toAcc.Balance(txn.TokenID)
+	toAccBalance := toAcc.Balance(txn.TokenID)
 	toAccBalance.Available += txn.Quant
 	toAcc.UpdateBalance(txn.TokenID, toAccBalance)
 	return true
@@ -478,7 +472,7 @@ func (t *Transition) releaseTokens() {
 			addrToAcc[token.Addr] = acc
 		}
 
-		b, _ := acc.Balance(token.TokenID)
+		b := acc.Balance(token.TokenID)
 		removeIdx := -1
 		for i, f := range b.Frozen {
 			if f.Quant == token.Quant {
@@ -527,11 +521,7 @@ func (t *Transition) freezeToken(acc *Account, txn *FreezeTokenTxn) bool {
 		return false
 	}
 
-	b, ok := acc.Balance(txn.TokenID)
-	if !ok {
-		log.Warn("trying to freeze token that the owner does not have", "tokenID", txn.TokenID)
-		return false
-	}
+	b := acc.Balance(txn.TokenID)
 
 	if b.Available < txn.Quant {
 		log.Warn("insufficient available token balance", "tokenID", txn.TokenID, "quant", txn.Quant, "available", b.Available)
