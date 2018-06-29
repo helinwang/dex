@@ -36,7 +36,7 @@ func newTransition(s *State, round uint64) *Transition {
 	}
 }
 
-func (t *Transition) RecordSerialized(blob []byte, pool consensus.TxnPool) (valid, success bool) {
+func (t *Transition) RecordSerialized(blob []byte, pool consensus.TxnPool) (count int, valid, success bool) {
 	var txns [][]byte
 	err := rlp.DecodeBytes(blob, &txns)
 	if err != nil {
@@ -55,9 +55,10 @@ func (t *Transition) RecordSerialized(blob []byte, pool consensus.TxnPool) (vali
 			log.Error("error record txn in encoded txns", "valid", valid, "success", success, "hash", hash)
 			return
 		}
+		pool.Remove(hash)
 	}
 
-	return true, true
+	return len(txns), true, true
 }
 
 // Record records a transition to the state transition.

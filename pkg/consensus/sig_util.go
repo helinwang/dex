@@ -4,7 +4,7 @@ import (
 	"github.com/dfinity/go-dfinity-crypto/bls"
 )
 
-func recoverNtSig(shares []*ShardNtShare) (Sig, error) {
+func recoverNtSig(shares []*NtShare) (Sig, error) {
 	idVec := make([]bls.ID, len(shares))
 	signs := make([]bls.Sign, len(shares))
 	for i := range shares {

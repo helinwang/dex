@@ -29,8 +29,8 @@ func NewNotary(owner Addr, sk, share SK, chain *Chain, store *storage) *Notary {
 //
 // ctx will be cancelled when reaching the next round: when a
 // notarized block of the current round is received.
-func (n *Notary) Notarize(ctx, cancel context.Context, bCh chan *ShardBlockProposal, onNotarize func(*ShardNtShare, time.Duration)) {
-	var bestRankBPs []*ShardBlockProposal
+func (n *Notary) Notarize(ctx, cancel context.Context, bCh chan *BlockProposal, onNotarize func(*NtShare, time.Duration)) {
+	var bestRankBPs []*BlockProposal
 	bestRank := uint16(math.MaxUint16)
 	recvBestRank := false
 	recvBestRankCh := make(chan struct{})
@@ -85,13 +85,13 @@ func (n *Notary) Notarize(ctx, cancel context.Context, bCh chan *ShardBlockPropo
 			}
 
 			if len(bestRankBPs) == 0 {
-				bestRankBPs = []*ShardBlockProposal{bp}
+				bestRankBPs = []*BlockProposal{bp}
 				bestRank = rank
 				continue
 			}
 
 			if rank < bestRank {
-				bestRankBPs = []*ShardBlockProposal{bp}
+				bestRankBPs = []*BlockProposal{bp}
 				bestRank = rank
 			} else if rank == bestRank {
 				bestRankBPs = append(bestRankBPs, bp)
@@ -102,14 +102,14 @@ func (n *Notary) Notarize(ctx, cancel context.Context, bCh chan *ShardBlockPropo
 	}
 }
 
-func recordTxns(state State, pool TxnPool, txnData []byte, round uint64) (trans Transition, err error) {
+func recordTxns(state State, pool TxnPool, txnData []byte, round uint64) (trans Transition, count int, err error) {
 	trans = state.Transition(round)
 
 	if len(txnData) == 0 {
 		return
 	}
 
-	valid, success := trans.RecordSerialized(txnData, pool)
+	count, valid, success := trans.RecordSerialized(txnData, pool)
 	if !valid || !success {
 		err = errors.New("failed to apply transactions")
 		return
@@ -118,9 +118,9 @@ func recordTxns(state State, pool TxnPool, txnData []byte, round uint64) (trans 
 	return
 }
 
-func (n *Notary) notarize(bp *ShardBlockProposal, pool TxnPool) (*ShardNtShare, time.Duration) {
+func (n *Notary) notarize(bp *BlockProposal, pool TxnPool) (*NtShare, time.Duration) {
 	bpHash := bp.Hash()
-	nts := &ShardNtShare{
+	nts := &NtShare{
 		Round: bp.Round,
 		BP:    bpHash,
 	}
@@ -136,7 +136,7 @@ func (n *Notary) notarize(bp *ShardBlockProposal, pool TxnPool) (*ShardNtShare, 
 	}
 
 	start := time.Now()
-	_, err := recordTxns(state, pool, bp.Txns, bp.Round)
+	trans, _, err := recordTxns(state, pool, bp.Txns, bp.Round)
 	if err != nil {
 		panic("should not happen, record block proposal transaction error, could be due to adversary: " + err.Error())
 	}
@@ -144,14 +144,16 @@ func (n *Notary) notarize(bp *ShardBlockProposal, pool TxnPool) (*ShardNtShare, 
 	dur := time.Now().Sub(start)
 	log.Info("notarize record txns done", "round", nts.Round, "bp", nts.BP, "dur", dur)
 
-	blk := &ShardBlock{
-		ShardIdx:  bp.ShardIdx,
-		Owner:     bp.Owner,
-		Round:     bp.Round,
-		PrevBlock: bp.PrevBlock,
-		Txns:      bp.Txns,
+	stateRoot := trans.StateHash()
+	blk := &Block{
+		Owner:         bp.Owner,
+		Round:         bp.Round,
+		StateRoot:     stateRoot,
+		BlockProposal: bpHash,
+		PrevBlock:     bp.PrevBlock,
 	}
 
+	nts.StateRoot = stateRoot
 	nts.BP = bpHash
 	nts.SigShare = n.share.Sign(blk.Encode(false))
 	nts.Owner = n.owner

@@ -15,7 +15,7 @@ type Transition interface {
 	Record(*Txn) (valid, success bool)
 
 	// RecordSerialized records the serialized transactions.
-	RecordSerialized([]byte, TxnPool) (valid, success bool)
+	RecordSerialized([]byte, TxnPool) (count int, valid, success bool)
 
 	// Txns returns the serialized recorded transactions.
 	Txns() []byte
@@ -48,9 +48,5 @@ type TxnPool interface {
 	NotSeen(hash Hash) bool
 	Txns() []*Txn
 	Remove(hash Hash)
-	// RemoveTxns removes the given encoded transactions argument,
-	// returns the number of transactions encoded in that
-	// argument.
-	RemoveTxns([]byte) int
 	Size() int
 }

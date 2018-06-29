@@ -8,10 +8,8 @@ import (
 )
 
 func makeNetwork() *network {
-	const shardCount = 1
 	sk := RandSK()
-	shardIdx := sk.MustPK().Shard(shardCount)
-	return newNetwork(sk, shardIdx, shardCount)
+	return newNetwork(sk)
 }
 
 func TestNetworkConnectSeed(t *testing.T) {

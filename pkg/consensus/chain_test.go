@@ -35,7 +35,7 @@ func (s *myState) Deserialize(TrieBlob) error {
 }
 
 func TestGraphviz(t *testing.T) {
-	chain := NewChain(&Block{}, &myState{}, Rand{}, Config{}, nil, &myUpdater{}, 0, newStorage())
+	chain := NewChain(&Block{}, &myState{}, Rand{}, Config{}, nil, &myUpdater{}, newStorage())
 	chain.finalized = append(chain.finalized, Hash{1})
 	chain.finalized = append(chain.finalized, Hash{2})
 	chain.finalized = append(chain.finalized, Hash{3})
@@ -53,9 +53,9 @@ func TestGraphviz(t *testing.T) {
 	assert.Equal(t, `digraph chain {
 rankdir=LR;
 size="12,8"
-node [shape = rect, style=filled, color = chartreuse2]; block_923d block_0100 block_0200 block_0300 block_0400
+node [shape = rect, style=filled, color = chartreuse2]; block_26df block_0100 block_0200 block_0300 block_0400
 node [shape = rect, style=filled, color = aquamarine]; block_0700 block_0800 block_0900 block_0c00 block_0d00
-block_923d -> block_0100 -> block_0200 -> block_0300 -> block_0400
+block_26df -> block_0100 -> block_0200 -> block_0300 -> block_0400
 block_0400 -> block_0700
 block_0700 -> block_0800
 block_0700 -> block_0900

@@ -50,7 +50,6 @@ type Chain struct {
 	store        *storage
 	txnPool      TxnPool
 	updater      Updater
-	shardIdx     uint16
 
 	mu               sync.RWMutex
 	roundMetrics     []RoundMetric
@@ -71,7 +70,7 @@ type Updater interface {
 }
 
 // NewChain creates a new chain.
-func NewChain(genesis *Block, genesisState State, seed Rand, cfg Config, txnPool TxnPool, u Updater, shardIdx uint16, store *storage) *Chain {
+func NewChain(genesis *Block, genesisState State, seed Rand, cfg Config, txnPool TxnPool, u Updater, store *storage) *Chain {
 	if genesisState.Hash() != genesis.StateRoot {
 		panic(fmt.Errorf("genesis state hash and block state root does not match, state hash: %v, blocks state root: %v", genesisState.Hash(), genesis.StateRoot))
 	}
@@ -92,7 +91,6 @@ func NewChain(genesis *Block, genesisState State, seed Rand, cfg Config, txnPool
 	return &Chain{
 		cfg:                   cfg,
 		store:                 store,
-		shardIdx:              shardIdx,
 		updater:               u,
 		txnPool:               txnPool,
 		randomBeacon:          NewRandomBeacon(seed, sysState.groups, cfg),
@@ -147,9 +145,8 @@ func (c *Chain) WaitUntil(round uint64) {
 	<-ch
 }
 
-// ProposeShardBlock proposes a new block proposal in the current
-// shard.
-func (c *Chain) ProposeShardBlock(ctx context.Context, sk SK, round uint64) *ShardBlockProposal {
+// ProposeBlock proposes a new block proposal.
+func (c *Chain) ProposeBlock(ctx context.Context, sk SK, round uint64) *BlockProposal {
 	txns := c.txnPool.Txns()
 	block, state, _ := c.Leader()
 	if block.Round+1 < round {
@@ -178,8 +175,7 @@ loop:
 
 	pk := sk.MustPK()
 	txnsBytes := trans.Txns()
-	bp := ShardBlockProposal{
-		ShardIdx:  c.shardIdx,
+	bp := BlockProposal{
 		Round:     round,
 		PrevBlock: block.Hash(),
 		Txns:      txnsBytes,
@@ -306,9 +302,7 @@ func (c *Chain) blockState(h Hash) State {
 	return c.unFinalizedState[h]
 }
 
-// TODO: call add block
-// TODO: remove txns from pool, remove nt share
-func (c *Chain) addBlock(b *Block, s State, txnCount int) (bool, error) {
+func (c *Chain) addBlock(b *Block, s State, weight float64, txnCount int) (bool, error) {
 	hash := b.Hash()
 	log.Debug("add block to chain", "hash", hash)
 	if saved := c.store.Block(hash); saved != nil {
@@ -323,17 +317,6 @@ func (c *Chain) addBlock(b *Block, s State, txnCount int) (bool, error) {
 		return false, fmt.Errorf("block's round is already finalized, round: %d, last finalized round: %d", b.Round, finalizedRound)
 	}
 
-	var weight float64
-	for _, h := range b.ShardBlocks {
-		s := c.store.ShardBlock(h)
-		rank, err := c.randomBeacon.Rank(s.Owner, b.Round)
-		if err != nil {
-			panic(err)
-		}
-
-		weight += rankToWeight(rank)
-	}
-
 	node := &blockNode{Block: hash, Weight: weight}
 	if b.Round == finalizedRound+1 {
 		if b.PrevBlock != c.finalized[len(c.finalized)-1] {
@@ -341,29 +324,28 @@ func (c *Chain) addBlock(b *Block, s State, txnCount int) (bool, error) {
 		}
 		c.fork = append(c.fork, node)
 		c.unFinalizedState[node.Block] = s
-		return true, nil
-	}
+	} else {
+		depth := int(b.Round - finalizedRound - 2)
+		nodes := nodesAtDepth(c.fork, depth)
 
-	depth := int(b.Round - finalizedRound - 1)
-	nodes := nodesAtDepth(c.fork, depth)
-
-	var prev *blockNode
-	for _, n := range nodes {
-		if n == node.parent {
-			prev = n
-			break
+		var prev *blockNode
+		for _, n := range nodes {
+			if n.Block == b.PrevBlock {
+				prev = n
+				break
+			}
 		}
+
+		if prev == nil {
+			panic(fmt.Errorf("should never happen: can not find prev block %v, it should be already synced", b.PrevBlock))
+		}
+
+		node.parent = prev
+		prev.blockChildren = append(prev.blockChildren, node)
 	}
 
-	if prev == nil {
-		panic("should never happen: can not find prev block, it should be already synced")
-	}
-
-	node.parent = prev
-	prev.blockChildren = append(prev.blockChildren, node)
-	c.unFinalizedState[node.Block] = s
 	c.store.AddBlock(b, hash)
-
+	c.unFinalizedState[node.Block] = s
 	_, leaderState, _ := c.leader()
 
 	round := c.round()

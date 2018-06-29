@@ -32,40 +32,27 @@ type netAddr interface {
 
 type broadcast struct{}
 
-type shardBroadcast struct{}
-
 type packetAndAddr struct {
 	P packet
 	A unicastAddr
 }
 
 type network struct {
-	sk         SK
-	port       uint16
-	ch         chan packetAndAddr
-	shardIdx   uint16
-	shardCount int
+	sk   SK
+	port uint16
+	ch   chan packetAndAddr
 
-	mu     sync.Mutex
-	conns  map[unicastAddr]*conn
-	shards []map[unicastAddr]*conn
+	mu    sync.Mutex
+	conns map[unicastAddr]*conn
 	// nodes with a public IP
 	publicNodes []unicastAddr
 }
 
-func newNetwork(sk SK, shardIdx uint16, shardCount int) *network {
-	shards := make([]map[unicastAddr]*conn, shardCount)
-	for i := range shards {
-		shards[i] = make(map[unicastAddr]*conn)
-	}
-
+func newNetwork(sk SK) *network {
 	return &network{
-		sk:         sk,
-		shardIdx:   shardIdx,
-		shardCount: shardCount,
-		ch:         make(chan packetAndAddr, 100),
-		conns:      make(map[unicastAddr]*conn),
-		shards:     shards,
+		sk:    sk,
+		ch:    make(chan packetAndAddr, 100),
+		conns: make(map[unicastAddr]*conn),
 	}
 }
 
@@ -128,11 +115,9 @@ func (n *network) acceptPeerOrDisconnect(c net.Conn) {
 		return
 	}
 
-	peerShard := recv.PK.Shard(n.shardCount)
 	n.mu.Lock()
 	n.conns[addr] = conn
-	n.shards[peerShard][addr] = conn
-	go n.readConn(addr, conn, peerShard)
+	go n.readConn(addr, conn)
 	n.mu.Unlock()
 }
 
@@ -314,7 +299,6 @@ func (n *network) getAddrsFromSeed(ctx context.Context, addr string) (PK, []unic
 
 func (n *network) connect(addr unicastAddr, pk PK) error {
 	log.Info("connecting to peer", "addr", addr.Addr)
-	peerShard := pk.Shard(n.shardCount)
 
 	n.mu.Lock()
 	if _, ok := n.conns[addr]; ok {
@@ -340,8 +324,7 @@ func (n *network) connect(addr unicastAddr, pk PK) error {
 	n.mu.Lock()
 	if _, ok := n.conns[addr]; !ok {
 		n.conns[addr] = conn
-		n.shards[peerShard][addr] = conn
-		go n.readConn(addr, conn, peerShard)
+		go n.readConn(addr, conn)
 	} else {
 		c.Close()
 	}
@@ -349,7 +332,7 @@ func (n *network) connect(addr unicastAddr, pk PK) error {
 	return nil
 }
 
-func (n *network) readConn(addr unicastAddr, conn *conn, peerShard uint16) {
+func (n *network) readConn(addr unicastAddr, conn *conn) {
 	for {
 		pac, err := conn.Read()
 		if err != nil {
@@ -370,7 +353,6 @@ func (n *network) readConn(addr unicastAddr, conn *conn, peerShard uint16) {
 	}
 
 	n.mu.Lock()
-	delete(n.shards[peerShard], addr)
 	delete(n.conns, addr)
 	n.mu.Unlock()
 }
@@ -392,13 +374,6 @@ func (n *network) Send(addr netAddr, p packet) error {
 			n.mu.Lock()
 			if conn, ok = n.conns[v]; ok {
 				delete(n.conns, v)
-
-				for _, shard := range n.shards {
-					if _, ok := shard[v]; ok {
-						delete(shard, v)
-						break
-					}
-				}
 				conn.Close()
 			}
 			n.mu.Unlock()
@@ -407,12 +382,6 @@ func (n *network) Send(addr netAddr, p packet) error {
 	case broadcast:
 		n.mu.Lock()
 		for addr := range n.conns {
-			go n.Send(addr, p)
-		}
-		n.mu.Unlock()
-	case shardBroadcast:
-		n.mu.Lock()
-		for addr := range n.shards[n.shardIdx] {
 			go n.Send(addr, p)
 		}
 		n.mu.Unlock()

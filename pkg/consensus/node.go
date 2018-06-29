@@ -17,19 +17,18 @@ import (
 // Nodes form a group randomly, the randomness comes from the random
 // beacon.
 type Node struct {
-	addr     Addr
-	shardIdx uint16
-	cfg      Config
-	sk       SK
-	gateway  *gateway
-	chain    *Chain
-	store    *storage
+	addr    Addr
+	cfg     Config
+	sk      SK
+	gateway *gateway
+	chain   *Chain
+	store   *storage
 
 	mu sync.Mutex
 	// the memberships of different groups
 	memberships    []membership
-	notarizeChs    map[uint64][]chan *ShardBlockProposal
-	bpForNotary    map[uint64][]*ShardBlockProposal
+	notarizeChs    map[uint64][]chan *BlockProposal
+	bpForNotary    map[uint64][]*BlockProposal
 	round          uint64
 	recvBlockTime  map[uint64]time.Time
 	cancelNotarize map[uint64]func()
@@ -42,8 +41,6 @@ type NodeCredentials struct {
 	GroupShares []SK
 }
 
-// TODO: make sure nodes from the same shard is in the same group.
-
 type membership struct {
 	skShare SK
 	groupID int
@@ -54,11 +51,10 @@ type Config struct {
 	BlockTime      time.Duration
 	GroupSize      int
 	GroupThreshold int
-	ShardCount     int
 }
 
 // NewNode creates a new node.
-func NewNode(chain *Chain, sk SK, net *gateway, cfg Config, shardIdx uint16, store *storage) *Node {
+func NewNode(chain *Chain, sk SK, net *gateway, cfg Config, store *storage) *Node {
 	pk, err := sk.PK()
 	if err != nil {
 		panic(err)
@@ -68,13 +64,12 @@ func NewNode(chain *Chain, sk SK, net *gateway, cfg Config, shardIdx uint16, sto
 	n := &Node{
 		addr:           addr,
 		store:          store,
-		shardIdx:       shardIdx,
 		cfg:            cfg,
 		sk:             sk,
 		chain:          chain,
 		gateway:        net,
-		bpForNotary:    make(map[uint64][]*ShardBlockProposal),
-		notarizeChs:    make(map[uint64][]chan *ShardBlockProposal),
+		bpForNotary:    make(map[uint64][]*BlockProposal),
+		notarizeChs:    make(map[uint64][]chan *BlockProposal),
 		cancelNotarize: make(map[uint64]func()),
 		recvBlockTime:  make(map[uint64]time.Time),
 	}
@@ -92,7 +87,7 @@ func (n *Node) Start(host string, port int, seedAddr string) error {
 	return n.gateway.Start(host, port, seedAddr)
 }
 
-func (n *Node) proposeShardBlock(round uint64, group int) {
+func (n *Node) proposeBlock(round uint64, group int) {
 	startTime := time.Now()
 	n.chain.WaitUntil(round)
 	n.mu.Lock()
@@ -112,26 +107,26 @@ func (n *Node) proposeShardBlock(round uint64, group int) {
 
 	start := time.Now()
 	log.Debug("start propose block", "owner", n.addr, "round", round, "group", group, "since round start", time.Now().Sub(startTime))
-	bp := n.chain.ProposeShardBlock(ctx, n.sk, round)
+	bp := n.chain.ProposeBlock(ctx, n.sk, round)
 	h := bp.Hash()
 	if bp != nil {
-		log.Info("propose shard block done", "owner", n.addr, "round", round, "bp round", bp.Round, "hash", h, "group", group, "dur", time.Now().Sub(start), "since round start", time.Now().Sub(startTime))
-		n.gateway.recvShardBlockProposal(n.gateway.addr, bp, h)
+		log.Info("propose block done", "owner", n.addr, "round", round, "bp round", bp.Round, "hash", h, "group", group, "dur", time.Now().Sub(start), "since round start", time.Now().Sub(startTime))
+		n.gateway.recvBlockProposal(n.gateway.addr, bp, h)
 	}
 
 }
 
-func (n *Node) notarizeShardBlock(notary *Notary, inCh chan *ShardBlockProposal, cancelCtx context.Context, lastRoundEndTime time.Time, round uint64, group int) {
+func (n *Node) notarizeBlock(notary *Notary, inCh chan *BlockProposal, cancelCtx context.Context, lastRoundEndTime time.Time, round uint64, group int) {
 	log.Debug("begin notarize", "group", group, "round", round)
 	startTime := time.Now()
-	onNotarize := func(s *ShardNtShare, spentTime time.Duration) {
+	onNotarize := func(s *NtShare, spentTime time.Duration) {
 		h := s.Hash()
 		log.Info("produced one notarization share", "group", group, "bp", s.BP, "share round", s.Round, "round", round, "hash", h, "since round start", time.Now().Sub(startTime))
 		if diff := time.Now().Sub(lastRoundEndTime); diff >= n.cfg.BlockTime-spentTime {
-			go n.gateway.recvShardNtShare(n.gateway.addr, s, h)
+			go n.gateway.recvNtShare(n.gateway.addr, s, h)
 		} else {
 			time.AfterFunc(n.cfg.BlockTime-spentTime-diff, func() {
-				n.gateway.recvShardNtShare(n.gateway.addr, s, h)
+				n.gateway.recvNtShare(n.gateway.addr, s, h)
 			})
 		}
 	}
@@ -158,15 +153,12 @@ func (n *Node) StartRound(round uint64) {
 
 	n.round = round
 	var ntCancelCtx context.Context
-	rbGroup, bpGroup, ntGroup, globalNtGroup := n.chain.randomBeacon.Committees(round)
-	log.Info("start round", "round", round, "rb group", rbGroup, "bp group", bpGroup, "nt group", ntGroup, "global nt group", globalNtGroup, "rand beacon", SHA3(n.chain.randomBeacon.History()[round].Sig))
+	rbGroup, bpGroup, ntGroup := n.chain.randomBeacon.Committees(round)
+	log.Info("start round", "round", round, "rb group", rbGroup, "bp group", bpGroup, "nt group", ntGroup, "rand beacon", SHA3(n.chain.randomBeacon.History()[round].Sig))
 
 	for _, m := range n.memberships {
-		if m.groupID == globalNtGroup {
-		}
-
 		if m.groupID == bpGroup {
-			go n.proposeShardBlock(round, bpGroup)
+			go n.proposeBlock(round, bpGroup)
 		}
 
 		if m.groupID == ntGroup {
@@ -175,9 +167,9 @@ func (n *Node) StartRound(round uint64) {
 			}
 
 			notary := NewNotary(n.addr, n.sk, m.skShare, n.chain, n.store)
-			inCh := make(chan *ShardBlockProposal, 20)
+			inCh := make(chan *BlockProposal, 20)
 			n.notarizeChs[round] = append(n.notarizeChs[round], inCh)
-			go n.notarizeShardBlock(notary, inCh, ntCancelCtx, lastRoundEndTime, round, ntGroup)
+			go n.notarizeBlock(notary, inCh, ntCancelCtx, lastRoundEndTime, round, ntGroup)
 		}
 	}
 
@@ -212,7 +204,7 @@ func (n *Node) EndRound(round uint64) {
 		delete(n.cancelNotarize, round)
 	}
 
-	rb, _, _, _ := n.chain.randomBeacon.Committees(round)
+	rb, _, _ := n.chain.randomBeacon.Committees(round)
 	for _, m := range n.memberships {
 		if m.groupID != rb {
 			continue
@@ -237,7 +229,7 @@ func (n *Node) EndRound(round uint64) {
 
 // RecvBlockProposal tells the node that a valid block proposal of the
 // current round is received.
-func (n *Node) recvBPForNotary(bp *ShardBlockProposal) {
+func (n *Node) recvBPForNotary(bp *BlockProposal) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 
@@ -259,11 +251,6 @@ func (n *Node) SendTxn(t []byte) {
 
 // MakeNode makes a new node with the given configurations.
 func MakeNode(credentials NodeCredentials, cfg Config, genesis Genesis, state State, txnPool TxnPool, u Updater) *Node {
-	if cfg.ShardCount <= 0 {
-		panic(fmt.Errorf("must have a positive shard count, current: %d", cfg.ShardCount))
-	}
-	shardIdx := credentials.SK.MustPK().Shard(cfg.ShardCount)
-
 	randSeed := Rand(SHA3([]byte("dex")))
 	err := state.Deserialize(genesis.State)
 	if err != nil {
@@ -271,10 +258,10 @@ func MakeNode(credentials NodeCredentials, cfg Config, genesis Genesis, state St
 	}
 
 	store := newStorage()
-	chain := NewChain(&genesis.Block, state, randSeed, cfg, txnPool, u, shardIdx, store)
-	net := newNetwork(credentials.SK, shardIdx, cfg.ShardCount)
+	chain := NewChain(&genesis.Block, state, randSeed, cfg, txnPool, u, store)
+	net := newNetwork(credentials.SK)
 	gateway := newGateway(net, chain, store, cfg.GroupThreshold)
-	node := NewNode(chain, credentials.SK, gateway, cfg, shardIdx, store)
+	node := NewNode(chain, credentials.SK, gateway, cfg, store)
 	for j := range credentials.Groups {
 		share := credentials.GroupShares[j]
 		m := membership{groupID: credentials.Groups[j], skShare: share}

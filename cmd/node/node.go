@@ -90,7 +90,6 @@ func main() {
 		BlockTime:      time.Second,
 		GroupSize:      *groupSize,
 		GroupThreshold: *threshold,
-		ShardCount:     3,
 	}
 
 	server := dex.NewRPCServer()
@@ -109,7 +108,7 @@ func main() {
 	}
 
 	pk := credential.SK.MustPK()
-	log15.Info("node info", "addr", pk.Addr(), "shard index", pk.Shard(cfg.ShardCount), "total shard", cfg.ShardCount, "member of groups", credential.Groups)
+	log15.Info("node info", "addr", pk.Addr(), "member of groups", credential.Groups)
 	n.EndRound(0)
 
 	select {}

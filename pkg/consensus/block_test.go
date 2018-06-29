@@ -15,8 +15,7 @@ func TestAddrID(t *testing.T) {
 }
 
 func TestBlockProposalEncodeDecode(t *testing.T) {
-	b := ShardBlockProposal{
-		ShardIdx:  1,
+	b := BlockProposal{
 		Round:     2,
 		PrevBlock: Hash{3},
 		Txns:      []byte{1, 2, 3},
@@ -28,14 +27,14 @@ func TestBlockProposalEncodeDecode(t *testing.T) {
 	withoutSig := b.Encode(false)
 	assert.NotEqual(t, withSig, withoutSig)
 
-	var b0 ShardBlockProposal
+	var b0 BlockProposal
 	err := rlp.DecodeBytes(withSig, &b0)
 	if err != nil {
 		panic(err)
 	}
 	assert.Equal(t, b, b0)
 
-	var b1 ShardBlockProposal
+	var b1 BlockProposal
 	err = rlp.DecodeBytes(withoutSig, &b1)
 	if err != nil {
 		panic(err)
@@ -51,10 +50,13 @@ func TestBlockProposalEncodeDecode(t *testing.T) {
 
 func TestBlockEncodeDecode(t *testing.T) {
 	b := Block{
-		StateRoot:    Hash{1},
-		Notarization: []byte{4, 5, 6},
-		SysTxns:      []SysTxn{},
-		ShardBlocks:  []Hash{{1}},
+		Owner:         Addr{1},
+		Round:         1,
+		StateRoot:     Hash{1},
+		BlockProposal: Hash{2},
+		PrevBlock:     Hash{2},
+		Notarization:  []byte{4, 5, 6},
+		SysTxns:       []SysTxn{},
 	}
 
 	withSig := b.Encode(true)
@@ -106,15 +108,16 @@ func TestRandSigEncodeDecode(t *testing.T) {
 }
 
 func TestNtShareEncodeDecode(t *testing.T) {
-	nt := ShardNtShare{
-		Round:    1,
-		BP:       Hash{2},
-		SigShare: []byte{4},
-		Owner:    Addr{5},
-		Sig:      []byte{6},
+	nt := NtShare{
+		Round:     1,
+		StateRoot: Hash{1},
+		BP:        Hash{2},
+		SigShare:  []byte{4},
+		Owner:     Addr{5},
+		Sig:       []byte{6},
 	}
 
-	var nt0 ShardNtShare
+	var nt0 NtShare
 	err := rlp.DecodeBytes(nt.Encode(true), &nt0)
 	if err != nil {
 		panic(err)
@@ -122,7 +125,7 @@ func TestNtShareEncodeDecode(t *testing.T) {
 
 	assert.Equal(t, nt, nt0)
 
-	var nt1 ShardNtShare
+	var nt1 NtShare
 	err = rlp.DecodeBytes(nt.Encode(false), &nt1)
 	if err != nil {
 		panic(err)
@@ -134,11 +137,11 @@ func TestNtShareEncodeDecode(t *testing.T) {
 }
 
 func TestEncodeSlice(t *testing.T) {
-	b := ShardBlockProposal{
+	b := BlockProposal{
 		Txns: []byte{},
 	}
 
-	b0 := ShardBlockProposal{
+	b0 := BlockProposal{
 		Txns: nil,
 	}
 

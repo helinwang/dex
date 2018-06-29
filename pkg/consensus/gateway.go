@@ -23,7 +23,7 @@ type Item struct {
 
 func (i Item) String() string {
 	switch i.T {
-	case txnItem, sysTxnItem, blockItem, shardBlockProposalItem, shardBlockItem, ntShareItem:
+	case txnItem, sysTxnItem, blockItem, blockProposalItem, ntShareItem:
 		return fmt.Sprintf("%v_hash_%v", i.T, i.Hash)
 	case randBeaconSigShareItem, randBeaconSigItem:
 		return fmt.Sprintf("%v_round_%v", i.T, i.Round)
@@ -42,8 +42,7 @@ const (
 	txnItem itemType = iota
 	sysTxnItem
 	blockItem
-	shardBlockItem
-	shardBlockProposalItem
+	blockProposalItem
 	ntShareItem
 	randBeaconSigShareItem
 	randBeaconSigItem
@@ -57,10 +56,8 @@ func (i itemType) String() string {
 		return "SysTxnItem"
 	case blockItem:
 		return "BlockItem"
-	case shardBlockItem:
-		return "ShardBlockItem"
-	case shardBlockProposalItem:
-		return "ShardBlockProposalItem"
+	case blockProposalItem:
+		return "BlockProposalItem"
 	case ntShareItem:
 		return "NtShareItem"
 	case randBeaconSigShareItem:
@@ -77,33 +74,25 @@ func (i itemType) String() string {
 type gateway struct {
 	addr                     unicastAddr
 	net                      *network
-	v                        *validator
 	chain                    *Chain
 	syncer                   *syncer
-	shardBlockCache          *lru.Cache
 	blockCache               *lru.Cache
 	bpCache                  *lru.Cache
 	randBeaconSigCache       *lru.Cache
 	node                     *Node
 	store                    *storage
-	shardNtShareCollector    *collector
+	ntShareCollector         *collector
 	randBeaconShareCollector *collector
 
-	mu                sync.Mutex
-	rbSigWaiters      map[uint64][]chan *RandBeaconSig
-	blockWaiters      map[Hash][]chan *Block
-	shardBlockWaiters map[Hash][]chan *ShardBlock
-	bpWaiters         map[Hash][]chan *ShardBlockProposal
-	requestingItem    map[Item]bool
+	mu             sync.Mutex
+	rbSigWaiters   map[uint64][]chan *RandBeaconSig
+	blockWaiters   map[Hash][]chan *Block
+	bpWaiters      map[Hash][]chan *BlockProposal
+	requestingItem map[Item]bool
 }
 
 func newGateway(net *network, chain *Chain, store *storage, groupThreshold int) *gateway {
 	bCache, err := lru.New(1024)
-	if err != nil {
-		panic(err)
-	}
-
-	sbCache, err := lru.New(1024)
 	if err != nil {
 		panic(err)
 	}
@@ -121,18 +110,15 @@ func newGateway(net *network, chain *Chain, store *storage, groupThreshold int) 
 	n := &gateway{
 		net:                      net,
 		store:                    store,
-		shardBlockCache:          sbCache,
 		blockCache:               bCache,
 		bpCache:                  bpCache,
 		randBeaconSigCache:       randBeaconSigCache,
-		v:                        newValidator(chain, store),
 		chain:                    chain,
 		rbSigWaiters:             make(map[uint64][]chan *RandBeaconSig),
 		blockWaiters:             make(map[Hash][]chan *Block),
-		shardBlockWaiters:        make(map[Hash][]chan *ShardBlock),
-		bpWaiters:                make(map[Hash][]chan *ShardBlockProposal),
+		bpWaiters:                make(map[Hash][]chan *BlockProposal),
 		requestingItem:           make(map[Item]bool),
-		shardNtShareCollector:    newCollector(groupThreshold),
+		ntShareCollector:         newCollector(groupThreshold),
 		randBeaconShareCollector: newCollector(groupThreshold),
 	}
 
@@ -222,55 +208,22 @@ func (n *gateway) RequestBlock(ctx context.Context, addr unicastAddr, hash Hash)
 	}
 }
 
-func (n *gateway) RequestShardBlock(ctx context.Context, addr unicastAddr, hash Hash) (*ShardBlock, error) {
-	v, ok := n.shardBlockCache.Get(hash)
-	if ok {
-		return v.(*ShardBlock), nil
-	}
-
-	if b := n.store.ShardBlock(hash); b != nil {
-		return b, nil
-	}
-
-	c := make(chan *ShardBlock, 1)
-	n.mu.Lock()
-	n.shardBlockWaiters[hash] = append(n.shardBlockWaiters[hash], c)
-	if len(n.blockWaiters[hash]) == 1 {
-		err := n.requestItem(addr, Item{
-			T:    shardBlockItem,
-			Hash: hash,
-		}, true)
-		if err != nil {
-			n.mu.Unlock()
-			return nil, err
-		}
-	}
-	n.mu.Unlock()
-
-	select {
-	case b := <-c:
-		return b, nil
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	}
-}
-
-func (n *gateway) RequestShardBlockProposal(ctx context.Context, addr unicastAddr, hash Hash) (*ShardBlockProposal, error) {
+func (n *gateway) RequestBlockProposal(ctx context.Context, addr unicastAddr, hash Hash) (*BlockProposal, error) {
 	v, ok := n.bpCache.Get(hash)
 	if ok {
-		return v.(*ShardBlockProposal), nil
+		return v.(*BlockProposal), nil
 	}
 
-	if bp := n.store.ShardBlockProposal(hash); bp != nil {
+	if bp := n.store.BlockProposal(hash); bp != nil {
 		return bp, nil
 	}
 
-	c := make(chan *ShardBlockProposal, 1)
+	c := make(chan *BlockProposal, 1)
 	n.mu.Lock()
 	n.bpWaiters[hash] = append(n.bpWaiters[hash], c)
 	if len(n.bpWaiters[hash]) == 1 {
 		err := n.requestItem(addr, Item{
-			T:    shardBlockProposalItem,
+			T:    blockProposalItem,
 			Hash: hash,
 		}, true)
 		if err != nil {
@@ -324,18 +277,14 @@ func (n *gateway) recvData() {
 			log.Debug("recvBlock", "round", v.Round, "hash", h, "state root", v.StateRoot)
 			go n.recvBlock(addr, v, h)
 			go n.node.BlockForRoundProduced(v.Round)
-		case *ShardBlock:
+		case *BlockProposal:
 			h := v.Hash()
-			log.Debug("recvShardBlockProposal", "round", v.Round, "hash", h, "block", v.PrevBlock)
-			go n.recvShardBlock(addr, v, h)
-		case *ShardBlockProposal:
-			h := v.Hash()
-			log.Debug("recvShardBlockProposal", "round", v.Round, "hash", h, "block", v.PrevBlock)
-			go n.recvShardBlockProposal(addr, v, h)
-		case *ShardNtShare:
+			log.Debug("recvBlockProposal", "round", v.Round, "hash", h, "block", v.PrevBlock)
+			go n.recvBlockProposal(addr, v, h)
+		case *NtShare:
 			h := v.Hash()
 			log.Debug("recvNtShare", "round", v.Round, "hash", h, "bp", v.BP)
-			go n.recvShardNtShare(addr, v, h)
+			go n.recvNtShare(addr, v, h)
 		case Item:
 			go n.recvInventory(addr, v)
 		case itemRequest:
@@ -346,11 +295,6 @@ func (n *gateway) recvData() {
 	}
 }
 
-// shardBroadcast broadcasts the item to peers in the same shard.
-func (n *gateway) shardBroadcast(item Item) {
-	n.net.Send(shardBroadcast{}, packet{Data: item})
-}
-
 func (n *gateway) broadcast(item Item) {
 	n.net.Send(broadcast{}, packet{Data: item})
 }
@@ -358,7 +302,7 @@ func (n *gateway) broadcast(item Item) {
 func (n *gateway) recvTxn(t []byte) {
 	txn, broadcast := n.chain.txnPool.Add(t)
 	if broadcast {
-		go n.shardBroadcast(Item{T: txnItem, Hash: SHA3(txn.Raw)})
+		go n.broadcast(Item{T: txnItem, Hash: SHA3(txn.Raw)})
 	}
 }
 
@@ -392,6 +336,42 @@ func (n *gateway) recvRandBeaconSig(addr unicastAddr, r *RandBeaconSig) {
 	}
 }
 
+func (n *gateway) validateRandBeaconSigShare(r *RandBeaconSigShare) (int, bool) {
+	if h := SHA3(n.chain.randomBeacon.sigHistory[r.Round-1].Sig); h != r.LastSigHash {
+		log.Warn("validate random beacon share last sig error", "hash", r.LastSigHash, "expected", h)
+		return 0, false
+	}
+
+	rb, _, _ := n.chain.randomBeacon.Committees(r.Round - 1)
+	group := n.chain.randomBeacon.groups[rb]
+	sharePK, ok := group.MemberPK[r.Owner]
+	if !ok {
+		log.Warn("ValidateRandBeaconSigShare: owner not a member of the rb cmte")
+		return 0, false
+	}
+
+	pk, ok := n.chain.lastFinalizedSysState.addrToPK[r.Owner]
+	if !ok {
+		log.Warn("rancom beacon sig shareowner not found", "owner", r.Owner)
+		return 0, false
+	}
+
+	if !r.OwnerSig.Verify(pk, r.Encode(false)) {
+		log.Warn("invalid rand beacon share signature", "rand beacon share", r.Hash())
+		return 0, false
+	}
+
+	// TODO: validate share signature is valid according to the
+	// member group public key share
+	msg := randBeaconSigMsg(r.Round, r.LastSigHash)
+	if !r.Share.Verify(sharePK, msg) {
+		log.Warn("validate random beacon sig share error")
+		return 0, false
+	}
+
+	return rb, true
+}
+
 func (n *gateway) recvRandBeaconSigShare(addr unicastAddr, r *RandBeaconSigShare) {
 	if r.Round == 0 {
 		log.Error("received RandBeaconSigShare of 0 round, should not happen")
@@ -400,7 +380,7 @@ func (n *gateway) recvRandBeaconSigShare(addr unicastAddr, r *RandBeaconSigShare
 
 	h := r.Hash()
 	n.chain.randomBeacon.WaitUntil(r.Round - 1)
-	groupID, valid := n.v.ValidateRandBeaconSigShare(r)
+	groupID, valid := n.validateRandBeaconSigShare(r)
 
 	if !valid {
 		return
@@ -427,27 +407,6 @@ func (n *gateway) recvRandBeaconSigShare(addr unicastAddr, r *RandBeaconSigShare
 	}
 }
 
-func (n *gateway) recvShardBlock(addr unicastAddr, b *ShardBlock, h Hash) {
-	n.shardBlockCache.Add(h, b)
-
-	n.mu.Lock()
-	for _, c := range n.shardBlockWaiters[h] {
-		c <- b
-	}
-	n.blockWaiters[h] = nil
-	n.mu.Unlock()
-
-	_, broadcast, err := n.syncer.SyncShardBlock(addr, h, b.Round)
-	if err != nil {
-		log.Warn("sync shard block error", "err", err)
-		return
-	}
-
-	if broadcast {
-		go n.broadcast(Item{T: shardBlockItem, Hash: h})
-	}
-}
-
 func (n *gateway) recvBlock(addr unicastAddr, b *Block, h Hash) {
 	n.blockCache.Add(h, b)
 
@@ -465,11 +424,11 @@ func (n *gateway) recvBlock(addr unicastAddr, b *Block, h Hash) {
 	}
 
 	if broadcast {
-		go n.broadcast(Item{T: blockItem, Hash: b.Hash()})
+		go n.broadcast(Item{T: blockItem, Hash: h})
 	}
 }
 
-func (n *gateway) recvShardBlockProposal(addr unicastAddr, bp *ShardBlockProposal, h Hash) {
+func (n *gateway) recvBlockProposal(addr unicastAddr, bp *BlockProposal, h Hash) {
 	n.bpCache.Add(h, bp)
 
 	n.mu.Lock()
@@ -479,65 +438,64 @@ func (n *gateway) recvShardBlockProposal(addr unicastAddr, bp *ShardBlockProposa
 	n.bpWaiters[h] = nil
 	n.mu.Unlock()
 
-	_, broadcast, err := n.syncer.SyncShardBlockProposal(addr, h)
+	_, broadcast, err := n.syncer.SyncBlockProposal(addr, h)
 	if err != nil {
 		log.Warn("sync block proposal error", "err", err)
 		return
 	}
 
 	if broadcast {
-		go n.shardBroadcast(Item{T: shardBlockProposalItem, Hash: h})
+		go n.broadcast(Item{T: blockProposalItem, Hash: h})
 	}
 }
 
-func (n *gateway) recvShardNtShare(addr unicastAddr, s *ShardNtShare, h Hash) {
+func (n *gateway) recvNtShare(addr unicastAddr, s *NtShare, h Hash) {
 	round := n.chain.Round()
 	if round > s.Round {
 		return
 	}
 
-	shares, broadcast := n.shardNtShareCollector.Add(s.BP, h, s)
+	shares, broadcast := n.ntShareCollector.Add(s.BP, h, s)
 	if shares != nil {
-		ss := make([]*ShardNtShare, len(shares))
+		ss := make([]*NtShare, len(shares))
 		for i := range ss {
-			ss[i] = shares[i].(*ShardNtShare)
+			ss[i] = shares[i].(*NtShare)
 		}
 
-		bp, _, err := n.syncer.SyncShardBlockProposal(addr, s.BP)
+		bp, _, err := n.syncer.SyncBlockProposal(addr, s.BP)
 		if err != nil {
-			log.Error("error recover shard nt share, can not sync block proposal", "err", err)
+			log.Error("error recover nt share, can not sync block proposal", "err", err)
 			return
 		}
-		n.shardNtShareCollector.Remove(s.BP)
+		n.ntShareCollector.Remove(s.BP)
 
-		shardBlock := recoverShardBlock(ss, bp, n.chain.randomBeacon, bp.ShardIdx)
-		go n.recvShardBlock(addr, shardBlock, shardBlock.Hash())
-		// will broadcast shard block instead of shard block
-		// nt share.
+		block := recoverBlock(ss, bp, s.BP, n.chain.randomBeacon)
+		go n.recvBlock(addr, block, block.Hash())
+		// will broadcast block instead of the nt share.
 		return
 	}
 
 	if broadcast {
-		go n.shardBroadcast(Item{T: ntShareItem, Hash: h, Round: s.Round})
+		go n.broadcast(Item{T: ntShareItem, Hash: h, Round: s.Round})
 	}
 }
 
-func recoverShardBlock(shares []*ShardNtShare, bp *ShardBlockProposal, rb *RandomBeacon, shardIdx uint16) *ShardBlock {
-	log.Debug("generating shard block from proposal and notarization", "bp", shares[0].BP)
+func recoverBlock(shares []*NtShare, bp *BlockProposal, bpHash Hash, rb *RandomBeacon) *Block {
+	log.Debug("generating block from proposal and notarization", "bp", bpHash)
 	sig, err := recoverNtSig(shares)
 	if err != nil {
 		// should not happen
 		panic(err)
 	}
 
-	_, _, ntGroup, _ := rb.Committees(bp.Round)
+	_, _, ntGroup := rb.Committees(bp.Round)
 
-	b := &ShardBlock{
-		ShardIdx:  shardIdx,
-		Owner:     bp.Owner,
-		Round:     bp.Round,
-		PrevBlock: bp.PrevBlock,
-		Txns:      bp.Txns,
+	b := &Block{
+		Owner:         bp.Owner,
+		Round:         bp.Round,
+		StateRoot:     shares[0].StateRoot,
+		BlockProposal: bpHash,
+		PrevBlock:     bp.PrevBlock,
 	}
 
 	msg := b.Encode(false)
@@ -572,22 +530,12 @@ func (n *gateway) recvInventory(addr unicastAddr, item Item) {
 		}
 
 		n.requestItem(addr, item, false)
-	case shardBlockItem:
-		if n.shardBlockCache.Contains(item.Hash) {
-			return
-		}
-
-		if b := n.store.ShardBlock(item.Hash); b != nil {
-			return
-		}
-
-		n.requestItem(addr, item, false)
-	case shardBlockProposalItem:
+	case blockProposalItem:
 		if n.bpCache.Contains(item.Hash) {
 			return
 		}
 
-		if bp := n.store.ShardBlockProposal(item.Hash); bp != nil {
+		if bp := n.store.BlockProposal(item.Hash); bp != nil {
 			return
 		}
 
@@ -597,7 +545,7 @@ func (n *gateway) recvInventory(addr unicastAddr, item Item) {
 			return
 		}
 
-		if nt := n.shardNtShareCollector.Get(item.Hash); nt != nil {
+		if nt := n.ntShareCollector.Get(item.Hash); nt != nil {
 			return
 		}
 
@@ -633,26 +581,20 @@ func (n *gateway) serveData(addr unicastAddr, item Item) {
 		go n.net.Send(addr, packet{Data: b.Raw})
 	case sysTxnItem:
 		panic(sysTxnNotImplemented)
+	case blockProposalItem:
+		bp := n.store.BlockProposal(item.Hash)
+		if bp == nil {
+			return
+		}
+		go n.net.Send(addr, packet{Data: bp})
 	case blockItem:
 		b := n.store.Block(item.Hash)
 		if b == nil {
 			return
 		}
 		go n.net.Send(addr, packet{Data: b})
-	case shardBlockProposalItem:
-		bp := n.store.ShardBlockProposal(item.Hash)
-		if bp == nil {
-			return
-		}
-		go n.net.Send(addr, packet{Data: bp})
-	case shardBlockItem:
-		b := n.store.ShardBlock(item.Hash)
-		if b == nil {
-			return
-		}
-		go n.net.Send(addr, packet{Data: b})
 	case ntShareItem:
-		nts := n.shardNtShareCollector.Get(item.Hash)
+		nts := n.ntShareCollector.Get(item.Hash)
 		if nts == nil {
 			return
 		}

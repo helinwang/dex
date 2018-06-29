@@ -12,19 +12,17 @@ type DB interface {
 
 // storage stores the blockchain data.
 type storage struct {
-	mu                  sync.Mutex
-	blocks              map[Hash]*Block
-	shardBlocks         map[Hash]*ShardBlock
-	shardBlockProposals map[Hash]*ShardBlockProposal
-	randBeaconSigs      map[uint64]*RandBeaconSig
+	mu             sync.Mutex
+	blocks         map[Hash]*Block
+	blockProposals map[Hash]*BlockProposal
+	randBeaconSigs map[uint64]*RandBeaconSig
 }
 
 func newStorage() *storage {
 	return &storage{
-		blocks:              make(map[Hash]*Block),
-		shardBlocks:         make(map[Hash]*ShardBlock),
-		shardBlockProposals: make(map[Hash]*ShardBlockProposal),
-		randBeaconSigs:      make(map[uint64]*RandBeaconSig),
+		blocks:         make(map[Hash]*Block),
+		blockProposals: make(map[Hash]*BlockProposal),
+		randBeaconSigs: make(map[uint64]*RandBeaconSig),
 	}
 }
 
@@ -32,31 +30,20 @@ func (s *storage) AddBlock(b *Block, h Hash) bool {
 	s.mu.Lock()
 	broadcast := false
 	if _, ok := s.blocks[h]; !ok {
-		broadcast = true
 		s.blocks[h] = b
-	}
-	s.mu.Unlock()
-	return broadcast
-}
-
-func (s *storage) AddShardBlock(b *ShardBlock, h Hash) bool {
-	s.mu.Lock()
-	broadcast := false
-	if _, ok := s.shardBlocks[h]; !ok {
-		s.shardBlocks[h] = b
 		broadcast = true
 	}
 	s.mu.Unlock()
 	return broadcast
 }
 
-func (s *storage) AddShardBlockProposal(bp *ShardBlockProposal, h Hash) bool {
+func (s *storage) AddBlockProposal(bp *BlockProposal, h Hash) bool {
 	s.mu.Lock()
-	if _, ok := s.shardBlockProposals[h]; ok {
+	if _, ok := s.blockProposals[h]; ok {
 		s.mu.Unlock()
 		return false
 	}
-	s.shardBlockProposals[h] = bp
+	s.blockProposals[h] = bp
 	s.mu.Unlock()
 	return true
 }
@@ -74,16 +61,9 @@ func (s *storage) Block(h Hash) *Block {
 	return b
 }
 
-func (s *storage) ShardBlock(h Hash) *ShardBlock {
+func (s *storage) BlockProposal(h Hash) *BlockProposal {
 	s.mu.Lock()
-	b := s.shardBlocks[h]
-	s.mu.Unlock()
-	return b
-}
-
-func (s *storage) ShardBlockProposal(h Hash) *ShardBlockProposal {
-	s.mu.Lock()
-	b := s.shardBlockProposals[h]
+	b := s.blockProposals[h]
 	s.mu.Unlock()
 	return b
 }
