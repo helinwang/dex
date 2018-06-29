@@ -43,7 +43,7 @@ type network struct {
 	sk         SK
 	port       uint16
 	ch         chan packetAndAddr
-	shardIdx   int
+	shardIdx   uint16
 	shardCount int
 
 	mu     sync.Mutex
@@ -53,7 +53,7 @@ type network struct {
 	publicNodes []unicastAddr
 }
 
-func newNetwork(sk SK, shardIdx, shardCount int) *network {
+func newNetwork(sk SK, shardIdx uint16, shardCount int) *network {
 	shards := make([]map[unicastAddr]*conn, shardCount)
 	for i := range shards {
 		shards[i] = make(map[unicastAddr]*conn)
@@ -349,7 +349,7 @@ func (n *network) connect(addr unicastAddr, pk PK) error {
 	return nil
 }
 
-func (n *network) readConn(addr unicastAddr, conn *conn, peerShard int) {
+func (n *network) readConn(addr unicastAddr, conn *conn, peerShard uint16) {
 	for {
 		pac, err := conn.Read()
 		if err != nil {

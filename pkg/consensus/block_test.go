@@ -15,24 +15,27 @@ func TestAddrID(t *testing.T) {
 }
 
 func TestBlockProposalEncodeDecode(t *testing.T) {
-	b := BlockProposal{
-		Data:     []byte{1, 2, 3},
-		OwnerSig: []byte{4, 5, 6},
-		SysTxns:  []SysTxn{},
+	b := ShardBlockProposal{
+		ShardIdx:  1,
+		Round:     2,
+		PrevBlock: Hash{3},
+		Txns:      []byte{1, 2, 3},
+		Owner:     Addr{4},
+		OwnerSig:  []byte{4, 5, 6},
 	}
 
 	withSig := b.Encode(true)
 	withoutSig := b.Encode(false)
 	assert.NotEqual(t, withSig, withoutSig)
 
-	var b0 BlockProposal
+	var b0 ShardBlockProposal
 	err := rlp.DecodeBytes(withSig, &b0)
 	if err != nil {
 		panic(err)
 	}
 	assert.Equal(t, b, b0)
 
-	var b1 BlockProposal
+	var b1 ShardBlockProposal
 	err = rlp.DecodeBytes(withoutSig, &b1)
 	if err != nil {
 		panic(err)
@@ -42,16 +45,16 @@ func TestBlockProposalEncodeDecode(t *testing.T) {
 	assert.Equal(t, b0, b1)
 
 	b2 := b
-	b2.SysTxns = nil
 	assert.Equal(t, b2.Encode(true), b.Encode(true))
 	assert.Equal(t, b2.Encode(false), b.Encode(false))
 }
 
 func TestBlockEncodeDecode(t *testing.T) {
 	b := Block{
-		StateRoot:       Hash{1},
-		NotarizationSig: []byte{4, 5, 6},
-		SysTxns:         []SysTxn{},
+		StateRoot:    Hash{1},
+		Notarization: []byte{4, 5, 6},
+		SysTxns:      []SysTxn{},
+		ShardBlocks:  []Hash{{1}},
 	}
 
 	withSig := b.Encode(true)
@@ -71,7 +74,7 @@ func TestBlockEncodeDecode(t *testing.T) {
 		panic(err)
 	}
 
-	b0.NotarizationSig = []byte{}
+	b0.Notarization = []byte{}
 	assert.Equal(t, b0, b1)
 }
 
@@ -103,7 +106,7 @@ func TestRandSigEncodeDecode(t *testing.T) {
 }
 
 func TestNtShareEncodeDecode(t *testing.T) {
-	nt := NtShare{
+	nt := ShardNtShare{
 		Round:    1,
 		BP:       Hash{2},
 		SigShare: []byte{4},
@@ -111,7 +114,7 @@ func TestNtShareEncodeDecode(t *testing.T) {
 		Sig:      []byte{6},
 	}
 
-	var nt0 NtShare
+	var nt0 ShardNtShare
 	err := rlp.DecodeBytes(nt.Encode(true), &nt0)
 	if err != nil {
 		panic(err)
@@ -119,7 +122,7 @@ func TestNtShareEncodeDecode(t *testing.T) {
 
 	assert.Equal(t, nt, nt0)
 
-	var nt1 NtShare
+	var nt1 ShardNtShare
 	err = rlp.DecodeBytes(nt.Encode(false), &nt1)
 	if err != nil {
 		panic(err)
@@ -131,12 +134,12 @@ func TestNtShareEncodeDecode(t *testing.T) {
 }
 
 func TestEncodeSlice(t *testing.T) {
-	b := BlockProposal{
-		Data: []byte{},
+	b := ShardBlockProposal{
+		Txns: []byte{},
 	}
 
-	b0 := BlockProposal{
-		Data: nil,
+	b0 := ShardBlockProposal{
+		Txns: nil,
 	}
 
 	// make sure a nil slice and an empty slice are encoded

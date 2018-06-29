@@ -18,17 +18,18 @@ import (
 // beacon.
 type Node struct {
 	addr     Addr
-	shardIdx int
+	shardIdx uint16
 	cfg      Config
 	sk       SK
 	gateway  *gateway
 	chain    *Chain
+	store    *storage
 
 	mu sync.Mutex
 	// the memberships of different groups
 	memberships    []membership
-	notarizeChs    map[uint64][]chan *BlockProposal
-	bpForNotary    map[uint64][]*BlockProposal
+	notarizeChs    map[uint64][]chan *ShardBlockProposal
+	bpForNotary    map[uint64][]*ShardBlockProposal
 	round          uint64
 	recvBlockTime  map[uint64]time.Time
 	cancelNotarize map[uint64]func()
@@ -57,7 +58,7 @@ type Config struct {
 }
 
 // NewNode creates a new node.
-func NewNode(chain *Chain, sk SK, net *gateway, cfg Config, shardIdx int) *Node {
+func NewNode(chain *Chain, sk SK, net *gateway, cfg Config, shardIdx uint16, store *storage) *Node {
 	pk, err := sk.PK()
 	if err != nil {
 		panic(err)
@@ -71,8 +72,8 @@ func NewNode(chain *Chain, sk SK, net *gateway, cfg Config, shardIdx int) *Node 
 		sk:             sk,
 		chain:          chain,
 		gateway:        net,
-		bpForNotary:    make(map[uint64][]*BlockProposal),
-		notarizeChs:    make(map[uint64][]chan *BlockProposal),
+		bpForNotary:    make(map[uint64][]*ShardBlockProposal),
+		notarizeChs:    make(map[uint64][]chan *ShardBlockProposal),
 		cancelNotarize: make(map[uint64]func()),
 		recvBlockTime:  make(map[uint64]time.Time),
 	}
@@ -134,10 +135,11 @@ func (n *Node) StartRound(round uint64) {
 
 				start := time.Now()
 				log.Debug("start propose block", "owner", n.addr, "round", round, "group", bpGroup, "since round start", time.Now().Sub(startTime))
-				bp := n.chain.ProposeBlock(ctx, n.sk, round)
+				bp := n.chain.ProposeShardBlock(ctx, n.sk, round)
+				h := bp.Hash()
 				if bp != nil {
-					log.Info("propose block done", "owner", n.addr, "round", round, "bp round", bp.Round, "hash", bp.Hash(), "group", bpGroup, "dur", time.Now().Sub(start), "since round start", time.Now().Sub(startTime))
-					n.gateway.recvBlockProposal(n.gateway.addr, bp)
+					log.Info("propose block done", "owner", n.addr, "round", round, "bp round", bp.Round, "hash", h, "group", bpGroup, "dur", time.Now().Sub(start), "since round start", time.Now().Sub(startTime))
+					n.gateway.RecvShardBlockProposal(n.gateway.addr, bp, h)
 				}
 			}()
 		}
@@ -148,17 +150,18 @@ func (n *Node) StartRound(round uint64) {
 			}
 
 			log.Debug("begin notarize", "group", ntGroup, "round", round, "since round start", time.Now().Sub(startTime))
-			notary := NewNotary(n.addr, n.sk, m.skShare, n.chain)
-			inCh := make(chan *BlockProposal, 20)
+			notary := NewNotary(n.addr, n.sk, m.skShare, n.chain, n.store)
+			inCh := make(chan *ShardBlockProposal, 20)
 			n.notarizeChs[round] = append(n.notarizeChs[round], inCh)
 			go func() {
-				onNotarize := func(s *NtShare, spentTime time.Duration) {
-					log.Info("produced one notarization share", "group", ntGroup, "bp", s.BP, "share round", s.Round, "round", round, "hash", s.Hash(), "since round start", time.Now().Sub(startTime))
+				onNotarize := func(s *ShardNtShare, spentTime time.Duration) {
+					h := s.Hash()
+					log.Info("produced one notarization share", "group", ntGroup, "bp", s.BP, "share round", s.Round, "round", round, "hash", h, "since round start", time.Now().Sub(startTime))
 					if diff := time.Now().Sub(lastRoundEndTime); diff >= n.cfg.BlockTime-spentTime {
-						go n.gateway.recvNtShare(n.gateway.addr, s)
+						go n.gateway.RecvShardNtShare(n.gateway.addr, s, h)
 					} else {
 						time.AfterFunc(n.cfg.BlockTime-spentTime-diff, func() {
-							n.gateway.recvNtShare(n.gateway.addr, s)
+							n.gateway.RecvShardNtShare(n.gateway.addr, s, h)
 						})
 					}
 				}
@@ -226,7 +229,7 @@ func (n *Node) EndRound(round uint64) {
 
 // RecvBlockProposal tells the node that a valid block proposal of the
 // current round is received.
-func (n *Node) recvBPForNotary(bp *BlockProposal) {
+func (n *Node) recvBPForNotary(bp *ShardBlockProposal) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 
@@ -259,10 +262,11 @@ func MakeNode(credentials NodeCredentials, cfg Config, genesis Genesis, state St
 		panic(err)
 	}
 
-	chain := NewChain(&genesis.Block, state, randSeed, cfg, txnPool, u)
+	store := newStorage()
+	chain := NewChain(&genesis.Block, state, randSeed, cfg, txnPool, u, shardIdx, store)
 	net := newNetwork(credentials.SK, shardIdx, cfg.ShardCount)
-	gateway := newGateway(net, chain)
-	node := NewNode(chain, credentials.SK, gateway, cfg, shardIdx)
+	gateway := newGateway(net, chain, store, cfg.GroupThreshold)
+	node := NewNode(chain, credentials.SK, gateway, cfg, shardIdx, store)
 	for j := range credentials.Groups {
 		share := credentials.GroupShares[j]
 		m := membership{groupID: credentials.Groups[j], skShare: share}

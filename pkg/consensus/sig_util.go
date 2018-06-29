@@ -4,7 +4,7 @@ import (
 	"github.com/dfinity/go-dfinity-crypto/bls"
 )
 
-func recoverNtSig(shares []*NtShare) (Sig, error) {
+func recoverNtSig(shares []*ShardNtShare) (Sig, error) {
 	idVec := make([]bls.ID, len(shares))
 	signs := make([]bls.Sign, len(shares))
 	for i := range shares {
@@ -27,7 +27,7 @@ func recoverNtSig(shares []*NtShare) (Sig, error) {
 	return Sig(sign.Serialize()), nil
 }
 
-func recoverRandBeaconSig(shares map[Hash]*RandBeaconSigShare) (Sig, error) {
+func recoverRandBeaconSig(shares []*RandBeaconSigShare) (Sig, error) {
 	signs := make([]bls.Sign, len(shares))
 	idVec := make([]bls.ID, len(shares))
 	i := 0

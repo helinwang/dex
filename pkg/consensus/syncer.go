@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"sync"
 	"time"
-
-	log "github.com/helinwang/log15"
 )
 
 const (
@@ -29,31 +27,33 @@ const (
 type syncer struct {
 	chain     *Chain
 	requester requester
+	store     *storage
 
-	mu               sync.Mutex
-	pendingSyncBlock map[Hash][]chan syncBlockResult
-	pendingSyncBP    map[Hash][]chan syncBPResult
-	pendingSyncRB    map[uint64][]chan syncRBResult
+	mu                    sync.Mutex
+	pendingSyncShardBlock map[Hash][]chan syncShardBlockResult
+	pendingSyncBP         map[Hash][]chan syncBPResult
+	pendingSyncRB         map[uint64][]chan syncRBResult
 }
 
-func newSyncer(chain *Chain, requester requester) *syncer {
+func newSyncer(chain *Chain, requester requester, store *storage) *syncer {
 	return &syncer{
-		chain:            chain,
-		requester:        requester,
-		pendingSyncBlock: make(map[Hash][]chan syncBlockResult),
-		pendingSyncBP:    make(map[Hash][]chan syncBPResult),
-		pendingSyncRB:    make(map[uint64][]chan syncRBResult),
+		chain:                 chain,
+		store:                 store,
+		requester:             requester,
+		pendingSyncShardBlock: make(map[Hash][]chan syncShardBlockResult),
+		pendingSyncBP:         make(map[Hash][]chan syncBPResult),
+		pendingSyncRB:         make(map[uint64][]chan syncRBResult),
 	}
 }
 
-type syncBlockResult struct {
-	b         *Block
+type syncShardBlockResult struct {
+	b         *ShardBlock
 	broadcast bool
 	err       error
 }
 
 type syncBPResult struct {
-	bp        *BlockProposal
+	bp        *ShardBlockProposal
 	broadcast bool
 	err       error
 }
@@ -64,28 +64,33 @@ type syncRBResult struct {
 }
 
 type requester interface {
+	RequestShardBlock(ctx context.Context, addr unicastAddr, hash Hash) (*ShardBlock, error)
 	RequestBlock(ctx context.Context, addr unicastAddr, hash Hash) (*Block, error)
-	RequestBlockProposal(ctx context.Context, addr unicastAddr, hash Hash) (*BlockProposal, error)
+	RequestShardBlockProposal(ctx context.Context, addr unicastAddr, hash Hash) (*ShardBlockProposal, error)
 	RequestRandBeaconSig(ctx context.Context, addr unicastAddr, round uint64) (*RandBeaconSig, error)
 }
 
 var errCanNotConnectToChain = errors.New("can not connect to chain")
 
 func (s *syncer) SyncBlock(addr unicastAddr, hash Hash, round uint64) (b *Block, broadcast bool, err error) {
+	return nil, false, nil
+}
+
+func (s *syncer) SyncShardBlock(addr unicastAddr, hash Hash, round uint64) (b *ShardBlock, broadcast bool, err error) {
 	s.mu.Lock()
-	chs := s.pendingSyncBlock[hash]
-	ch := make(chan syncBlockResult, 1)
+	chs := s.pendingSyncShardBlock[hash]
+	ch := make(chan syncShardBlockResult, 1)
 	chs = append(chs, ch)
-	s.pendingSyncBlock[hash] = chs
+	s.pendingSyncShardBlock[hash] = chs
 	if len(chs) == 1 {
 		go func() {
-			b, broadcast, err := s.syncBlock(addr, hash, round)
-			result := syncBlockResult{b: b, broadcast: broadcast, err: err}
+			b, broadcast, err := s.syncShardBlock(addr, hash, round)
+			result := syncShardBlockResult{b: b, broadcast: broadcast, err: err}
 			s.mu.Lock()
-			for _, ch := range s.pendingSyncBlock[hash] {
+			for _, ch := range s.pendingSyncShardBlock[hash] {
 				ch <- result
 			}
-			delete(s.pendingSyncBlock, hash)
+			delete(s.pendingSyncShardBlock, hash)
 			s.mu.Unlock()
 		}()
 	}
@@ -95,8 +100,8 @@ func (s *syncer) SyncBlock(addr unicastAddr, hash Hash, round uint64) (b *Block,
 	return r.b, r.broadcast, r.err
 }
 
-func (s *syncer) syncBlock(addr unicastAddr, hash Hash, round uint64) (b *Block, broadcast bool, err error) {
-	b = s.chain.Block(hash)
+func (s *syncer) syncShardBlock(addr unicastAddr, hash Hash, round uint64) (b *ShardBlock, broadcast bool, err error) {
+	b = s.store.ShardBlock(hash)
 	if b != nil {
 		// already connected to the chain
 		return
@@ -108,22 +113,14 @@ func (s *syncer) syncBlock(addr unicastAddr, hash Hash, round uint64) (b *Block,
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
-	b, err = s.requester.RequestBlock(ctx, addr, hash)
+	b, err = s.requester.RequestShardBlock(ctx, addr, hash)
 	cancel()
 	if err != nil {
 		return
 	}
 
-	bp, _, err := s.SyncBlockProposal(addr, b.BlockProposal)
+	prev, _, err := s.SyncBlock(addr, b.PrevBlock, b.Round-1)
 	if err != nil {
-		return
-	}
-
-	var weight float64
-	s.chain.randomBeacon.WaitUntil(b.Round)
-	prev := s.chain.Block(b.PrevBlock)
-	if prev == nil {
-		err = errors.New("impossible: prev block not found")
 		return
 	}
 
@@ -132,37 +129,19 @@ func (s *syncer) syncBlock(addr unicastAddr, hash Hash, round uint64) (b *Block,
 		return
 	}
 
+	s.chain.randomBeacon.WaitUntil(b.Round)
+
 	_, _, nt := s.chain.randomBeacon.Committees(b.Round)
-	success := b.NotarizationSig.Verify(s.chain.randomBeacon.groups[nt].PK, b.Encode(false))
+	success := b.Notarization.Verify(s.chain.randomBeacon.groups[nt].PK, b.Encode(false))
 	if !success {
 		err = fmt.Errorf("validate block group sig failed, group:%d", nt)
-		return
-	}
-
-	weight = rankToWeight(b.Rank)
-	state := s.chain.BlockState(b.PrevBlock)
-	start := time.Now()
-	trans, err := recordTxns(state, s.chain.txnPool, bp.Data, bp.Round)
-	log.Info("sync block record txns done", "round", bp.Round, "bp", bp.Hash(), "dur", time.Now().Sub(start))
-	if err != nil {
-		return
-	}
-
-	if trans.StateHash() != b.StateRoot {
-		err = errors.New("invalid state root")
-		return
-	}
-
-	state = trans.Commit()
-	broadcast, err = s.chain.addBlock(b, bp, state, weight)
-	if err != nil {
 		return
 	}
 
 	return
 }
 
-func (s *syncer) SyncBlockProposal(addr unicastAddr, hash Hash) (bp *BlockProposal, broadcast bool, err error) {
+func (s *syncer) SyncShardBlockProposal(addr unicastAddr, hash Hash) (bp *ShardBlockProposal, broadcast bool, err error) {
 	s.mu.Lock()
 	chs := s.pendingSyncBP[hash]
 	ch := make(chan syncBPResult, 1)
@@ -170,7 +149,7 @@ func (s *syncer) SyncBlockProposal(addr unicastAddr, hash Hash) (bp *BlockPropos
 	s.pendingSyncBP[hash] = chs
 	if len(chs) == 1 {
 		go func() {
-			bp, broadcast, err := s.syncBlockProposal(addr, hash)
+			bp, broadcast, err := s.syncShardBlockProposal(addr, hash)
 			result := syncBPResult{bp: bp, broadcast: broadcast, err: err}
 			s.mu.Lock()
 			for _, ch := range s.pendingSyncBP[hash] {
@@ -186,13 +165,13 @@ func (s *syncer) SyncBlockProposal(addr unicastAddr, hash Hash) (bp *BlockPropos
 	return r.bp, r.broadcast, r.err
 }
 
-func (s *syncer) syncBlockProposal(addr unicastAddr, hash Hash) (bp *BlockProposal, broadcast bool, err error) {
-	if bp = s.chain.BlockProposal(hash); bp != nil {
+func (s *syncer) syncShardBlockProposal(addr unicastAddr, hash Hash) (bp *ShardBlockProposal, broadcast bool, err error) {
+	if bp = s.store.ShardBlockProposal(hash); bp != nil {
 		return
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
-	bp, err = s.requester.RequestBlockProposal(ctx, addr, hash)
+	bp, err = s.requester.RequestShardBlockProposal(ctx, addr, hash)
 	cancel()
 	if err != nil {
 		return
@@ -204,7 +183,7 @@ func (s *syncer) syncBlockProposal(addr unicastAddr, hash Hash) (bp *BlockPropos
 			err = errCanNotConnectToChain
 			return
 		}
-		prev = s.chain.Block(s.chain.Genesis())
+		prev = s.store.Block(s.chain.Genesis())
 	} else {
 		prev, _, err = s.SyncBlock(addr, bp.PrevBlock, bp.Round-1)
 		if err != nil {
@@ -219,7 +198,8 @@ func (s *syncer) syncBlockProposal(addr unicastAddr, hash Hash) (bp *BlockPropos
 		return
 	}
 
-	rank, err := s.chain.randomBeacon.Rank(bp.Owner, bp.Round)
+	// make sure proposer is in the current proposal group
+	_, err = s.chain.randomBeacon.Rank(bp.Owner, bp.Round)
 	if err != nil {
 		return
 	}
@@ -235,11 +215,7 @@ func (s *syncer) syncBlockProposal(addr unicastAddr, hash Hash) (bp *BlockPropos
 		return
 	}
 
-	broadcast, err = s.chain.addBP(bp, rankToWeight(rank))
-	if err != nil {
-		panic(err)
-	}
-
+	broadcast = s.store.AddShardBlockProposal(bp, hash)
 	return
 }
 

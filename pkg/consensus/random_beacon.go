@@ -26,8 +26,7 @@ type RandomBeacon struct {
 	ntRand Rand
 	bpRand Rand
 
-	curRoundShares map[Hash]*RandBeaconSigShare
-	sigHistory     []*RandBeaconSig
+	sigHistory []*RandBeaconSig
 }
 
 // NewRandomBeacon creates a new random beacon
@@ -56,64 +55,39 @@ func NewRandomBeacon(seed Rand, groups []*Group, cfg Config) *RandomBeacon {
 		nextNtCmteHistory: []int{initNtGroup},
 		nextBPCmteHistory: []int{initBPGroup},
 		nextBPRandHistory: []Rand{bpRand},
-		curRoundShares:    make(map[Hash]*RandBeaconSigShare),
 		sigHistory: []*RandBeaconSig{
 			{Sig: []byte("DEX random beacon 0th signature")},
 		},
 	}
 }
 
-// GetShare returns the randome beacon signature share of the current
-// round.
-func (r *RandomBeacon) GetShare(h Hash) *RandBeaconSigShare {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	return r.curRoundShares[h]
-}
-
-// AddRandBeaconSigShare receives one share of the random beacon
-// signature.
-func (r *RandomBeacon) AddRandBeaconSigShare(s *RandBeaconSigShare, groupID int) (ret *RandBeaconSig, added, success bool) {
-	log.Debug("add random beacon signature share", "groupID", groupID, "round", s.Round)
+func (r *RandomBeacon) AddRandBeaconSigShares(shares []*RandBeaconSigShare, groupID int) *RandBeaconSig {
+	s := shares[0]
+	log.Debug("add random beacon signature shares", "groupID", groupID, "share round", s.Round)
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	if round := r.round(); round+1 != s.Round {
 		log.Debug("skipped the RandBeaconSigShare of different round than expected", "round", s.Round, "expected", round+1)
-		return
+		return nil
 	}
 
-	if _, ok := r.curRoundShares[s.Hash()]; ok {
-		success = true
-		return
+	sig, err := recoverRandBeaconSig(shares)
+	if err != nil {
+		log.Error("fatal: recoverRandBeaconSig error", "err", err)
+		return nil
 	}
 
-	added = true
-	success = true
-	r.curRoundShares[s.Hash()] = s
-	if len(r.curRoundShares) >= r.cfg.GroupThreshold {
-		sig, err := recoverRandBeaconSig(r.curRoundShares)
-		if err != nil {
-			log.Error("fatal: recoverRandBeaconSig error", "err", err)
-			return
-		}
-
-		// TODO: get last sig hash locally
-		msg := randBeaconSigMsg(s.Round, s.LastSigHash)
-		if !sig.Verify(r.groups[groupID].PK, msg) {
-			panic("impossible: random beacon group signature verification failed")
-		}
-
-		var rbs RandBeaconSig
-		rbs.Round = s.Round
-		rbs.LastSigHash = s.LastSigHash
-		rbs.Sig = sig
-		ret = &rbs
-		return
+	msg := randBeaconSigMsg(s.Round, s.LastSigHash)
+	if !sig.Verify(r.groups[groupID].PK, msg) {
+		panic("impossible: random beacon group signature verification failed")
 	}
 
-	return
+	var rbs RandBeaconSig
+	rbs.Round = s.Round
+	rbs.LastSigHash = s.LastSigHash
+	rbs.Sig = sig
+	return &rbs
 }
 
 // AddRandBeaconSig adds the random beacon signature.
@@ -135,7 +109,6 @@ func (r *RandomBeacon) AddRandBeaconSig(s *RandBeaconSig, syncDone bool) bool {
 	}
 
 	r.deriveRand(SHA3(s.Sig))
-	r.curRoundShares = make(map[Hash]*RandBeaconSigShare)
 	r.sigHistory = append(r.sigHistory, s)
 	round := r.round()
 	if ch, ok := r.roundWaitCh[round]; ok {

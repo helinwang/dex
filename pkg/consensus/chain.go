@@ -12,24 +12,17 @@ import (
 )
 
 const (
-	maxRoundMetric       = 600
+	maxRoundMetric       = 9999
 	sysTxnNotImplemented = "system transaction not implemented, will be implemented when open participation is necessary, however, the DEX is fully functional"
 )
 
-type bpNode struct {
-	BP     Hash
-	Weight float64
-}
-
 type blockNode struct {
 	Block  Hash
-	BP     Hash
 	Weight float64
 
 	// parent is nil if its parent is finalized
 	parent        *blockNode
 	blockChildren []*blockNode
-	bpChildren    []*bpNode
 }
 
 // ChainStatus is the chain consensus state.
@@ -54,8 +47,10 @@ type Chain struct {
 	cfg          Config
 	randomBeacon *RandomBeacon
 	n            *Node
+	store        *storage
 	txnPool      TxnPool
 	updater      Updater
+	shardIdx     uint16
 
 	mu               sync.RWMutex
 	roundMetrics     []RoundMetric
@@ -65,13 +60,7 @@ type Chain struct {
 	lastFinalizedState    State
 	lastFinalizedSysState *SysState
 	fork                  []*blockNode
-	bpNotOnFork           []*bpNode
 	unFinalizedState      map[Hash]State
-	hashToBlock           map[Hash]*Block
-	hashToBP              map[Hash]*BlockProposal
-	hashToNtShare         map[Hash]*NtShare
-	bpToNtShares          map[Hash][]*NtShare
-	bpNeedNotarize        map[Hash]bool
 	roundWaitCh           map[uint64]chan struct{}
 }
 
@@ -82,7 +71,7 @@ type Updater interface {
 }
 
 // NewChain creates a new chain.
-func NewChain(genesis *Block, genesisState State, seed Rand, cfg Config, txnPool TxnPool, u Updater) *Chain {
+func NewChain(genesis *Block, genesisState State, seed Rand, cfg Config, txnPool TxnPool, u Updater, shardIdx uint16, store *storage) *Chain {
 	if genesisState.Hash() != genesis.StateRoot {
 		panic(fmt.Errorf("genesis state hash and block state root does not match, state hash: %v, blocks state root: %v", genesisState.Hash(), genesis.StateRoot))
 	}
@@ -99,8 +88,11 @@ func NewChain(genesis *Block, genesisState State, seed Rand, cfg Config, txnPool
 	u.Update(genesisState)
 	sysState = t.Commit()
 	gh := genesis.Hash()
+	store.AddBlock(genesis, gh)
 	return &Chain{
 		cfg:                   cfg,
+		store:                 store,
+		shardIdx:              shardIdx,
 		updater:               u,
 		txnPool:               txnPool,
 		randomBeacon:          NewRandomBeacon(seed, sysState.groups, cfg),
@@ -108,11 +100,6 @@ func NewChain(genesis *Block, genesisState State, seed Rand, cfg Config, txnPool
 		lastFinalizedState:    genesisState,
 		lastFinalizedSysState: sysState,
 		unFinalizedState:      make(map[Hash]State),
-		hashToBlock:           map[Hash]*Block{gh: genesis},
-		hashToBP:              make(map[Hash]*BlockProposal),
-		hashToNtShare:         make(map[Hash]*NtShare),
-		bpToNtShares:          make(map[Hash][]*NtShare),
-		bpNeedNotarize:        make(map[Hash]bool),
 		roundWaitCh:           make(map[uint64]chan struct{}),
 		lastEndRoundTime:      time.Now(),
 	}
@@ -160,8 +147,9 @@ func (c *Chain) WaitUntil(round uint64) {
 	<-ch
 }
 
-// ProposeBlock proposes a new block.
-func (c *Chain) ProposeBlock(ctx context.Context, sk SK, round uint64) *BlockProposal {
+// ProposeShardBlock proposes a new block proposal in the current
+// shard.
+func (c *Chain) ProposeShardBlock(ctx context.Context, sk SK, round uint64) *ShardBlockProposal {
 	txns := c.txnPool.Txns()
 	block, state, _ := c.Leader()
 	if block.Round+1 < round {
@@ -188,43 +176,18 @@ loop:
 		}
 	}
 
+	pk := sk.MustPK()
 	txnsBytes := trans.Txns()
-	var bp BlockProposal
-	bp.PrevBlock = SHA3(block.Encode(true))
-	bp.Round = round
-	pk, err := sk.PK()
-	if err != nil {
-		panic(err)
+	bp := ShardBlockProposal{
+		ShardIdx:  c.shardIdx,
+		Round:     round,
+		PrevBlock: block.Hash(),
+		Txns:      txnsBytes,
+		Owner:     pk.Addr(),
 	}
 
-	bp.Owner = pk.Addr()
-	bp.Data = txnsBytes
 	bp.OwnerSig = sk.Sign(bp.Encode(false))
 	return &bp
-}
-
-// Block returns the block of the given hash.
-func (c *Chain) Block(h Hash) *Block {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	return c.hashToBlock[h]
-}
-
-// BlockProposal returns the block proposal of the given hash.
-func (c *Chain) BlockProposal(h Hash) *BlockProposal {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	return c.hashToBP[h]
-}
-
-// NtShare returns the notarization share of the given hash.
-func (c *Chain) NtShare(h Hash) *NtShare {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	return c.hashToNtShare[h]
 }
 
 // FinalizedRound returns the latest finalized round.
@@ -275,7 +238,7 @@ func heaviestFork(fork []*blockNode, depth int) *blockNode {
 		nodes = fork
 	} else {
 		for _, v := range fork {
-			nodes = append(nodes, nodesAtDepth(v, depth-1)...)
+			nodes = append(nodes, nodesAtDepth(v.blockChildren, depth-1)...)
 		}
 	}
 
@@ -292,18 +255,18 @@ func heaviestFork(fork []*blockNode, depth int) *blockNode {
 	return r
 }
 
-func nodesAtDepth(n *blockNode, d int) []*blockNode {
+func nodesAtDepth(children []*blockNode, d int) []*blockNode {
 	if d == 0 {
-		if len(n.blockChildren) == 0 {
+		if len(children) == 0 {
 			return nil
 		}
 
-		return n.blockChildren
+		return children
 	}
 
 	var nodes []*blockNode
-	for _, child := range n.blockChildren {
-		nodes = append(nodes, nodesAtDepth(child, d-1)...)
+	for _, child := range children {
+		nodes = append(nodes, nodesAtDepth(child.blockChildren, d-1)...)
 	}
 
 	return nodes
@@ -311,12 +274,12 @@ func nodesAtDepth(n *blockNode, d int) []*blockNode {
 
 func (c *Chain) leader() (*Block, State, *SysState) {
 	if len(c.fork) == 0 {
-		return c.hashToBlock[c.finalized[len(c.finalized)-1]], c.lastFinalizedState, c.lastFinalizedSysState
+		return c.store.Block(c.finalized[len(c.finalized)-1]), c.lastFinalizedState, c.lastFinalizedSysState
 	}
 
 	depth := maxHeight(c.fork) - 1
 	n := heaviestFork(c.fork, depth)
-	return c.hashToBlock[n.Block], c.unFinalizedState[n.Block], c.lastFinalizedSysState
+	return c.store.Block(n.Block), c.unFinalizedState[n.Block], c.lastFinalizedSysState
 }
 
 // Leader returns the block of the current round whose chain is the
@@ -325,157 +288,6 @@ func (c *Chain) Leader() (*Block, State, *SysState) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.leader()
-}
-
-func findPrevBlockNode(bp, prevBlock Hash, fork []*blockNode) (*blockNode, int) {
-	for _, branch := range fork {
-		n, idx := findPrevBlockNodeImpl(bp, prevBlock, branch)
-		if n != nil {
-			return n, idx
-		}
-	}
-
-	return nil, 0
-}
-
-func findPrevBlockNodeImpl(bp, prevBlock Hash, prev *blockNode) (*blockNode, int) {
-	if prev.Block == prevBlock {
-		for i, blockNode := range prev.bpChildren {
-			if blockNode.BP == bp {
-				return prev, i
-			}
-		}
-
-		return prev, -1
-	}
-
-	for _, blockNode := range prev.blockChildren {
-		n, idx := findPrevBlockNodeImpl(bp, prevBlock, blockNode)
-		if n != nil {
-			return n, idx
-		}
-	}
-
-	return nil, 0
-}
-
-func (c *Chain) addBP(bp *BlockProposal, weight float64) (bool, error) {
-	log.Debug("add block proposal to chain", "hash", bp.Hash(), "weight", weight, "round", bp.Round)
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	h := bp.Hash()
-
-	if _, ok := c.hashToBP[h]; ok {
-		return false, nil
-	}
-
-	prevBlockNode, _ := findPrevBlockNode(h, bp.PrevBlock, c.fork)
-	if prevBlockNode == nil {
-		if c.finalized[len(c.finalized)-1] != bp.PrevBlock {
-			fmt.Println(c.graphviz(10))
-			return false, fmt.Errorf("block proposal's parent not found: %v, round: %d", bp.PrevBlock, bp.Round)
-		}
-	}
-
-	c.hashToBP[h] = bp
-	u := &bpNode{Weight: weight, BP: h}
-
-	if prevBlockNode != nil {
-		prevBlockNode.bpChildren = append(prevBlockNode.bpChildren, u)
-	} else {
-		c.bpNotOnFork = append(c.bpNotOnFork, u)
-	}
-	c.bpNeedNotarize[h] = true
-	go c.n.recvBPForNotary(bp)
-	return true, nil
-}
-
-func (c *Chain) addNtShare(n *NtShare, groupID int) (b *Block, added, success bool) {
-	log.Debug("add notarization share to chain", "hash", n.Hash(), "bp", n.BP, "group", groupID)
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	bp, ok := c.hashToBP[n.BP]
-	if !ok {
-		log.Warn("add nt share but block proposal not found")
-		success = false
-		return
-	}
-
-	if !c.bpNeedNotarize[n.BP] {
-		success = true
-		return
-	}
-
-	for _, s := range c.bpToNtShares[n.BP] {
-		if s.Owner == n.Owner {
-			log.Warn("notarization share from the owner already received")
-			success = true
-			return
-		}
-	}
-
-	c.bpToNtShares[n.BP] = append(c.bpToNtShares[n.BP], n)
-	added = true
-	success = true
-
-	if len(c.bpToNtShares[n.BP]) >= c.cfg.GroupThreshold {
-		log.Debug("recovering nt group sig", "bp", n.BP)
-		sig, err := recoverNtSig(c.bpToNtShares[n.BP])
-		if err != nil {
-			// should not happen
-			panic(err)
-		}
-
-		rank, err := c.randomBeacon.Rank(bp.Owner, bp.Round)
-		if err != nil {
-			panic(err)
-		}
-
-		// TODO: make sure the related fields of all nt shares
-		// are same.
-		b = &Block{
-			Rank:          rank,
-			Round:         bp.Round,
-			BlockProposal: bp.Hash(),
-			PrevBlock:     bp.PrevBlock,
-			SysTxns:       bp.SysTxns,
-			StateRoot:     n.StateRoot,
-		}
-
-		msg := b.Encode(false)
-		if !sig.Verify(c.randomBeacon.groups[groupID].PK, msg) {
-			panic("should never happen: group sig not valid")
-		}
-
-		b.NotarizationSig = sig
-
-		delete(c.bpNeedNotarize, n.BP)
-		for _, share := range c.bpToNtShares[n.BP] {
-			delete(c.hashToNtShare, share.Hash())
-		}
-		delete(c.bpToNtShares, n.BP)
-		return
-	}
-
-	c.hashToNtShare[n.Hash()] = n
-	return
-}
-
-func recordTxns(state State, pool TxnPool, txnData []byte, round uint64) (trans Transition, err error) {
-	trans = state.Transition(round)
-
-	if len(txnData) == 0 {
-		return
-	}
-
-	valid, success := trans.RecordSerialized(txnData, pool)
-	if !valid || !success {
-		err = errors.New("failed to apply transactions")
-		return
-	}
-
-	return
 }
 
 // BlockState returns the block's state given block's hash.
@@ -494,58 +306,63 @@ func (c *Chain) blockState(h Hash) State {
 	return c.unFinalizedState[h]
 }
 
-func (c *Chain) addBlock(b *Block, bp *BlockProposal, s State, weight float64) (bool, error) {
-	log.Debug("add block to chain", "hash", b.Hash(), "weight", weight)
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	startingRound := c.round()
-
-	h := b.Hash()
-	if _, ok := c.hashToBlock[h]; ok {
+// TODO: call add block
+// TODO: remove txns from pool, remove nt share
+func (c *Chain) addBlock(b *Block, s State, txnCount int) (bool, error) {
+	hash := b.Hash()
+	log.Debug("add block to chain", "hash", hash)
+	if saved := c.store.Block(hash); saved != nil {
 		return false, nil
 	}
 
-	nt := &blockNode{Block: h, Weight: weight, BP: b.BlockProposal}
-	c.unFinalizedState[nt.Block] = s
-
-	prevFinalized := bp.PrevBlock == c.finalized[len(c.finalized)-1]
-	if prevFinalized {
-		c.fork = append(c.fork, nt)
-		removeIdx := -1
-		for i, e := range c.bpNotOnFork {
-			if e.BP == nt.BP {
-				removeIdx = i
-			}
-		}
-
-		if removeIdx < 0 {
-			log.Warn("block's proposal not found on chain", "bp", b.BlockProposal, "b", b.Hash())
-		} else {
-			c.bpNotOnFork = append(c.bpNotOnFork[:removeIdx], c.bpNotOnFork[removeIdx+1:]...)
-		}
-	} else {
-		prev, removeIdx := findPrevBlockNode(bp.Hash(), bp.PrevBlock, c.fork)
-		if prev == nil {
-			panic("should never happen: can not find prev block, it should be already synced")
-		}
-
-		if removeIdx < 0 {
-			fmt.Println(c.graphviz(10))
-			panic(fmt.Errorf("should never happen: prev block %v found but the block proposal %v is not its child", bp.PrevBlock, bp.Hash()))
-		}
-		nt.parent = prev
-		prev.blockChildren = append(prev.blockChildren, nt)
-		prev.bpChildren = append(prev.bpChildren[:removeIdx], prev.bpChildren[removeIdx+1:]...)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	startingRound := c.round()
+	finalizedRound := uint64(len(c.finalized) - 1)
+	if b.Round <= finalizedRound {
+		return false, fmt.Errorf("block's round is already finalized, round: %d, last finalized round: %d", b.Round, finalizedRound)
 	}
 
-	c.hashToBlock[h] = b
-	delete(c.bpNeedNotarize, b.BlockProposal)
-	delete(c.bpToNtShares, b.BlockProposal)
+	var weight float64
+	for _, h := range b.ShardBlocks {
+		s := c.store.ShardBlock(h)
+		rank, err := c.randomBeacon.Rank(s.Owner, b.Round)
+		if err != nil {
+			panic(err)
+		}
 
-	txnCount := 0
-	if len(bp.Data) > 0 {
-		txnCount = c.txnPool.RemoveTxns(bp.Data)
+		weight += rankToWeight(rank)
 	}
+
+	node := &blockNode{Block: hash, Weight: weight}
+	if b.Round == finalizedRound+1 {
+		if b.PrevBlock != c.finalized[len(c.finalized)-1] {
+			return false, errors.New("block's prev round is finalized, but prev block is not the finalized block")
+		}
+		c.fork = append(c.fork, node)
+		c.unFinalizedState[node.Block] = s
+		return true, nil
+	}
+
+	depth := int(b.Round - finalizedRound - 1)
+	nodes := nodesAtDepth(c.fork, depth)
+
+	var prev *blockNode
+	for _, n := range nodes {
+		if n == node.parent {
+			prev = n
+			break
+		}
+	}
+
+	if prev == nil {
+		panic("should never happen: can not find prev block, it should be already synced")
+	}
+
+	node.parent = prev
+	prev.blockChildren = append(prev.blockChildren, node)
+	c.unFinalizedState[node.Block] = s
+	c.store.AddBlock(b, hash)
 
 	_, leaderState, _ := c.leader()
 
@@ -566,6 +383,7 @@ func (c *Chain) addBlock(b *Block, bp *BlockProposal, s State, weight float64) (
 			BlockTime: now.Sub(c.lastEndRoundTime),
 			TxnCount:  txnCount,
 		}
+
 		if len(c.roundMetrics) < maxRoundMetric {
 			c.roundMetrics = append(c.roundMetrics, metric)
 		} else {
@@ -642,7 +460,6 @@ func nodeAtDepthInFork(fork []*blockNode, depth int) *blockNode {
 	return nil
 }
 
-// TODO: fix
 // must be called with mutex held
 func (c *Chain) finalize(round uint64) {
 	count := uint64(len(c.finalized))
@@ -683,7 +500,6 @@ func (c *Chain) finalize(round uint64) {
 	c.lastFinalizedState = c.unFinalizedState[root.Block]
 	delete(c.unFinalizedState, root.Block)
 	c.fork = root.blockChildren
-	c.bpNotOnFork = root.bpChildren
 
 	for i := range c.fork {
 		c.fork[i].parent = nil
@@ -713,12 +529,10 @@ size="12,8"`
 `
 		finalizedNode    = `node [shape = rect, style=filled, color = chartreuse2];`
 		notFinalizedNode = `node [shape = rect, style=filled, color = aquamarine];`
-		bpNode           = `node [shape = octagon, style=filled, color = aliceblue];`
 	)
 
 	finalized := finalizedNode
 	notFinalized := notFinalizedNode
-	bps := bpNode
 
 	var start string
 	var graph string
@@ -751,33 +565,19 @@ size="12,8"`
 
 	graph += "\n"
 
-	graph, bps = graphUpdateBP(c.bpNotOnFork, start, graph, bps)
-	graph, notFinalized, bps = graphUpdateBlock(c.fork, start, graph, notFinalized, bps)
-	return strings.Join([]string{begin, finalized, notFinalized, bps, graph, end}, "\n")
+	graph, notFinalized = graphUpdateBlock(c.fork, start, graph, notFinalized)
+	return strings.Join([]string{begin, finalized, notFinalized, graph, end}, "\n")
 }
 
-func graphUpdateBP(ns []*bpNode, start, graph, bp string) (string, string) {
-	for _, u := range ns {
-		str := fmt.Sprintf("proposal_%x", u.BP[:2])
-		bp += " " + str
-		graph += start + " -> " + str + "\n"
-	}
-	return graph, bp
-}
-
-func graphUpdateBlock(ns []*blockNode, start, graph, block, bp string) (string, string, string) {
+func graphUpdateBlock(ns []*blockNode, start, graph, block string) (string, string) {
 	for _, u := range ns {
 		str := fmt.Sprintf("block_%x", u.Block[:2])
 		block += " " + str
 		graph += start + " -> " + str + "\n"
 
 		if len(u.blockChildren) > 0 {
-			graph, block, bp = graphUpdateBlock(u.blockChildren, str, graph, block, bp)
-		}
-
-		if len(u.bpChildren) > 0 {
-			graph, bp = graphUpdateBP(u.bpChildren, str, graph, bp)
+			graph, block = graphUpdateBlock(u.blockChildren, str, graph, block)
 		}
 	}
-	return graph, block, bp
+	return graph, block
 }

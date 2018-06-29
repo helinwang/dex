@@ -14,13 +14,14 @@ func init() {
 	var b *RandBeaconSig
 	var c *RandBeaconSigShare
 	var d *Block
-	var e *BlockProposal
+	var e *ShardBlockProposal
 	var f Item
 	var g itemRequest
 	var h *connectRequest
 	var i []unicastAddr
 	var j ack
-	var k *NtShare
+	var k *ShardNtShare
+	var l *ShardBlock
 
 	gob.Register(a)
 	gob.Register(b)
@@ -33,6 +34,7 @@ func init() {
 	gob.Register(i)
 	gob.Register(j)
 	gob.Register(k)
+	gob.Register(l)
 }
 
 type packet struct {

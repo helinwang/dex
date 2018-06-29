@@ -35,8 +35,8 @@ func (p PK) Addr() Addr {
 	return SHA3(p).Addr()
 }
 
-func (p PK) Shard(shardCount int) int {
-	return Rand(SHA3(p)).Mod(shardCount)
+func (p PK) Shard(shardCount int) uint16 {
+	return uint16(Rand(SHA3(p)).Mod(shardCount))
 }
 
 // SK is a serialized secret key
