@@ -126,7 +126,7 @@ func (t *Transition) getOrderBook(m MarketSymbol) *orderBook {
 	return book
 }
 
-func calcBaseSellQuant(baseQuantUnit uint64, quoteDecimals uint8, priceQuantUnit uint64, priceDecimals, baseDecimals uint8) uint64 {
+func calcQuoteQuant(baseQuantUnit uint64, quoteDecimals uint8, priceQuantUnit uint64, priceDecimals, baseDecimals uint8) uint64 {
 	var quantUnit big.Int
 	var quoteDenominator big.Int
 	var priceU big.Int
@@ -181,7 +181,7 @@ func (t *Transition) refundAfterCancel(owner *Account, cancel PendingOrder, mark
 		fmt.Println(quoteBalance, market.Quote, refund)
 		quoteInfo := t.tokenCache.idToInfo[market.Quote]
 		baseInfo := t.tokenCache.idToInfo[market.Base]
-		pendingQuant := calcBaseSellQuant(refund, quoteInfo.Decimals, cancel.Price, OrderPriceDecimals, baseInfo.Decimals)
+		pendingQuant := calcQuoteQuant(refund, quoteInfo.Decimals, cancel.Price, OrderPriceDecimals, baseInfo.Decimals)
 
 		if quoteBalance.Pending < pendingQuant {
 			panic(fmt.Errorf("pending balance smaller than refund, pending: %d, refund: %d", quoteBalance.Pending, pendingQuant))
@@ -245,7 +245,7 @@ func (t *Transition) placeOrder(owner *Account, txn *PlaceOrderTxn, round uint64
 			return false
 		}
 
-		pendingQuant := calcBaseSellQuant(txn.Quant, quoteInfo.Decimals, txn.Price, OrderPriceDecimals, baseInfo.Decimals)
+		pendingQuant := calcQuoteQuant(txn.Quant, quoteInfo.Decimals, txn.Price, OrderPriceDecimals, baseInfo.Decimals)
 		if pendingQuant == 0 {
 			log.Warn("buy failed: converted quote quant is 0")
 			return false
@@ -317,15 +317,14 @@ func (t *Transition) placeOrder(owner *Account, txn *PlaceOrderTxn, round uint64
 				}
 
 				baseBalance.Pending -= exec.Quant
-				// TODO: rename to calcQuoteQuant
-				recvQuant := calcBaseSellQuant(exec.Quant, quoteInfo.Decimals, exec.Price, OrderPriceDecimals, baseInfo.Decimals)
+				recvQuant := calcQuoteQuant(exec.Quant, quoteInfo.Decimals, exec.Price, OrderPriceDecimals, baseInfo.Decimals)
 				quoteBalance.Available += recvQuant
 				acc.UpdateBalance(txn.Market.Base, baseBalance)
 				acc.UpdateBalance(txn.Market.Quote, quoteBalance)
 			} else {
 				recvQuant := exec.Quant
-				pendingQuant := calcBaseSellQuant(exec.Quant, quoteInfo.Decimals, executedOrder.Price, OrderPriceDecimals, baseInfo.Decimals)
-				givenQuant := calcBaseSellQuant(exec.Quant, quoteInfo.Decimals, exec.Price, OrderPriceDecimals, baseInfo.Decimals)
+				pendingQuant := calcQuoteQuant(exec.Quant, quoteInfo.Decimals, executedOrder.Price, OrderPriceDecimals, baseInfo.Decimals)
+				givenQuant := calcQuoteQuant(exec.Quant, quoteInfo.Decimals, exec.Price, OrderPriceDecimals, baseInfo.Decimals)
 
 				if quoteBalance.Pending < pendingQuant {
 					panic(fmt.Errorf("insufficient pending balance, owner: %v, pending %d, executed: %d, buy side, taker: %t", exec.Owner, quoteBalance.Pending, exec.Quant, exec.Taker))

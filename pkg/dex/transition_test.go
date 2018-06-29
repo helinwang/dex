@@ -328,6 +328,6 @@ func TestPlaceOrder(t *testing.T) {
 	assert.Equal(t, 40, int(po.Quant))
 }
 
-func TestCalcBaseSellQuant(t *testing.T) {
-	assert.Equal(t, 40, int(calcBaseSellQuant(40, 8, uint64(math.Pow10(OrderPriceDecimals)), 8, 8)))
+func TestCalcQuoteQuant(t *testing.T) {
+	assert.Equal(t, 40, int(calcQuoteQuant(40, 8, uint64(math.Pow10(OrderPriceDecimals)), 8, 8)))
 }
