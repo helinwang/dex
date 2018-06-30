@@ -2,7 +2,6 @@ package consensus
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"math"
 	"time"
@@ -109,9 +108,9 @@ func recordTxns(state State, pool TxnPool, txnData []byte, round uint64) (trans 
 		return
 	}
 
-	count, valid, success := trans.RecordSerialized(txnData, pool)
-	if !valid || !success {
-		err = errors.New("failed to apply transactions")
+	count, err = trans.RecordSerialized(txnData, pool)
+	if err != nil {
+		err = fmt.Errorf("failed to record transactions: %v", err)
 		return
 	}
 

@@ -1,5 +1,7 @@
 package consensus
 
+import "errors"
+
 // State is the blockchain state.
 type State interface {
 	Hash() Hash
@@ -9,13 +11,15 @@ type State interface {
 	CommitCache()
 }
 
+var ErrTxnNonceTooBig = errors.New("txn's nonce is too big, but txn can be used for future")
+
 // Transition is the transition from one State to another State.
 type Transition interface {
 	// Record records a transition to the state transition.
-	Record(*Txn) (valid, success bool)
+	Record(*Txn) error
 
 	// RecordSerialized records the serialized transactions.
-	RecordSerialized([]byte, TxnPool) (count int, valid, success bool)
+	RecordSerialized([]byte, TxnPool) (count int, err error)
 
 	// Txns returns the serialized recorded transactions.
 	Txns() []byte

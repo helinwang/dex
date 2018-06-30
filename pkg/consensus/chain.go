@@ -166,8 +166,9 @@ loop:
 		default:
 		}
 
-		valid, _ := trans.Record(txns[i])
-		if !valid {
+		err := trans.Record(txns[i])
+		if err != nil && err != ErrTxnNonceTooBig {
+			log.Warn("error record txn", "err", err)
 			// TODO: handle "lost" txn due to reorg.
 			c.txnPool.Remove(SHA3(txns[i].Raw))
 		}

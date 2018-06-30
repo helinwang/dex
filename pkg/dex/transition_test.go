@@ -42,9 +42,8 @@ func TestSendToken(t *testing.T) {
 		panic(err)
 	}
 
-	valid, success := trans.Record(pt)
-	assert.True(t, valid)
-	assert.True(t, success)
+	err = trans.Record(pt)
+	assert.Nil(t, err)
 	s = trans.Commit().(*State)
 
 	send := s.Account(addr)
@@ -70,9 +69,8 @@ func TestFreezeToken(t *testing.T) {
 		panic(err)
 	}
 
-	valid, success := trans.Record(pt)
-	assert.True(t, valid)
-	assert.True(t, success)
+	err = trans.Record(pt)
+	assert.Nil(t, err)
 	s = trans.Commit().(*State)
 
 	acc = s.Account(addr)
@@ -143,9 +141,8 @@ func TestOrderAlreadyExpired(t *testing.T) {
 		panic(err)
 	}
 
-	valid, success := trans.Record(pt)
-	assert.False(t, valid)
-	assert.False(t, success)
+	err = trans.Record(pt)
+	assert.Contains(t, err.Error(), "expire")
 	s = trans.Commit().(*State)
 	acc = s.Account(addr)
 	assert.Equal(t, 0, len(acc.PendingOrders()))
@@ -174,9 +171,8 @@ func TestBuyOrderExpire(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
-	valid, success := trans.Record(pt)
-	assert.True(t, valid)
-	assert.True(t, success)
+	err = trans.Record(pt)
+	assert.Nil(t, err)
 	// transition for the current round will expire the order for
 	// the next round.
 	s = trans.Commit().(*State)
@@ -216,9 +212,8 @@ func TestSellOrderExpire(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
-	valid, success := trans.Record(pt)
-	assert.True(t, valid)
-	assert.True(t, success)
+	err = trans.Record(pt)
+	assert.Nil(t, err)
 	// transition for the current round will expire the order for
 	// the next round.
 	s = trans.Commit().(*State)
@@ -252,15 +247,13 @@ func TestNonce(t *testing.T) {
 		panic(err)
 	}
 
-	valid, success := trans.Record(pt)
-	assert.True(t, valid)
-	assert.True(t, success)
+	err = trans.Record(pt)
+	assert.Nil(t, err)
 	s = trans.Commit().(*State)
 
 	trans = s.Transition(2)
-	valid, success = trans.Record(pt)
-	assert.False(t, valid)
-	assert.False(t, success)
+	err = trans.Record(pt)
+	assert.Contains(t, err.Error(), "nonce not valid")
 
 	txn = MakeSendTokenTxn(sk, addr, to, 0, 20, 1)
 	pt, err = parseTxn(txn, &myPKer{m: map[consensus.Addr]PK{
@@ -269,9 +262,8 @@ func TestNonce(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
-	valid, success = trans.Record(pt)
-	assert.True(t, valid)
-	assert.True(t, success)
+	err = trans.Record(pt)
+	assert.Nil(t, err)
 }
 
 func TestPlaceOrder(t *testing.T) {
@@ -304,9 +296,8 @@ func TestPlaceOrder(t *testing.T) {
 		panic(err)
 	}
 
-	valid, success := trans.Record(pt)
-	assert.True(t, valid)
-	assert.True(t, success)
+	err = trans.Record(pt)
+	assert.Nil(t, err)
 	s = trans.Commit().(*State)
 
 	buyAcc = s.Account(pkBuy.Addr())
@@ -327,9 +318,8 @@ func TestPlaceOrder(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
-	valid, success = trans.Record(pt)
-	assert.True(t, valid)
-	assert.True(t, success)
+	err = trans.Record(pt)
+	assert.Nil(t, err)
 
 	order = PlaceOrderTxn{
 		SellSide: true,
@@ -342,9 +332,8 @@ func TestPlaceOrder(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
-	valid, success = trans.Record(pt)
-	assert.True(t, valid)
-	assert.True(t, success)
+	err = trans.Record(pt)
+	assert.Nil(t, err)
 
 	s = trans.Commit().(*State)
 	sellAcc = s.Account(pkSell.Addr())

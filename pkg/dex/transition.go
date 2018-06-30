@@ -1,6 +1,7 @@
 package dex
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"math/big"
@@ -8,7 +9,6 @@ import (
 
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/helinwang/dex/pkg/consensus"
-	log "github.com/helinwang/log15"
 )
 
 type Transition struct {
@@ -36,12 +36,11 @@ func newTransition(s *State, round uint64) *Transition {
 	}
 }
 
-func (t *Transition) RecordSerialized(blob []byte, pool consensus.TxnPool) (count int, valid, success bool) {
+func (t *Transition) RecordSerialized(blob []byte, pool consensus.TxnPool) (int, error) {
 	var txns [][]byte
 	err := rlp.DecodeBytes(blob, &txns)
 	if err != nil {
-		log.Error("error decode txns in RecordTxns", "err", err)
-		return
+		return 0, err
 	}
 
 	for _, b := range txns {
@@ -50,68 +49,61 @@ func (t *Transition) RecordSerialized(blob []byte, pool consensus.TxnPool) (coun
 		if txn == nil {
 			txn, _ = pool.Add(b)
 		}
-		valid, success = t.Record(txn)
-		if !valid || !success {
-			log.Error("error record txn in encoded txns", "valid", valid, "success", success, "hash", hash)
-			return
+		err = t.Record(txn)
+		if err != nil {
+			return 0, err
 		}
 		pool.Remove(hash)
 	}
 
-	return len(txns), true, true
+	return len(txns), nil
 }
 
 // Record records a transition to the state transition.
-func (t *Transition) Record(txn *consensus.Txn) (valid, success bool) {
+func (t *Transition) Record(txn *consensus.Txn) error {
 	if t.finalized {
 		panic("record should never be called after finalized")
 	}
 
 	acc, ready, nonceValid := validateNonce(t.state, txn)
 	if !nonceValid {
-		return
+		return errors.New("nonce not valid")
 	}
 
 	if !ready {
-		return true, false
+		return consensus.ErrTxnNonceTooBig
 	}
 
 	// TODO: encode txn.data more efficiently to save network bandwidth
 	switch tx := txn.Decoded.(type) {
 	case *PlaceOrderTxn:
-		if !t.placeOrder(acc, tx, t.round) {
-			log.Warn("placeOrder failed")
-			return
+		if err := t.placeOrder(acc, tx, t.round); err != nil {
+			return err
 		}
 	case *CancelOrderTxn:
-		if !t.cancelOrder(acc, tx) {
-			log.Warn("cancelOrder failed")
-			return
+		if err := t.cancelOrder(acc, tx); err != nil {
+			return err
 		}
 	case *IssueTokenTxn:
-		if !t.issueToken(acc, tx) {
-			log.Warn("CreateTokenTxn failed")
-			return
+		if err := t.issueToken(acc, tx); err != nil {
+			return err
 		}
 	case *SendTokenTxn:
-		if !t.sendToken(acc, tx) {
-			log.Warn("SendTokenTxn failed")
-			return
+		if err := t.sendToken(acc, tx); err != nil {
+			return err
 		}
 	case *FreezeTokenTxn:
-		if !t.freezeToken(acc, tx) {
-			log.Warn("FreezeTokenTxn failed")
-			return
+		if err := t.freezeToken(acc, tx); err != nil {
+			return err
 		}
 
 	default:
-		log.Warn("unknown txn type", "type", fmt.Sprintf("%T", txn.Decoded))
-		return false, false
+		return fmt.Errorf("unknown txn type: %T", txn.Decoded)
 	}
 
 	t.txns = append(t.txns, txn)
 	acc.IncrementNonce()
-	return true, true
+	return nil
 }
 
 func (t *Transition) getOrderBook(m MarketSymbol) *orderBook {
@@ -146,11 +138,10 @@ func calcQuoteQuant(baseQuantUnit uint64, quoteDecimals uint8, priceQuantUnit ui
 	return result.Uint64()
 }
 
-func (t *Transition) cancelOrder(owner *Account, txn *CancelOrderTxn) bool {
+func (t *Transition) cancelOrder(owner *Account, txn *CancelOrderTxn) error {
 	cancel, ok := owner.PendingOrder(txn.ID)
 	if !ok {
-		log.Warn("can not find the order to cancel", "id", txn.ID)
-		return false
+		return fmt.Errorf("can not find the order to cancel: %v", txn.ID)
 	}
 
 	book := t.getOrderBook(txn.ID.Market)
@@ -158,7 +149,7 @@ func (t *Transition) cancelOrder(owner *Account, txn *CancelOrderTxn) bool {
 	t.dirtyOrderBooks[txn.ID.Market] = true
 	owner.RemovePendingOrder(txn.ID)
 	t.refundAfterCancel(owner, cancel, txn.ID.Market)
-	return true
+	return nil
 }
 
 func (t *Transition) refundAfterCancel(owner *Account, cancel PendingOrder, market MarketSymbol) {
@@ -202,38 +193,32 @@ type ExecutionReport struct {
 	Fee        uint64
 }
 
-func (t *Transition) placeOrder(owner *Account, txn *PlaceOrderTxn, round uint64) bool {
+func (t *Transition) placeOrder(owner *Account, txn *PlaceOrderTxn, round uint64) error {
 	if !txn.Market.Valid() {
-		log.Warn("order's market is invalid", "market", txn.Market)
-		return false
+		return fmt.Errorf("order's market is invalid: %v", txn.Market)
 	}
 	if txn.ExpireRound > 0 && round >= txn.ExpireRound {
-		log.Warn("order already expired", "expire round", txn.ExpireRound, "cur round", round)
-		return false
+		return fmt.Errorf("order already expired, order expire round: %d, cur round: %d", txn.ExpireRound, round)
 	}
 
 	baseInfo := t.tokenCache.Info(txn.Market.Base)
 	if baseInfo == nil {
-		log.Warn("trying to place order on nonexistent token", "token", txn.Market.Base)
-		return false
+		return fmt.Errorf("trying to place order on nonexistent token: %d", txn.Market.Base)
 	}
 
 	quoteInfo := t.tokenCache.Info(txn.Market.Quote)
 	if quoteInfo == nil {
-		log.Warn("trying to place order on nonexistent token", "token", txn.Market.Quote)
-		return false
+		return fmt.Errorf("trying to place order on nonexistent token: %d", txn.Market.Quote)
 	}
 
 	if txn.SellSide {
 		if txn.Quant == 0 {
-			log.Warn("sell: can not sell 0 quantity")
-			return false
+			return errors.New("sell: can not sell 0 quantity")
 		}
 
 		baseBalance := owner.Balance(txn.Market.Base)
 		if baseBalance.Available < txn.Quant {
-			log.Warn("sell failed: insufficient balance", "quant", txn.Quant, "available", baseBalance.Available)
-			return false
+			return fmt.Errorf("sell failed: insufficient balance, quant: %d, available: %d", txn.Quant, baseBalance.Available)
 		}
 
 		baseBalance.Available -= txn.Quant
@@ -241,20 +226,17 @@ func (t *Transition) placeOrder(owner *Account, txn *PlaceOrderTxn, round uint64
 		owner.UpdateBalance(txn.Market.Base, baseBalance)
 	} else {
 		if txn.Quant == 0 {
-			log.Warn("buy failed: can not buy 0 quantity")
-			return false
+			return errors.New("buy failed: can not buy 0 quantity")
 		}
 
 		pendingQuant := calcQuoteQuant(txn.Quant, quoteInfo.Decimals, txn.Price, OrderPriceDecimals, baseInfo.Decimals)
 		if pendingQuant == 0 {
-			log.Warn("buy failed: converted quote quant is 0")
-			return false
+			return errors.New("buy failed: converted quote quant is 0")
 		}
 
 		quoteBalance := owner.Balance(txn.Market.Quote)
 		if quoteBalance.Available < pendingQuant {
-			log.Warn("buy failed, insufficient balance", "required", pendingQuant, "available", quoteBalance.Available)
-			return false
+			return fmt.Errorf("buy failed, insufficient balance, required: %d, available %d", pendingQuant, quoteBalance.Available)
 		}
 
 		quoteBalance.Available -= pendingQuant
@@ -339,19 +321,17 @@ func (t *Transition) placeOrder(owner *Account, txn *PlaceOrderTxn, round uint64
 			}
 		}
 	}
-	return true
+	return nil
 }
 
-func (t *Transition) issueToken(owner *Account, txn *IssueTokenTxn) bool {
+func (t *Transition) issueToken(owner *Account, txn *IssueTokenTxn) error {
 	if t.tokenCache.Exists(txn.Info.Symbol) {
-		log.Warn("token symbol already exists", "symbol", txn.Info.Symbol)
-		return false
+		return fmt.Errorf("token symbol %v already exists", txn.Info.Symbol)
 	}
 
 	for _, v := range t.tokenCreations {
 		if strings.ToUpper(string(txn.Info.Symbol)) == strings.ToUpper(string(v.Symbol)) {
-			log.Warn("token symbol already exists in the current transition", "symbol", txn.Info.Symbol)
-			return false
+			return fmt.Errorf("token symbol %v already exists in the current transition", txn.Info.Symbol)
 		}
 	}
 
@@ -361,20 +341,19 @@ func (t *Transition) issueToken(owner *Account, txn *IssueTokenTxn) bool {
 	t.tokenCreations = append(t.tokenCreations, token)
 	t.state.UpdateToken(token)
 	owner.UpdateBalance(id, Balance{Available: txn.Info.TotalUnits})
-	return true
+	return nil
 }
 
 // TODO: all elements in trie should be serialized using rlp, not gob,
 // since gob is not deterministic.
-func (t *Transition) sendToken(owner *Account, txn *SendTokenTxn) bool {
+func (t *Transition) sendToken(owner *Account, txn *SendTokenTxn) error {
 	if txn.Quant == 0 {
-		return false
+		return errors.New("send token quantity is 0")
 	}
 
 	b := owner.Balance(txn.TokenID)
 	if b.Available < txn.Quant {
-		log.Warn("insufficient available token balance", "tokenID", txn.TokenID, "quant", txn.Quant, "available", b.Available)
-		return false
+		return fmt.Errorf("insufficient available token balance, tokenID: %v, quant: %d, available: %d", txn.TokenID, txn.Quant, b.Available)
 	}
 
 	toAddr := txn.To.Addr()
@@ -388,7 +367,7 @@ func (t *Transition) sendToken(owner *Account, txn *SendTokenTxn) bool {
 	toAccBalance := toAcc.Balance(txn.TokenID)
 	toAccBalance.Available += txn.Quant
 	toAcc.UpdateBalance(txn.TokenID, toAccBalance)
-	return true
+	return nil
 }
 
 func (t *Transition) Txns() []byte {
@@ -526,21 +505,19 @@ func (t *Transition) expireOrders() {
 	}
 }
 
-func (t *Transition) freezeToken(acc *Account, txn *FreezeTokenTxn) bool {
+func (t *Transition) freezeToken(acc *Account, txn *FreezeTokenTxn) error {
 	if txn.Quant == 0 {
-		return false
+		return errors.New("freeze token quantity is 0")
 	}
 
 	if txn.AvailableRound <= t.round {
-		log.Warn("trying to freeze token to too early round", "available round", txn.AvailableRound, "cur round", t.round)
-		return false
+		return fmt.Errorf("trying to freeze token to too early round, available round: %d, cur round: %d", txn.AvailableRound, t.round)
 	}
 
 	b := acc.Balance(txn.TokenID)
 
 	if b.Available < txn.Quant {
-		log.Warn("insufficient available token balance", "tokenID", txn.TokenID, "quant", txn.Quant, "available", b.Available)
-		return false
+		return fmt.Errorf("insufficient available token balance, token id: %v, quantity: %d, available: %d", txn.TokenID, txn.Quant, b.Available)
 	}
 
 	frozen := Frozen{
@@ -551,7 +528,7 @@ func (t *Transition) freezeToken(acc *Account, txn *FreezeTokenTxn) bool {
 	b.Frozen = append(b.Frozen, frozen)
 	acc.UpdateBalance(txn.TokenID, b)
 	t.state.FreezeToken(txn.AvailableRound, freezeToken{Addr: acc.PK().Addr(), TokenID: txn.TokenID, Quant: txn.Quant})
-	return true
+	return nil
 }
 
 func (t *Transition) StateHash() consensus.Hash {
