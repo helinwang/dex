@@ -178,7 +178,6 @@ func (t *Transition) refundAfterCancel(owner *Account, cancel PendingOrder, mark
 		owner.UpdateBalance(market.Base, baseBalance)
 	} else {
 		quoteBalance := owner.Balance(market.Quote)
-		fmt.Println(quoteBalance, market.Quote, refund)
 		quoteInfo := t.tokenCache.idToInfo[market.Quote]
 		baseInfo := t.tokenCache.idToInfo[market.Base]
 		pendingQuant := calcQuoteQuant(refund, quoteInfo.Decimals, cancel.Price, OrderPriceDecimals, baseInfo.Decimals)

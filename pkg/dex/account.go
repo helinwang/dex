@@ -82,8 +82,9 @@ type Account struct {
 	pk      PK
 	pkDirty bool
 	// a vector of nonce that enables concurrent transactions.
-	nonceVec       []uint64
-	nonceVecDirty  bool
+	nonce          uint64
+	nonceLoaded    bool
+	nonceDirty     bool
 	balances       map[TokenID]Balance
 	balanceDirty   bool
 	reportIdx      *uint32
@@ -108,18 +109,22 @@ func (a *Account) loadReportIdx() {
 	a.reportIdx = &idx
 }
 
-func (a *Account) NonceVec() []uint64 {
-	if a.nonceVec == nil {
-		a.loadNonceVec()
+func (a *Account) Nonce() uint64 {
+	if !a.nonceLoaded {
+		a.loadNonce()
 	}
-	return a.nonceVec
+	return a.nonce
 }
 
-func (a *Account) loadNonceVec() {
-	a.nonceVec = a.state.NonceVec(a.addr)
-	if a.nonceVec == nil {
-		a.nonceVec = make([]uint64, 0)
-	}
+func (a *Account) UpdateNonce(n uint64) {
+	a.nonce = n
+	a.nonceLoaded = true
+	a.nonceDirty = true
+}
+
+func (a *Account) loadNonce() {
+	a.nonce = a.state.Nonce(a.addr)
+	a.nonceLoaded = true
 }
 
 func (a *Account) PendingOrder(id OrderID) (PendingOrder, bool) {
@@ -136,23 +141,6 @@ func (a *Account) RemovePendingOrder(id OrderID) {
 
 func (a *Account) PendingOrders() []PendingOrder {
 	return a.state.PendingOrders(a.addr)
-}
-
-func (a *Account) CheckAndIncrementNonce(idx int, val uint64) bool {
-	if a.nonceVec == nil {
-		a.loadNonceVec()
-	}
-
-	if len(a.nonceVec) <= idx {
-		if val != 0 {
-			return false
-		}
-		a.nonceVec = append(a.nonceVec, make([]uint64, idx-len(a.nonceVec)+1)...)
-	}
-
-	a.nonceVec[idx]++
-	a.nonceVecDirty = true
-	return true
 }
 
 func (a *Account) Balance(tokenID TokenID) Balance {
@@ -188,9 +176,9 @@ func (a *Account) CommitCache(s *State) {
 		a.pkDirty = false
 	}
 
-	if a.nonceVecDirty {
-		a.state.UpdateNonceVec(a.addr, a.nonceVec)
-		a.nonceVecDirty = false
+	if a.nonceDirty {
+		a.state.UpdateNonce(a.addr, a.nonce)
+		a.nonceDirty = false
 	}
 
 	if a.balanceDirty {

@@ -49,7 +49,7 @@ func genTransTxns(p *myPKer) (consensus.Transition, []byte) {
 			Price:    uint64(rand.Intn(10) + 1000),
 			Market:   MarketSymbol{Base: 0, Quote: 1},
 		}
-		txns = append(txns, MakePlaceOrderTxn(sk, pk.Addr(), t, 0, 0))
+		txns = append(txns, MakePlaceOrderTxn(sk, pk.Addr(), t, 0))
 	}
 
 	body, err := rlp.EncodeToBytes(txns)
@@ -59,6 +59,8 @@ func genTransTxns(p *myPKer) (consensus.Transition, []byte) {
 
 	return trans, body
 }
+
+// TODO: test nonce
 
 func BenchmarkPlaceOrder(b *testing.B) {
 	p := &myPKer{m: make(map[consensus.Addr]PK)}

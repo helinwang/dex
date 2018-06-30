@@ -274,11 +274,11 @@ func (s *State) UpdatePK(pk PK) {
 	s.trie.Update(path, pk)
 }
 
-func (s *State) UpdateNonceVec(addr consensus.Addr, vec []uint64) {
+func (s *State) UpdateNonce(addr consensus.Addr, nonce uint64) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	b, err := rlp.EncodeToBytes(vec)
+	b, err := rlp.EncodeToBytes(nonce)
 	if err != nil {
 		panic(err)
 	}
@@ -287,22 +287,22 @@ func (s *State) UpdateNonceVec(addr consensus.Addr, vec []uint64) {
 	s.trie.Update(path, b)
 }
 
-func (s *State) NonceVec(addr consensus.Addr) []uint64 {
+func (s *State) Nonce(addr consensus.Addr) uint64 {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	b := s.trie.Get(addrNoncePath(addr))
 	if len(b) == 0 {
-		return nil
+		return 0
 	}
 
-	var vec []uint64
-	err := rlp.DecodeBytes(b, &vec)
+	var nonce uint64
+	err := rlp.DecodeBytes(b, &nonce)
 	if err != nil {
 		panic(err)
 	}
 
-	return vec
+	return nonce
 }
 
 type balanceIDs struct {

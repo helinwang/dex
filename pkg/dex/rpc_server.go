@@ -139,11 +139,6 @@ func (r *RPCServer) sendTxn(t []byte, _ *int) error {
 	return nil
 }
 
-type NonceSlot struct {
-	Idx uint8
-	Val uint64
-}
-
 func (r *RPCServer) round(round *uint64) error {
 	state := r.chain.ChainStatus()
 	*round = state.Round
@@ -165,7 +160,7 @@ func (r *RPCServer) chainStatus(state *consensus.ChainStatus) error {
 	return nil
 }
 
-func (r *RPCServer) nonce(addr consensus.Addr, slot *NonceSlot) error {
+func (r *RPCServer) nonce(addr consensus.Addr, nonce *uint64) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -181,10 +176,8 @@ func (r *RPCServer) nonce(addr consensus.Addr, slot *NonceSlot) error {
 		return fmt.Errorf("account %v does not exist", addr)
 	}
 
-	if len(acc.NonceVec()) > 0 {
-		slot.Val = acc.NonceVec()[0]
-	}
-
+	n := acc.Nonce()
+	*nonce = n
 	return nil
 }
 
@@ -205,8 +198,8 @@ func (s *WalletService) SendTxn(t []byte, d *int) error {
 	return s.s.sendTxn(t, d)
 }
 
-func (s *WalletService) Nonce(addr consensus.Addr, slot *NonceSlot) error {
-	return s.s.nonce(addr, slot)
+func (s *WalletService) Nonce(addr consensus.Addr, n *uint64) error {
+	return s.s.nonce(addr, n)
 }
 
 func (s *WalletService) Round(_ int, r *uint64) error {

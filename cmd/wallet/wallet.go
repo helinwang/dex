@@ -29,14 +29,14 @@ const (
 var rpcAddr string
 var credentialPath string
 
-func nonce(client *rpc.Client, addr consensus.Addr) (uint8, uint64, error) {
-	var slot dex.NonceSlot
-	err := client.Call("WalletService.Nonce", addr, &slot)
+func nonce(client *rpc.Client, addr consensus.Addr) (uint64, error) {
+	var nonce uint64
+	err := client.Call("WalletService.Nonce", addr, &nonce)
 	if err != nil {
-		return 0, 0, err
+		return 0, err
 	}
 
-	return slot.Idx, slot.Val, nil
+	return nonce, nil
 }
 
 func getTokens(client *rpc.Client) ([]dex.Token, error) {
@@ -282,12 +282,12 @@ func sendToken(c *cli.Context) error {
 		return fmt.Errorf("symbol not found: %s", symbol)
 	}
 
-	idx, val, err := nonce(client, credential.PK.Addr())
+	n, err := nonce(client, credential.PK.Addr())
 	if err != nil {
 		return err
 	}
 
-	txn := dex.MakeSendTokenTxn(credential.SK, credential.PK.Addr(), pk, tokenID, uint64(quant*mul), idx, val)
+	txn := dex.MakeSendTokenTxn(credential.SK, credential.PK.Addr(), pk, tokenID, uint64(quant*mul), n)
 	err = client.Call("WalletService.SendTxn", txn, nil)
 	if err != nil {
 		return err
@@ -461,7 +461,7 @@ func issueToken(c *cli.Context) error {
 		return err
 	}
 
-	idx, val, err := nonce(client, credential.PK.Addr())
+	n, err := nonce(client, credential.PK.Addr())
 	if err != nil {
 		return err
 	}
@@ -472,7 +472,7 @@ func issueToken(c *cli.Context) error {
 		TotalUnits: units,
 	}
 
-	txn := dex.MakeIssueTokenTxn(credential.SK, credential.PK.Addr(), tokenInfo, idx, val)
+	txn := dex.MakeIssueTokenTxn(credential.SK, credential.PK.Addr(), tokenInfo, n)
 	err = client.Call("WalletService.SendTxn", txn, nil)
 	if err != nil {
 		return err
@@ -554,13 +554,13 @@ func freezeToken(c *cli.Context) error {
 		return fmt.Errorf("symbol not found: %s", symbol)
 	}
 
-	idx, val, err := nonce(client, credential.PK.Addr())
+	n, err := nonce(client, credential.PK.Addr())
 	if err != nil {
 		return err
 	}
 
 	t := dex.FreezeTokenTxn{TokenID: tokenID, AvailableRound: availableHeight, Quant: uint64(quant * mul)}
-	txn := dex.MakeFreezeTokenTxn(credential.SK, credential.PK.Addr(), t, idx, val)
+	txn := dex.MakeFreezeTokenTxn(credential.SK, credential.PK.Addr(), t, n)
 	err = client.Call("WalletService.SendTxn", txn, nil)
 	if err != nil {
 		return err
@@ -587,12 +587,12 @@ func cancelOrder(c *cli.Context) error {
 		return err
 	}
 
-	idx, val, err := nonce(client, credential.PK.Addr())
+	n, err := nonce(client, credential.PK.Addr())
 	if err != nil {
 		return err
 	}
 
-	txn := dex.MakeCancelOrderTxn(credential.SK, credential.PK.Addr(), id, idx, val)
+	txn := dex.MakeCancelOrderTxn(credential.SK, credential.PK.Addr(), id, n)
 	err = client.Call("WalletService.SendTxn", txn, nil)
 	if err != nil {
 		return err
@@ -674,7 +674,7 @@ func placeOrder(c *cli.Context) error {
 	quantUnit := uint64(amount * math.Pow10(int(baseToken.Decimals)))
 	priceUnit := uint64(price * math.Pow10(int(dex.OrderPriceDecimals)))
 
-	idx, val, err := nonce(client, credential.PK.Addr())
+	n, err := nonce(client, credential.PK.Addr())
 	if err != nil {
 		return err
 	}
@@ -695,7 +695,7 @@ func placeOrder(c *cli.Context) error {
 		ExpireRound: expireRound,
 		Market:      market,
 	}
-	txn := dex.MakePlaceOrderTxn(credential.SK, credential.PK.Addr(), placeOrderTxn, idx, val)
+	txn := dex.MakePlaceOrderTxn(credential.SK, credential.PK.Addr(), placeOrderTxn, n)
 	err = client.Call("WalletService.SendTxn", txn, nil)
 	if err != nil {
 		return err

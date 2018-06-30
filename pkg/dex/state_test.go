@@ -79,10 +79,9 @@ func TestStateSerialize(t *testing.T) {
 func TestStateNonce(t *testing.T) {
 	s := NewState(ethdb.NewMemDatabase())
 	addr := consensus.RandSK().MustPK().Addr()
-	assert.Equal(t, 0, len(s.NonceVec(addr)))
-	v := []uint64{1, 2, 3}
-	s.UpdateNonceVec(addr, v)
-	assert.Equal(t, v, s.NonceVec(addr))
+	assert.Equal(t, 0, int(s.Nonce(addr)))
+	s.UpdateNonce(addr, 1)
+	assert.Equal(t, 1, int(s.Nonce(addr)))
 }
 
 func TestStateBalances(t *testing.T) {

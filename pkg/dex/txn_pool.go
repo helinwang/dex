@@ -37,10 +37,9 @@ func parseTxn(b []byte, pker pker) (*consensus.Txn, error) {
 	}
 
 	ret := &consensus.Txn{
-		Raw:      b,
-		Owner:    txn.Owner,
-		NonceIdx: txn.NonceIdx,
-		NonceVal: txn.NonceValue,
+		Raw:   b,
+		Owner: txn.Owner,
+		Nonce: txn.Nonce,
 	}
 
 	switch txn.T {

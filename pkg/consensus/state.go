@@ -30,11 +30,10 @@ type Transition interface {
 
 // Txn is a transaction.
 type Txn struct {
-	Decoded  interface{}
-	Owner    Addr
-	NonceIdx uint8
-	NonceVal uint64
-	Raw      []byte
+	Decoded interface{}
+	Owner   Addr
+	Nonce   uint64
+	Raw     []byte
 }
 
 // TxnPool is the pool that stores the received transactions.

@@ -33,7 +33,7 @@ func TestSendToken(t *testing.T) {
 	acc.UpdateBalance(0, Balance{Available: 100})
 
 	to, _ := RandKeyPair()
-	txn := MakeSendTokenTxn(sk, addr, to, 0, 20, 0, 0)
+	txn := MakeSendTokenTxn(sk, addr, to, 0, 20, 0)
 	trans := s.Transition(1)
 	pt, err := parseTxn(txn, &myPKer{m: map[consensus.Addr]PK{
 		addr: pk,
@@ -60,7 +60,7 @@ func TestFreezeToken(t *testing.T) {
 	acc.UpdateBalance(0, Balance{Available: 100})
 
 	addr := pk.Addr()
-	txn := MakeFreezeTokenTxn(sk, addr, FreezeTokenTxn{TokenID: 0, AvailableRound: 3, Quant: 50}, 0, 0)
+	txn := MakeFreezeTokenTxn(sk, addr, FreezeTokenTxn{TokenID: 0, AvailableRound: 3, Quant: 50}, 0)
 
 	trans := s.Transition(1)
 	pt, err := parseTxn(txn, &myPKer{m: map[consensus.Addr]PK{
@@ -99,7 +99,7 @@ func TestIssueToken(t *testing.T) {
 	acc := s.NewAccount(pk)
 	trans := s.Transition(1)
 	addr := pk.Addr()
-	txn := MakeIssueTokenTxn(sk, addr, btcInfo, 0, 0)
+	txn := MakeIssueTokenTxn(sk, addr, btcInfo, 0)
 	pt, err := parseTxn(txn, &myPKer{m: map[consensus.Addr]PK{
 		addr: pk,
 	}})
@@ -136,7 +136,7 @@ func TestOrderAlreadyExpired(t *testing.T) {
 	}
 
 	trans := s.Transition(1)
-	pt, err := parseTxn(MakePlaceOrderTxn(sk, addr, order, 0, 0), &myPKer{m: map[consensus.Addr]PK{
+	pt, err := parseTxn(MakePlaceOrderTxn(sk, addr, order, 0), &myPKer{m: map[consensus.Addr]PK{
 		addr: pk,
 	}})
 	if err != nil {
@@ -168,7 +168,7 @@ func TestBuyOrderExpire(t *testing.T) {
 		Market:      MarketSymbol{Quote: 1, Base: 0},
 	}
 	trans := s.Transition(1)
-	pt, err := parseTxn(MakePlaceOrderTxn(sk, addr, order, 0, 0), &myPKer{m: map[consensus.Addr]PK{
+	pt, err := parseTxn(MakePlaceOrderTxn(sk, addr, order, 0), &myPKer{m: map[consensus.Addr]PK{
 		addr: pk,
 	}})
 	if err != nil {
@@ -210,7 +210,7 @@ func TestSellOrderExpire(t *testing.T) {
 		Market:      MarketSymbol{Quote: 1, Base: 0},
 	}
 	trans := s.Transition(1)
-	pt, err := parseTxn(MakePlaceOrderTxn(sk, addr, order, 0, 0), &myPKer{m: map[consensus.Addr]PK{
+	pt, err := parseTxn(MakePlaceOrderTxn(sk, addr, order, 0), &myPKer{m: map[consensus.Addr]PK{
 		addr: pk,
 	}})
 	if err != nil {
@@ -260,7 +260,7 @@ func TestPlaceOrder(t *testing.T) {
 		Price:  2 * uint64(math.Pow10(OrderPriceDecimals)),
 		Market: MarketSymbol{Quote: 1, Base: 0},
 	}
-	pt, err := parseTxn(MakePlaceOrderTxn(skBuy, pkBuy.Addr(), order, 0, 0), pker)
+	pt, err := parseTxn(MakePlaceOrderTxn(skBuy, pkBuy.Addr(), order, 0), pker)
 	if err != nil {
 		panic(err)
 	}
@@ -284,7 +284,7 @@ func TestPlaceOrder(t *testing.T) {
 		Price:  3 * uint64(math.Pow10(OrderPriceDecimals)),
 		Market: MarketSymbol{Quote: 1, Base: 0},
 	}
-	pt, err = parseTxn(MakePlaceOrderTxn(skBuy, pkBuy.Addr(), order, 0, 1), pker)
+	pt, err = parseTxn(MakePlaceOrderTxn(skBuy, pkBuy.Addr(), order, 1), pker)
 	if err != nil {
 		panic(err)
 	}
@@ -299,7 +299,7 @@ func TestPlaceOrder(t *testing.T) {
 		Price:  2 * uint64(math.Pow10(OrderPriceDecimals)),
 		Market: MarketSymbol{Quote: 1, Base: 0},
 	}
-	pt, err = parseTxn(MakePlaceOrderTxn(skSell, pkSell.Addr(), order, 0, 0), pker)
+	pt, err = parseTxn(MakePlaceOrderTxn(skSell, pkSell.Addr(), order, 0), pker)
 	if err != nil {
 		panic(err)
 	}

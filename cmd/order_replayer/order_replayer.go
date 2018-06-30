@@ -41,14 +41,14 @@ func txnPoolSize(client *rpc.Client) (int, error) {
 	return size, nil
 }
 
-func nonce(client *rpc.Client, addr consensus.Addr) (uint8, uint64, error) {
-	var slot dex.NonceSlot
-	err := client.Call("WalletService.Nonce", addr, &slot)
+func nonce(client *rpc.Client, addr consensus.Addr) (uint64, error) {
+	var nonce uint64
+	err := client.Call("WalletService.Nonce", addr, &nonce)
 	if err != nil {
-		return 0, 0, err
+		return 0, err
 	}
 
-	return slot.Idx, slot.Val, nil
+	return nonce, nil
 }
 
 func loadCredentials(dir string) ([]dex.Credential, error) {
@@ -183,7 +183,7 @@ func main() {
 		quantMul := math.Pow10(int(quoteToken.Decimals))
 		quantUnit := uint64(quant * quantMul)
 
-		nonceIdx, nonceVal, err := nonce(client, credential.PK.Addr())
+		n, err := nonce(client, credential.PK.Addr())
 		if err != nil {
 			panic(err)
 		}
@@ -195,7 +195,7 @@ func main() {
 			ExpireRound: 0,
 			Market:      dex.MarketSymbol{Base: baseToken.ID, Quote: quoteToken.ID},
 		}
-		txn := dex.MakePlaceOrderTxn(credential.SK, credential.PK.Addr(), t, nonceIdx, nonceVal)
+		txn := dex.MakePlaceOrderTxn(credential.SK, credential.PK.Addr(), t, n)
 		err = client.Call("WalletService.SendTxn", txn, nil)
 		if err != nil {
 			panic(err)
