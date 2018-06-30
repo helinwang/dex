@@ -13,8 +13,8 @@ low-latency and high-throughput.
 - Issue new tokens
 - Sending, receiving, freezing and burning tokens
 
-Please see [here](./commands.md) for how to run the nodes, use the wallet CLI and the
-detailed steps of reproducing the features.
+Please see [here](./commands.md) for how to run the nodes, use the wallet CLI, the
+detailed steps of reproducing the features, and how to pressure test the system.
 
 You can find the [White Paper](https://github.com/helinwang/dex/wiki/White-Paper) in the wiki.
 
