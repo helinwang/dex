@@ -125,7 +125,7 @@ func (n *Notary) notarize(bp *BlockProposal, pool TxnPool) (*NtShare, time.Durat
 	}
 
 	dur := time.Now().Sub(start)
-	log.Info("notarize record txns done", "round", nts.Round, "bp", nts.BP, "dur", dur)
+	log.Debug("notarize record txns done", "round", nts.Round, "bp", nts.BP, "dur", dur)
 
 	stateRoot := newState.Hash()
 	blk := &Block{
