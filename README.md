@@ -1,6 +1,6 @@
 # DEX
 
-DEX is decentralized exchange implementation that focuses on
+DEX is a decentralized exchange implementation that focuses on
 low-latency and high-throughput.
 
 - Block time: 1s on normal load, ~2s on high load
