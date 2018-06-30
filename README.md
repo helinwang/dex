@@ -7,6 +7,9 @@ low-latency and high-throughput.
 - Time to	finalization: 2x block time on normal operations [2]
 - Transaction per second: ~2500 [1]
 
+DEX includes an implementation of the [Dfinity](https://dfinity.org/) consensus protocol described in their [paper](https://dfinity.org/pdf-viewer/library/dfinity-consensus.pdf).
+And it implements native on-chain matching engine.
+
 ## Features
 
 - Trading tokens
