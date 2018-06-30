@@ -61,6 +61,7 @@ $ go build ./cmd/node/
 - Download source and build
   ```
   $ go get github.com/helinwang/dex
+  $ cd $GOPATH/src/github.com/helinwang/dex
   $ glide install
   $ go test ./pkg/...
   $ go build ./cmd/node/
