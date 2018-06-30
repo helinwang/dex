@@ -175,7 +175,7 @@ Issue HELIN_COIN, total supply 999999, decimals 8:
 ### List All Tokens
 
 ```
-./wallet -c ./credentials/node-0 token
+./wallet token
  |     Symbol|         Total Supply| Decimals|
  |        BNB|   200000000.00000000|        8|
  |        BTC| 90000000000.00000000|        8|
@@ -233,3 +233,103 @@ Due to time constraint, I only implemented send to public key, send to address i
     Execution Reports:
      |Block |ID |Market |Side |Trade Price |Amount |
     ```
+
+### Freeze Token
+
+Freeze 10000 BNB at round (round is same as block height) 500
+```
+./wallet -c ./credentials/node-0 freeze BNB 10000 500
+
+./wallet -c ./credentials/node-0 account             
+Addr:
+9278552d23bb4cad6e9b1210853f6b9af107f720
+
+Balances:
+ |Symbol |Available        |Pending    |Frozen             |
+ |BNB    |9999.99990000    |0.00000000 |10000.00000000@500 |
+ |BTC    |9000000.00000000 |0.00000000 |                   |
+ |ETH    |9000000.00000000 |0.00000000 |                   |
+ |XRP    |9000000.00000000 |0.00000000 |                   |
+ |EOS    |9000000.00000000 |0.00000000 |                   |
+ |ICX    |9000000.00000000 |0.00000000 |                   |
+ |TRX    |9000000.00000000 |0.00000000 |                   |
+ |XLM    |9000000.00000000 |0.00000000 |                   |
+ |BCC    |9000000.00000000 |0.00000000 |                   |
+ |LTC    |9000000.00000000 |0.00000000 |                   |
+
+Pending Orders:
+ |ID |Market |Side |Price |Amount |Executed |Expiry Block Height |
+
+Execution Reports:
+ |Block |ID |Market |Side |Trade Price |Amount |
+```
+
+Please note that after implementing the freeze function, I realized the freeze function in BNB's Ether contract is freeze until unfrozen, rather than freeze until block height.
+I did not have a chance to match this behavior, but it would be easy to implement.
+
+### Burn Token
+
+Burn 1000 BTC:
+```
+./wallet -c ./credentials/node-0 burn BTC 1000
+```
+The total supply of BTC is reduced as well:
+```
+./wallet token  
+ | Symbol|         Total Supply| Decimals|
+ |    BNB|   200000000.00000000|        8|
+ |    BTC| 89999999000.00000000|        8|
+ |    ETH| 90000000000.00000000|        8|
+ |    XRP| 90000000000.00000000|        8|
+ |    EOS| 90000000000.00000000|        8|
+ |    ICX| 90000000000.00000000|        8|
+ |    TRX| 90000000000.00000000|        8|
+ |    XLM| 90000000000.00000000|        8|
+ |    BCC| 90000000000.00000000|        8|
+ |    LTC| 90000000000.00000000|        8|
+```
+
+### Check Chain Status
+
+```
+./wallet status
+In sync, round: 128
+Metrics of last 10 rounds:
+ | Round|   Block Time| Transaction Count|
+ |   127| 1.008702519s|                 0|
+ |   126| 1.008460589s|                 0|
+ |   125| 1.011787425s|                 0|
+ |   124| 1.006500142s|                 0|
+ |   123|  1.01291797s|                 0|
+ |   122| 1.007379805s|                 0|
+ |   121| 1.011837359s|                 0|
+ |   120| 1.006966881s|                 0|
+ |   119|  1.01126981s|                 0|
+ |   118| 1.008079414s|                 0|
+Stats
+ | Number of Rounds| Average Block Time| Transaction per Second|
+ |                3|       1.009650177s|               0.000000|
+ |               10|       1.009390191s|               0.000000|
+ |               30|       1.009942222s|               0.000000|
+ |              100|       1.009953654s|               0.019803|
+```
+
+### Draw Chain's Blocks
+
+```
+./wallet graphviz                        
+digraph chain {
+rankdir=LR;
+size="12,8"
+node [shape = rect, style=filled, color = chartreuse2]; block_c669 block_2616 block_6595 num_blocks_omitted_to_save_space_148 block_aebe block_a4e1 block_bca4
+node [shape = rect, style=filled, color = aquamarine]; block_2d04 block_54e3
+block_c669 -> block_2616 -> block_6595 -> num_blocks_omitted_to_save_space_148 -> block_aebe -> block_a4e1 -> block_bca4
+block_bca4 -> block_2d04
+block_2d04 -> block_54e3
+
+}
+```
+
+It prints the block chain representation in the graphviz format.
+You can paste it to http://www.webgraphviz.com/ to see the visualization.
+The green block is the finalized block, the blue block is the non-finalized block.
