@@ -62,9 +62,9 @@ The `wallet` binary is a CLI. It talks with the node through the node's wallet R
 
 ### Trade
 
-Sell 15 ETH at 0.07 BTC, expire after 300 blocks:
+Sell 15 ETH at 0.07 BTC, expire after 3000 blocks:
 ```
-$ ./wallet -c ./credentials/node-0 order ETH_BTC sell 0.07 15 300
+$ ./wallet -c ./credentials/node-0 order ETH_BTC sell 0.07 15 3000
 ```
 
 Check account:
@@ -88,15 +88,15 @@ Balances:
 
 Pending Orders:
  |ID    |Market  |Side |Price      |Amount      |Executed   |Expiry Block Height |
- |2_1_0 |ETH_BTC |SELL |0.07000000 |15.00000000 |0.00000000 |305                 |
+ |2_1_0 |ETH_BTC |SELL |0.07000000 |15.00000000 |0.00000000 |3005                |
 
 Execution Reports:
  |Block |ID |Market |Side |Trade Price |Amount |
 ```
 
-Buy 10 ETH at 0.08 BTC, expire after 300 blocks:
+Buy 10 ETH at 0.08 BTC, expire after 3000 blocks:
 ```
-$ ./wallet -c ./credentials/node-0 order ETH_BTC buy 0.08 10 300
+$ ./wallet -c ./credentials/node-0 order ETH_BTC buy 0.08 10 3000
 ```
 
 Check account:
@@ -120,7 +120,7 @@ Balances:
 
 Pending Orders:
  |ID    |Market  |Side |Price      |Amount      |Executed    |Expiry Block Height |
- |2_1_0 |ETH_BTC |SELL |0.07000000 |15.00000000 |10.00000000 |305                 |
+ |2_1_0 |ETH_BTC |SELL |0.07000000 |15.00000000 |10.00000000 |3005                |
 
 Execution Reports:
  |Block |ID    |Market  |Side |Trade Price |Amount      |
