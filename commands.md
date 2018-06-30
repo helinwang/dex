@@ -2,6 +2,8 @@
 
 Let's go through the commands by examples. The options for all the binaries can be viewed with `./binary_name -h`.
 
+The example for pressure testing the system is provided at the end of this document.
+
 ## Node
 
 ### Run Nodes
@@ -306,3 +308,5 @@ It prints the blockchain representation in the graphviz format.
 You can paste it to http://www.webgraphviz.com/ to see the visualization.
 Some blocks in the middle will be omitted (indicated by "num_blocks_omitted_to_save_space_148").
 The green block is the finalized block. The blue block is the non-finalized block.
+
+### Pressure Testing
