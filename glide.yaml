@@ -1,0 +1,26 @@
+package: github.com/helinwang/dex
+import:
+- package: github.com/dfinity/go-dfinity-crypto
+  version: 1db358303499a9879dd640c71f831897e06e9ddf
+  subpackages:
+  - bls
+- package: github.com/ethereum/go-ethereum
+  version: ccc0debb63124ee99906c2cfff6125de30e8c62f
+  subpackages:
+  - common
+  - common/math
+  - crypto/secp256k1
+  - ethdb
+  - rlp
+  - trie
+- package: github.com/hashicorp/golang-lru
+- package: github.com/helinwang/log15
+- package: github.com/urfave/cli
+  version: 8e01ec4cd3e2d84ab2fe90d8210528ffbb06d8ff
+- package: golang.org/x/crypto
+  subpackages:
+  - sha3
+testImport:
+- package: github.com/stretchr/testify
+  subpackages:
+  - assert
