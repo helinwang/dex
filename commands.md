@@ -61,7 +61,7 @@ The `wallet` binary is a CLI, it talks with the node through the node's wallet R
 ### Check Account
 
 ```
-$ ./wallet -c ./credentials/node-0 account
+./wallet -c ./credentials/node-0 account
 
 Addr:
 9278552d23bb4cad6e9b1210853f6b9af107f720
@@ -95,7 +95,7 @@ Sell 15 ETH at 0.07 BTC, expire after 300 blocks:
 
 Check account:
 ```
-$ ./wallet -c ./credentials/node-0 account   
+./wallet -c ./credentials/node-0 account   
 Addr:
 9278552d23bb4cad6e9b1210853f6b9af107f720
 
@@ -127,7 +127,7 @@ Buy 10 ETH at 0.08 BTC, expire after 300 blocks:
 
 Check account:
 ```
-$ ./wallet -c ./credentials/node-0 account                         
+./wallet -c ./credentials/node-0 account                         
 Addr:
 9278552d23bb4cad6e9b1210853f6b9af107f720
 
@@ -153,3 +153,54 @@ Execution Reports:
  |31    |2_1_1 |ETH_BTC |BUY  |0.07000000  |10.00000000 |
  |31    |2_1_0 |ETH_BTC |SELL |0.07000000  |10.00000000 |
 ```
+
+You can see the order is matched according to time priority, excution reports is generated for each execution,
+and the pending order is shown as well. Also, a flat 0.0001 BNB fee is charged per transaction.
+I did not have enough time to implement trading percentage based fee, or adjustable fee according to the network condition.
+But it would not be too hard to implement.
+
+Cancel Order:
+```
+./wallet -c ./credentials/node-0 cancel 2_1_0
+```
+Please note that cancelling an order will not generate execution report.
+
+### Issue Token
+
+Issue HELIN_COIN, total supply 999999, decimals 8:
+```
+./wallet -c ./credentials/node-0 issue_token HELIN_COIN 999999 8
+```
+
+### List All Tokens
+
+```
+./wallet -c ./credentials/node-0 token
+ |     Symbol|         Total Supply| Decimals|
+ |        BNB|   200000000.00000000|        8|
+ |        BTC| 90000000000.00000000|        8|
+ |        ETH| 90000000000.00000000|        8|
+ |        XRP| 90000000000.00000000|        8|
+ |        EOS| 90000000000.00000000|        8|
+ |        ICX| 90000000000.00000000|        8|
+ |        TRX| 90000000000.00000000|        8|
+ |        XLM| 90000000000.00000000|        8|
+ |        BCC| 90000000000.00000000|        8|
+ |        LTC| 90000000000.00000000|        8|
+ | HELIN_COIN|      999999.00000000|        8|
+```
+
+### Send Token
+
+Due to time constraint, I only implemented send to public key, send to address is easy to add.
+
+1. Get the public key of the account to send to:
+    ```
+    ./credential_info -c credentials/node-1
+    credential info (bytes encoded using base64):
+    SK: hDTgUQxmwGCaG/abozy/iIMHiT1S3OtlxFAa5TRmmRU=
+    PK: IgeElpP8xcLaKuq7HIfKN0LARUXgpFWNky7b2oLe8AvqC3epDAzjWVt4dfZ1b7fSdeMnX1RTdbIKBKuoJX3LCg==
+    Addr: 61493edcbd98328d3652e82b3327e84176ae5696
+    ```
+1. Send to public key:
+    
