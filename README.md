@@ -2,7 +2,7 @@
 
 ### Build with Docker
 
-```bash
+```
 $ git clone git@github.com:helinwang/dex.git
 $ cd dex
 $ docker run -v `pwd`:/root/env/gopath/src/github.com/helinwang/dex -it dex:build bash
