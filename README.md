@@ -14,7 +14,7 @@ $ go build ./cmd/node/
 
 ### Build without Docker
 
-- [Install the latest version of Go](https://golang.org/doc/install#install)
+- Install the latest version of [Go](https://golang.org/doc/install#install)
 
 - Install [Barreto-Naehrig curves](https://github.com/dfinity/bn)
 
