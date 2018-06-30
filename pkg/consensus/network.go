@@ -113,7 +113,6 @@ func (n *network) acceptPeerOrDisconnect(c net.Conn) {
 	req.Sig = n.sk.Sign(req.ByteToSign())
 	conn.Write(packet{Data: req})
 
-	fmt.Println(recv.GetNodesOnly, len(pubNodes))
 	if recv.GetNodesOnly {
 		conn.Close()
 		return
@@ -168,7 +167,6 @@ func dedup(nodes []unicastAddr) []unicastAddr {
 func (n *network) ConnectSeed(addr string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), timeoutDur)
 	pk, nodes, err := n.getAddrsFromSeed(ctx, addr)
-	fmt.Println(len(nodes), err)
 	cancel()
 	if err != nil {
 		return err
@@ -192,7 +190,6 @@ func (n *network) ConnectSeed(addr string) error {
 			continue
 		}
 
-		fmt.Println("connecting to", addr.Addr)
 		go n.connect(addr, PK([]byte(addr.PKStr)))
 		connected++
 		if connected >= intialConn {

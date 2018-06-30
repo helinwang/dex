@@ -1,18 +1,28 @@
 package main
 
 import (
+	"bytes"
 	"encoding/base64"
+	"encoding/gob"
 	"flag"
 	"fmt"
+	"io/ioutil"
 
-	"github.com/helinwang/dex/pkg/consensus"
+	"github.com/helinwang/dex/pkg/dex"
 )
 
 func main() {
 	c := flag.String("c", "", "path to the node credential file")
 	flag.Parse()
 
-	credential, err := consensus.LoadCredential(*c)
+	b, err := ioutil.ReadFile(*c)
+	if err != nil {
+		panic(err)
+	}
+
+	var credential dex.Credential
+	dec := gob.NewDecoder(bytes.NewReader(b))
+	err = dec.Decode(&credential)
 	if err != nil {
 		panic(err)
 	}
@@ -21,14 +31,9 @@ func main() {
 	skStr := base64.StdEncoding.EncodeToString(credential.SK)
 	fmt.Printf("SK: %s\n", skStr)
 
-	pk, err := credential.SK.PK()
-	if err != nil {
-		panic(err)
-	}
-
-	pkStr := base64.StdEncoding.EncodeToString(pk)
+	pkStr := base64.StdEncoding.EncodeToString(credential.PK)
 	fmt.Printf("PK: %s\n", pkStr)
 
-	addr := pk.Addr()
+	addr := credential.PK.Addr()
 	fmt.Printf("Addr: %x\n", addr[:])
 }
