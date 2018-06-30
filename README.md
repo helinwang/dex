@@ -7,6 +7,15 @@ low-latency and high-throughput.
 - Time to	finalization: 2x block time on normal operations [1]
 - Transaction per second: ~2000 benchmarked on a local machine
 
+## Features
+
+- Trading tokens
+- Sending, receiving, freezing and burning tokens
+- Issue new tokens
+
+Please see [here](./commands.md) for how to use the wallet CLI and the
+detailed steps of reproducing the features.
+
 ## Build
 
 ### Build with Docker
