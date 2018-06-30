@@ -109,7 +109,7 @@ func (n *Node) proposeBlock(round uint64, group int, lastRoundEndTime time.Time)
 	bp := n.chain.ProposeBlock(ctx, n.sk, round)
 	h := bp.Hash()
 	if bp != nil {
-		log.Info("propose block done", "owner", n.addr, "round", round, "bp round", bp.Round, "hash", h, "group", group, "dur", time.Now().Sub(start), "since last round end", time.Now().Sub(lastRoundEndTime))
+		log.Info("propose block done", "owner", n.addr, "round", round, "hash", h, "group", group, "since last round end", time.Now().Sub(lastRoundEndTime), "dur", time.Now().Sub(start))
 		n.gateway.recvBlockProposal(n.gateway.addr, bp, h)
 	}
 
@@ -121,7 +121,7 @@ func (n *Node) notarizeBlock(notary *Notary, inCh chan *BlockProposal, cancelCtx
 		h := s.Hash()
 		sinceLastRoundEnd := time.Now().Sub(lastRoundEndTime)
 		remainTime := n.cfg.BlockTime - spentTime - sinceLastRoundEnd
-		log.Info("produced one notarization share", "group", group, "bp", s.BP, "share round", s.Round, "round", round, "hash", h, "since last round end", sinceLastRoundEnd, "remain time", remainTime)
+		log.Info("produced one notarization share", "group", group, "round", round, "notarized proposal", s.BP, "hash", h, "since last round end", sinceLastRoundEnd, "remain time", remainTime)
 		if remainTime <= 0 {
 			go n.gateway.recvNtShare(n.gateway.addr, s, h)
 		} else {
@@ -154,7 +154,7 @@ func (n *Node) StartRound(round uint64) {
 	n.round = round
 	var ntCancelCtx context.Context
 	rbGroup, bpGroup, ntGroup := n.chain.randomBeacon.Committees(round)
-	log.Info("start round", "round", round, "rb group", rbGroup, "bp group", bpGroup, "nt group", ntGroup, "rand beacon", SHA3(n.chain.randomBeacon.History()[round].Sig))
+	log.Info("start round", "round", round, "rand beacon", SHA3(n.chain.randomBeacon.History()[round].Sig), "rb group", rbGroup, "bp group", bpGroup, "nt group", ntGroup)
 
 	for _, m := range n.memberships {
 		if m.groupID == bpGroup {
