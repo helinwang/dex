@@ -16,6 +16,8 @@ low-latency and high-throughput.
 Please see [here](./commands.md) for how to use the wallet CLI and the
 detailed steps of reproducing the features.
 
+You can find the [White Paper](https://github.com/helinwang/dex/wiki/White-Paper) in the wiki.
+
 ## Build
 
 ### Build with Docker
