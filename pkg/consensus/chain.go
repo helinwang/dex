@@ -150,7 +150,6 @@ func (c *Chain) WaitUntil(round uint64) {
 // ProposeBlock proposes a new block proposal.
 func (c *Chain) ProposeBlock(ctx context.Context, sk SK, round uint64) *BlockProposal {
 	txns := c.txnPool.Txns()
-	fmt.Println("***********pool size", len(txns))
 	block, state, _ := c.Leader()
 	if block.Round+1 < round {
 		log.Info("proposing block skipped", "expected round", round-1, "block round", block.Round)
@@ -160,7 +159,6 @@ func (c *Chain) ProposeBlock(ctx context.Context, sk SK, round uint64) *BlockPro
 		return nil
 	}
 
-	log.Info("proposal starting state hash", "root", state.Hash())
 	trans := state.Transition(round, c.proposerPK)
 	recorded := 0
 loop:
@@ -191,8 +189,6 @@ loop:
 		Txns:      txnsBytes,
 		Owner:     pk.Addr(),
 	}
-
-	fmt.Println("**** recorded", recorded)
 
 	bp.OwnerSig = sk.Sign(bp.Encode(false))
 	return &bp
@@ -359,7 +355,6 @@ func (c *Chain) addBlock(b *Block, s State, weight float64, txnCount int) (bool,
 	c.store.AddBlock(b, hash)
 	c.unFinalizedState[node.Block] = s
 	_, leaderState, _ := c.leader()
-	log.Info("end round hashes", "block state root", b.StateRoot, "leader state root", leaderState.Hash())
 
 	round := c.round()
 	if startingRound == b.Round && startingRound+1 == round {

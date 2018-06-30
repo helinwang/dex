@@ -417,9 +417,7 @@ func (n *gateway) recvBlock(addr unicastAddr, b *Block, h Hash) {
 	n.blockWaiters[h] = nil
 	n.mu.Unlock()
 
-	start := time.Now()
 	_, broadcast, err := n.syncer.SyncBlock(addr, h, b.Round)
-	log.Warn("sync block took", "dur", time.Now().Sub(start), "round", b.Round)
 	if err != nil {
 		log.Warn("sync block error", "err", err)
 		return

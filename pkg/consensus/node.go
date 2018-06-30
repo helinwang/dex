@@ -190,7 +190,6 @@ func (n *Node) BlockForRoundProduced(round uint64) {
 	defer n.mu.Unlock()
 
 	if _, ok := n.recvBlockTime[round]; !ok {
-		log.Warn("recv block", "round", round)
 		n.recvBlockTime[round] = time.Now()
 	}
 }

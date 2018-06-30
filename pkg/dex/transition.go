@@ -9,7 +9,6 @@ import (
 
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/helinwang/dex/pkg/consensus"
-	log "github.com/helinwang/log15"
 )
 
 var flatFee = uint64(0.0001 * math.Pow10(int(BNBInfo.Decimals)))
@@ -51,14 +50,10 @@ func (t *Transition) RecordSerialized(blob []byte, pool consensus.TxnPool) (int,
 		return 0, err
 	}
 
-	total := 0
-	missCount := 0
 	for _, b := range txns {
 		hash := consensus.SHA3(b)
 		txn := pool.Get(hash)
-		total++
 		if txn == nil {
-			missCount++
 			txn, _ = pool.Add(b)
 		}
 
@@ -74,7 +69,6 @@ func (t *Transition) RecordSerialized(blob []byte, pool consensus.TxnPool) (int,
 		pool.Remove(hash)
 	}
 
-	log.Warn("miss ratio", "ratio", float64(missCount)/float64(total))
 	return len(txns), nil
 }
 
