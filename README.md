@@ -18,12 +18,12 @@ $ go build ./cmd/node/
 
 - Install [Barreto-Naehrig curves](https://github.com/dfinity/bn)
 
-  - Ubuntu or Mac can use the latest prebuilt libraries in the readme
+  - Ubuntu or OSX can use the latest prebuilt libraries in the readme
     page.
   
-  - Make sure the include file and built libraries are installed in
-    `/usr/include` and `/usr/lib` respectively (or anywhere else the
-    Go build toolchain can find).
+  - Install the include files and built libraries into `/usr/include`
+    and `/usr/lib` respectively (or anywhere else the Go build
+    toolchain can find).
 
   - Install dependencies `apt install llvm g++ libgmp-dev libssl-dev`,
     they are required by cgo when linking the libraries.
