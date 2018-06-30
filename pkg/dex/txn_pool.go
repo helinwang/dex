@@ -82,6 +82,14 @@ func parseTxn(b []byte, pker pker) (*consensus.Txn, error) {
 			return nil, fmt.Errorf("FreezeTokenTxn decode failed: %v", err)
 		}
 		ret.Decoded = &txn
+	case BurnToken:
+		dec := gob.NewDecoder(bytes.NewReader(txn.Data))
+		var txn BurnTokenTxn
+		err := dec.Decode(&txn)
+		if err != nil {
+			return nil, fmt.Errorf("BurnToken decode failed: %v", err)
+		}
+		ret.Decoded = &txn
 	default:
 		return nil, fmt.Errorf("unknown txn type: %v", txn.T)
 	}

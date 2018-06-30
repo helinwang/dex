@@ -266,6 +266,33 @@ func TestNonce(t *testing.T) {
 	assert.Nil(t, err)
 }
 
+func TestBurnToken(t *testing.T) {
+	const burn = 1000
+	s := NewState(ethdb.NewMemDatabase())
+	s.UpdateToken(Token{ID: 0, TokenInfo: BNBInfo})
+	pk, sk := RandKeyPair()
+	acc := s.NewAccount(pk)
+	acc.UpdateBalance(0, Balance{Available: burn + 100})
+	txn := MakeBurnTokenTxn(sk, pk.Addr(), BurnTokenTxn{ID: 0, Quant: burn}, 0)
+
+	pker := &myPKer{m: map[consensus.Addr]PK{
+		pk.Addr(): pk,
+	}}
+	pt, err := parseTxn(txn, pker)
+	if err != nil {
+		panic(err)
+	}
+
+	trans := s.Transition(1)
+	err = trans.Record(pt)
+	assert.Nil(t, err)
+	s = trans.Commit().(*State)
+	acc = s.Account(pk.Addr())
+	assert.Equal(t, 100, int(acc.Balance(0).Available))
+	cache := newTokenCache(s)
+	assert.Equal(t, int(BNBInfo.TotalUnits-burn), int(cache.Info(0).TotalUnits))
+}
+
 func TestPlaceOrder(t *testing.T) {
 	s := NewState(ethdb.NewMemDatabase())
 	s.UpdateToken(Token{ID: 0, TokenInfo: BNBInfo})

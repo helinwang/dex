@@ -65,16 +65,19 @@ func (t *Transition) Record(txn *consensus.Txn) error {
 		panic("record should never be called after finalized")
 	}
 
-	acc, ready, nonceValid := validateNonce(t.state, txn)
-	if !nonceValid {
-		return errors.New("nonce not valid")
+	acc := t.state.Account(txn.Owner)
+	if acc == nil {
+		return errors.New("txn owner not found")
 	}
 
-	if !ready {
+	if nonce := acc.Nonce(); txn.Nonce < nonce {
+		return errors.New("nonce not valid")
+	} else if txn.Nonce > nonce {
 		return consensus.ErrTxnNonceTooBig
 	}
 
-	// TODO: encode txn.data more efficiently to save network bandwidth
+	// TODO: encode txn's data more efficiently to save network
+	// bandwidth.
 	switch tx := txn.Decoded.(type) {
 	case *PlaceOrderTxn:
 		if err := t.placeOrder(acc, tx, t.round); err != nil {
@@ -96,13 +99,42 @@ func (t *Transition) Record(txn *consensus.Txn) error {
 		if err := t.freezeToken(acc, tx); err != nil {
 			return err
 		}
-
+	case *BurnTokenTxn:
+		if err := t.burnToken(acc, tx); err != nil {
+			return err
+		}
 	default:
 		return fmt.Errorf("unknown txn type: %T", txn.Decoded)
 	}
 
 	t.txns = append(t.txns, txn)
 	acc.IncrementNonce()
+	return nil
+}
+
+func (t *Transition) burnToken(acc *Account, txn *BurnTokenTxn) error {
+	if txn.Quant == 0 {
+		return errors.New("burn token quantity should not be 0")
+	}
+
+	info := t.tokenCache.Info(txn.ID)
+	if info == nil {
+		return fmt.Errorf("trying to burn non-existent token: %d", txn.ID)
+	}
+
+	balance := acc.Balance(txn.ID)
+	if balance.Available < txn.Quant {
+		return fmt.Errorf("not enough token to burn, want: %d, have: %d", txn.Quant, balance.Available)
+	}
+
+	if info.TotalUnits < txn.Quant {
+		return fmt.Errorf("not enough total supply to burn, want: %d, have: %d", txn.Quant, info.TotalUnits)
+	}
+
+	balance.Available -= txn.Quant
+	info.TotalUnits -= txn.Quant
+	acc.UpdateBalance(txn.ID, balance)
+	t.state.UpdateToken(Token{ID: txn.ID, TokenInfo: *info})
 	return nil
 }
 

@@ -8,7 +8,6 @@ import (
 
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/helinwang/dex/pkg/consensus"
-	log "github.com/helinwang/log15"
 )
 
 const (
@@ -32,28 +31,6 @@ type Txn struct {
 	Nonce uint64
 	Owner consensus.Addr
 	Sig   Sig
-}
-
-func validateNonce(state *State, txn *consensus.Txn) (acc *Account, ready, valid bool) {
-	acc = state.Account(txn.Owner)
-	if acc == nil {
-		log.Warn("txn owner not found")
-		return
-	}
-
-	if txn.Nonce < acc.Nonce() {
-		return
-	}
-
-	if txn.Nonce > acc.Nonce() {
-		ready = false
-		valid = true
-		return
-	}
-
-	ready = true
-	valid = true
-	return
 }
 
 func (b *Txn) Encode(withSig bool) []byte {
@@ -205,6 +182,23 @@ func MakeFreezeTokenTxn(sk SK, owner consensus.Addr, t FreezeTokenTxn, nonce uin
 
 	txn.Sig = sk.Sign(txn.Encode(false))
 	return txn.Encode(true)
+}
+
+func MakeBurnTokenTxn(sk SK, owner consensus.Addr, t BurnTokenTxn, nonce uint64) []byte {
+	txn := &Txn{
+		T:     BurnToken,
+		Data:  gobEncode(t),
+		Nonce: nonce,
+		Owner: owner,
+	}
+
+	txn.Sig = sk.Sign(txn.Encode(false))
+	return txn.Encode(true)
+}
+
+type BurnTokenTxn struct {
+	ID    TokenID
+	Quant uint64
 }
 
 type IssueTokenTxn struct {
