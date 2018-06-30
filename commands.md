@@ -44,4 +44,13 @@ The options for all the binaries can be viewed with `./binary_name -h`.
 1. Start nodes.
     The total node count is set to 3 and the group threshold is set to 2,
     so running 2 nodes is sufficient for the demonstration purpose.
+    1. Start node 0 on port 9000, wallet RPC service is on port 12000
+        ```
+        ./node -c genesis/nodes/node-0 -genesis genesis/genesis.gob -port 9000 -rpc-addr ":12000"
+        ```
+    1. Start node 1 on port 9001, wallet RPC service is on port 12001, use `:9000` as the seed node
+        ```
+        ./node -c genesis/nodes/node-1 -genesis genesis/genesis.gob -port 9001 -rpc-addr ":12001" -seed ":9000"
+        ```
+    Now you will see the random beacon running, and empty blocks being produced.
 
