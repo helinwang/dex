@@ -10,8 +10,8 @@ low-latency and high-throughput.
 ## Features
 
 - Trading tokens
-- Sending, receiving, freezing and burning tokens
 - Issue new tokens
+- Sending, receiving, freezing and burning tokens
 
 Please see [here](./commands.md) for how to use the wallet CLI and the
 detailed steps of reproducing the features.
