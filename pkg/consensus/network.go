@@ -38,9 +38,10 @@ type packetAndAddr struct {
 }
 
 type network struct {
-	sk   SK
-	port uint16
-	ch   chan packetAndAddr
+	sk            SK
+	port          uint16
+	ch            chan packetAndAddr
+	onPeerConnect func(addr unicastAddr)
 
 	mu    sync.Mutex
 	conns map[unicastAddr]*conn
@@ -74,6 +75,8 @@ func (n *network) acceptPeerOrDisconnect(c net.Conn) {
 
 		recv = v
 	case ack:
+		// acknowlege receiving the request (so remote could
+		// know the current node is a public node).
 		conn.Write(packet{Data: ack{}})
 		conn.Close()
 		return
@@ -98,7 +101,7 @@ func (n *network) acceptPeerOrDisconnect(c net.Conn) {
 	}()
 
 	n.mu.Lock()
-	pubNodes := n.publicNodes
+	pubNodes := dedup(n.publicNodes)
 	n.mu.Unlock()
 
 	conn.Write(packet{Data: pubNodes})
@@ -110,6 +113,7 @@ func (n *network) acceptPeerOrDisconnect(c net.Conn) {
 	req.Sig = n.sk.Sign(req.ByteToSign())
 	conn.Write(packet{Data: req})
 
+	fmt.Println(recv.GetNodesOnly, len(pubNodes))
 	if recv.GetNodesOnly {
 		conn.Close()
 		return
@@ -119,6 +123,10 @@ func (n *network) acceptPeerOrDisconnect(c net.Conn) {
 	n.conns[addr] = conn
 	go n.readConn(addr, conn)
 	n.mu.Unlock()
+
+	if n.onPeerConnect != nil {
+		go n.onPeerConnect(addr)
+	}
 }
 
 func (n *network) Start(host string, port int) (unicastAddr, error) {
@@ -160,18 +168,19 @@ func dedup(nodes []unicastAddr) []unicastAddr {
 func (n *network) ConnectSeed(addr string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), timeoutDur)
 	pk, nodes, err := n.getAddrsFromSeed(ctx, addr)
+	fmt.Println(len(nodes), err)
 	cancel()
 	if err != nil {
 		return err
 	}
 
+	nodes = dedup(nodes)
 	myPKStr := string(n.sk.MustPK())
 	if len(nodes) == 0 {
 		nodes = []unicastAddr{{PKStr: string(pk), Addr: addr}}
 	} else if len(nodes) == 1 && nodes[0].PKStr == myPKStr {
 		nodes = append(nodes, unicastAddr{PKStr: string(pk), Addr: addr})
 	}
-	nodes = dedup(nodes)
 	perm := rand.Perm(len(nodes))
 
 	log.Info("received nodes", "count", len(nodes))
@@ -183,6 +192,7 @@ func (n *network) ConnectSeed(addr string) error {
 			continue
 		}
 
+		fmt.Println("connecting to", addr.Addr)
 		go n.connect(addr, PK([]byte(addr.PKStr)))
 		connected++
 		if connected >= intialConn {

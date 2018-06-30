@@ -261,6 +261,7 @@ func MakeNode(credentials NodeCredentials, cfg Config, genesis Genesis, state St
 	chain := NewChain(&genesis.Block, state, randSeed, cfg, txnPool, u, store, proposerPK)
 	net := newNetwork(credentials.SK)
 	gateway := newGateway(net, chain, store, cfg.GroupThreshold)
+	net.onPeerConnect = gateway.onPeerConnect
 	node := NewNode(chain, credentials.SK, gateway, cfg, store)
 	for j := range credentials.Groups {
 		share := credentials.GroupShares[j]

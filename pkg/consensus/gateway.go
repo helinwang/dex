@@ -126,6 +126,35 @@ func newGateway(net *network, chain *Chain, store *storage, groupThreshold int) 
 	return n
 }
 
+func (n *gateway) onPeerConnect(addr unicastAddr) {
+	log.Info("peer connected", "addr", addr.Addr)
+
+	round := n.chain.randomBeacon.Round()
+	if round > 0 {
+		go n.net.Send(addr, packet{Data: n.chain.randomBeacon.RandBeaconSig(round)})
+	}
+
+	blocks := n.store.LastRoundBlocks()
+	for _, b := range blocks {
+		go n.net.Send(addr, packet{Data: b})
+	}
+
+	bps := n.store.LastRoundBlockProposals()
+	for _, bp := range bps {
+		go n.net.Send(addr, packet{Data: bp})
+	}
+
+	ss := n.store.LastRoundRandBeaconSigShares()
+	for _, s := range ss {
+		go n.net.Send(addr, packet{Data: s})
+	}
+
+	nts := n.store.LastRoundNtShares()
+	for _, nt := range nts {
+		go n.net.Send(addr, packet{Data: nt})
+	}
+}
+
 func (n *gateway) requestItem(addr unicastAddr, item Item, forceRequest bool) error {
 	if !forceRequest && n.requestingItem[item] {
 		return nil
@@ -147,7 +176,7 @@ func (n *gateway) RequestRandBeaconSig(ctx context.Context, addr unicastAddr, ro
 		return cached.(*RandBeaconSig), nil
 	}
 
-	v := n.store.RandBeaconSig(round)
+	v := n.chain.randomBeacon.RandBeaconSig(round)
 	if v != nil {
 		return v, nil
 	}
@@ -335,6 +364,46 @@ func (n *gateway) recvRandBeaconSig(addr unicastAddr, r *RandBeaconSig) {
 	}
 }
 
+func (n *gateway) validateNtShare(addr unicastAddr, r *NtShare) bool {
+	n.chain.randomBeacon.WaitUntil(r.Round)
+	_, _, nt := n.chain.randomBeacon.Committees(r.Round)
+	group := n.chain.randomBeacon.groups[nt]
+	sharePK, ok := group.MemberPK[r.Owner]
+	if !ok {
+		log.Warn("validateNtShare: owner not a member of the rb cmte")
+		return false
+	}
+
+	pk, ok := n.chain.lastFinalizedSysState.addrToPK[r.Owner]
+	if !ok {
+		log.Warn("rancom beacon sig shareowner not found", "owner", r.Owner)
+		return false
+	}
+
+	if !r.Sig.Verify(pk, r.Encode(false)) {
+		log.Warn("invalid rand beacon share signature", "rand beacon share", r.Hash())
+		return false
+	}
+
+	bp, broadcast, err := n.syncer.SyncBlockProposal(addr, r.BP)
+	if err != nil {
+		log.Error("can not validate nt share because can not get block proposal", "err", err)
+		return false
+	}
+
+	if broadcast {
+		go n.broadcast(Item{T: blockProposalItem, Hash: r.BP})
+	}
+
+	b := ntToBlock(r, bp, r.BP)
+	msg := b.Encode(false)
+	if !r.SigShare.Verify(sharePK, msg) {
+		return false
+	}
+
+	return true
+}
+
 func (n *gateway) validateRandBeaconSigShare(r *RandBeaconSigShare) (int, bool) {
 	if h := SHA3(n.chain.randomBeacon.sigHistory[r.Round-1].Sig); h != r.LastSigHash {
 		log.Warn("validate random beacon share last sig error", "hash", r.LastSigHash, "expected", h)
@@ -360,8 +429,6 @@ func (n *gateway) validateRandBeaconSigShare(r *RandBeaconSigShare) (int, bool) 
 		return 0, false
 	}
 
-	// TODO: validate share signature is valid according to the
-	// member group public key share
 	msg := randBeaconSigMsg(r.Round, r.LastSigHash)
 	if !r.Share.Verify(sharePK, msg) {
 		log.Warn("validate random beacon sig share error")
@@ -404,6 +471,8 @@ func (n *gateway) recvRandBeaconSigShare(addr unicastAddr, r *RandBeaconSigShare
 	if broadcast {
 		go n.broadcast(Item{T: randBeaconSigShareItem, Round: r.Round, Hash: h})
 	}
+
+	n.store.KeepLastRoundRandBeaconSigShare(r)
 }
 
 func (n *gateway) recvBlock(addr unicastAddr, b *Block, h Hash) {
@@ -455,17 +524,26 @@ func (n *gateway) recvNtShare(addr unicastAddr, s *NtShare, h Hash) {
 		return
 	}
 
-	shares, broadcast := n.ntShareCollector.Add(s.BP, h, s)
+	if !n.validateNtShare(addr, s) {
+		log.Error("received invalid nt share")
+		return
+	}
+
+	shares, broadcastNt := n.ntShareCollector.Add(s.BP, h, s)
 	if shares != nil {
 		ss := make([]*NtShare, len(shares))
 		for i := range ss {
 			ss[i] = shares[i].(*NtShare)
 		}
 
-		bp, _, err := n.syncer.SyncBlockProposal(addr, s.BP)
+		bp, broadcast, err := n.syncer.SyncBlockProposal(addr, s.BP)
 		if err != nil {
 			log.Error("error recover nt share, can not sync block proposal", "err", err)
 			return
+		}
+
+		if broadcast {
+			go n.broadcast(Item{T: blockProposalItem, Hash: s.BP})
 		}
 		n.ntShareCollector.Remove(s.BP)
 
@@ -475,9 +553,22 @@ func (n *gateway) recvNtShare(addr unicastAddr, s *NtShare, h Hash) {
 		return
 	}
 
-	if broadcast {
+	if broadcastNt {
 		go n.broadcast(Item{T: ntShareItem, Hash: h, Round: s.Round})
 	}
+
+	n.store.KeepLastRoundNtShare(s, h)
+}
+
+func ntToBlock(nt *NtShare, bp *BlockProposal, bpHash Hash) *Block {
+	b := &Block{
+		Owner:         bp.Owner,
+		Round:         bp.Round,
+		StateRoot:     nt.StateRoot,
+		BlockProposal: bpHash,
+		PrevBlock:     bp.PrevBlock,
+	}
+	return b
 }
 
 func recoverBlock(shares []*NtShare, bp *BlockProposal, bpHash Hash, rb *RandomBeacon) *Block {
@@ -490,14 +581,7 @@ func recoverBlock(shares []*NtShare, bp *BlockProposal, bpHash Hash, rb *RandomB
 
 	_, _, ntGroup := rb.Committees(bp.Round)
 
-	b := &Block{
-		Owner:         bp.Owner,
-		Round:         bp.Round,
-		StateRoot:     shares[0].StateRoot,
-		BlockProposal: bpHash,
-		PrevBlock:     bp.PrevBlock,
-	}
-
+	b := ntToBlock(shares[0], bp, bpHash)
 	msg := b.Encode(false)
 	if !sig.Verify(rb.groups[ntGroup].PK, msg) {
 		panic(fmt.Errorf("should never happen: group %d sig not valid", ntGroup))

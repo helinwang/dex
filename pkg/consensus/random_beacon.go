@@ -210,6 +210,14 @@ func (r *RandomBeacon) Committees(round uint64) (rb, bp, nt int) {
 	return
 }
 
+func (r *RandomBeacon) RandBeaconSig(round uint64) *RandBeaconSig {
+	if round > r.round() {
+		return nil
+	}
+
+	return r.sigHistory[round]
+}
+
 // History returns the random beacon signature history.
 func (r *RandomBeacon) History() []*RandBeaconSig {
 	r.mu.Lock()
