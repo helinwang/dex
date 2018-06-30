@@ -12,14 +12,14 @@ Let's go through the commands by examples. The options for all the binaries can 
     ```
     The above command generates 10000 public and secret keys pairs, stored at `./credentials` by default.
 
-1. Generate the genesis file and the initial concensus protocol groups
+1. Generate the genesis file and the initial consensus protocol group files
     - The genesis file contains the genesis block and the genesis state.
-    - The initial concensus protocol groups contains the credentials for all the participating nodes and
+    - The initial consensus protocol group files contain the credentials for all the participating nodes and
     the group assignments. The protocol supports open participation (specified but not yet implemented),
     any node can join the mining groups providing proof of frozen fund. Please see the
     [White Paper](https://github.com/helinwang/dex/wiki/White-Paper) for details.
     
-    The command below configures 3 nodes and 3 groups with the group threshold set to 2.
+    The command below configures three nodes and three groups with the group threshold set to two.
     The BNB native token and the tokens specified in `tokens.txt` are distributed evenly
     to all the trading accounts insider the `./credentials` folder.
     
@@ -42,8 +42,8 @@ Let's go through the commands by examples. The options for all the binaries can 
     Each row is `SYMBOL,SUPPLY,DECIMALS`. BNB is generated as the native token by default, so no need to specify here.
 
 1. Start nodes.
-    The total node count is set to 3 and the group threshold is set to 2,
-    so running 2 nodes is sufficient for the demonstration purpose.
+    The total node count is three, and the group threshold is two,
+    so running two nodes is sufficient for the demonstration purpose.
     1. Start node 0 on port 9000, wallet RPC service is on port 12000
         ```
         $ ./node -c genesis/nodes/node-0 -genesis genesis/genesis.gob -port 9000 -rpc-addr ":12000"
@@ -56,7 +56,7 @@ Let's go through the commands by examples. The options for all the binaries can 
 
 ## Wallet
 
-The `wallet` binary is a CLI, it talks with the node through the node's wallet RPC service.
+The `wallet` binary is a CLI. It talks with the node through the node's wallet RPC service.
 
 ### Trade
 
@@ -126,9 +126,9 @@ Execution Reports:
  |31    |2_1_0 |ETH_BTC |SELL |0.07000000  |10.00000000 |
 ```
 
-You can see the order is matched according to time priority, excution reports is generated for each execution,
+You can see the orders were matched according to time priority, execution reports are generated for each execution,
 and the pending order is shown as well. Also, a flat 0.0001 BNB fee is charged per transaction.
-I did not have enough time to implement trading percentage based fee, or adjustable fee according to the network condition.
+I did not have enough time to implement the percentage-based trading fee, or adjustable fee according to the network condition.
 But it would not be too hard to implement.
 
 Cancel Order:
@@ -302,6 +302,6 @@ block_2d04 -> block_54e3
 }
 ```
 
-It prints the block chain representation in the graphviz format.
+It prints the blockchain representation in the graphviz format.
 You can paste it to http://www.webgraphviz.com/ to see the visualization.
-The green block is the finalized block, the blue block is the non-finalized block.
+The green block is the finalized block. The blue block is the non-finalized block.
