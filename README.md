@@ -4,7 +4,7 @@ DEX is a decentralized exchange implementation that focuses on
 low-latency and high-throughput.
 
 - Block time: 1s on normal load, ~2.7s on high load [1]
-- Time to	finalization: 2x block time on normal operations [2]
+- Near instant finality: a transaction is finalized after three block confirmations under normal operation [2]
 - Transaction per second: ~2500 [1]
 
 DEX implements the [Dfinity](https://dfinity.org/) consensus protocol described in their [paper](https://dfinity.org/pdf-viewer/library/dfinity-consensus.pdf).
