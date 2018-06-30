@@ -41,33 +41,15 @@ func validateNonce(state *State, txn *consensus.Txn) (acc *Account, ready, valid
 		return
 	}
 
-	// TODO: validate nonce
+	if txn.Nonce < acc.Nonce() {
+		return
+	}
 
-	// if !txn.Sig.Verify(acc.PK, txn.Encode(false)) {
-	// 	log.Warn("invalid txn signature")
-	// 	return
-	// }
-
-	// if int(txn.NonceIdx) >= len(acc.NonceVec) {
-	// 	if txn.NonceValue > 0 {
-	// 		ready = false
-	// 		valid = true
-	// 		return
-	// 	}
-
-	// 	ready = true
-	// 	valid = true
-	// 	return
-	// }
-
-	// if acc.NonceVec[txn.NonceIdx] < txn.NonceValue {
-	// 	ready = false
-	// 	valid = true
-	// 	return
-	// } else if acc.NonceVec[txn.NonceIdx] > txn.NonceValue {
-	// 	valid = false
-	// 	return
-	// }
+	if txn.Nonce > acc.Nonce() {
+		ready = false
+		valid = true
+		return
+	}
 
 	ready = true
 	valid = true

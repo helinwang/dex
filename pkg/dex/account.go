@@ -116,8 +116,8 @@ func (a *Account) Nonce() uint64 {
 	return a.nonce
 }
 
-func (a *Account) UpdateNonce(n uint64) {
-	a.nonce = n
+func (a *Account) IncrementNonce() {
+	a.nonce++
 	a.nonceLoaded = true
 	a.nonceDirty = true
 }

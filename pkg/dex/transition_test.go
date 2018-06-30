@@ -235,6 +235,45 @@ func TestSellOrderExpire(t *testing.T) {
 	assert.Equal(t, 300, int(acc.Balance(0).Available))
 }
 
+func TestNonce(t *testing.T) {
+	s := NewState(ethdb.NewMemDatabase())
+	pk, sk := RandKeyPair()
+	addr := pk.Addr()
+	acc := s.NewAccount(pk)
+	acc.UpdateBalance(0, Balance{Available: 100})
+	trans := s.Transition(1)
+
+	to, _ := RandKeyPair()
+	txn := MakeSendTokenTxn(sk, addr, to, 0, 20, 0)
+	pt, err := parseTxn(txn, &myPKer{m: map[consensus.Addr]PK{
+		addr: pk,
+	}})
+	if err != nil {
+		panic(err)
+	}
+
+	valid, success := trans.Record(pt)
+	assert.True(t, valid)
+	assert.True(t, success)
+	s = trans.Commit().(*State)
+
+	trans = s.Transition(2)
+	valid, success = trans.Record(pt)
+	assert.False(t, valid)
+	assert.False(t, success)
+
+	txn = MakeSendTokenTxn(sk, addr, to, 0, 20, 1)
+	pt, err = parseTxn(txn, &myPKer{m: map[consensus.Addr]PK{
+		addr: pk,
+	}})
+	if err != nil {
+		panic(err)
+	}
+	valid, success = trans.Record(pt)
+	assert.True(t, valid)
+	assert.True(t, success)
+}
+
 func TestPlaceOrder(t *testing.T) {
 	s := NewState(ethdb.NewMemDatabase())
 	s.UpdateToken(Token{ID: 0, TokenInfo: BNBInfo})

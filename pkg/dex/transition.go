@@ -110,6 +110,7 @@ func (t *Transition) Record(txn *consensus.Txn) (valid, success bool) {
 	}
 
 	t.txns = append(t.txns, txn)
+	acc.IncrementNonce()
 	return true, true
 }
 

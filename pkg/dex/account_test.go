@@ -13,7 +13,7 @@ func TestAccountCommitCache(t *testing.T) {
 	s := NewState(ethdb.NewMemDatabase())
 	pk, _ := RandKeyPair()
 	acc := s.NewAccount(pk)
-	acc.UpdateNonce(1)
+	acc.IncrementNonce()
 	assert.Equal(t, 1, int(acc.Nonce()))
 	s.CommitCache()
 	acc0 := s.Account(pk.Addr())
