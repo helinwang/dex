@@ -26,7 +26,7 @@ $ go build ./cmd/node/
     toolchain can find).
 
   - Install dependencies `apt install llvm g++ libgmp-dev libssl-dev`,
-    they are required by cgo when linking the libraries.
+    they are required by cgo when building the BLS Go wrapper.
 
   - Test the installation by:
     ```
