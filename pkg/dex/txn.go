@@ -23,6 +23,7 @@ const (
 	SendToken
 	FreezeToken
 	BurnToken
+	MinerFee
 )
 
 type Txn struct {
@@ -194,6 +195,11 @@ func MakeBurnTokenTxn(sk SK, owner consensus.Addr, t BurnTokenTxn, nonce uint64)
 
 	txn.Sig = sk.Sign(txn.Encode(false))
 	return txn.Encode(true)
+}
+
+type MinerFeeTxn struct {
+	Miner PK
+	Fee   uint64
 }
 
 type BurnTokenTxn struct {

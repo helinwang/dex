@@ -45,6 +45,7 @@ type RoundMetric struct {
 // Chain is the blockchain.
 type Chain struct {
 	cfg          Config
+	proposerPK   []byte
 	n            *Node
 	randomBeacon *RandomBeacon
 	store        *storage
@@ -70,7 +71,7 @@ type Updater interface {
 }
 
 // NewChain creates a new chain.
-func NewChain(genesis *Block, genesisState State, seed Rand, cfg Config, txnPool TxnPool, u Updater, store *storage) *Chain {
+func NewChain(genesis *Block, genesisState State, seed Rand, cfg Config, txnPool TxnPool, u Updater, store *storage, proposerPK []byte) *Chain {
 	if genesisState.Hash() != genesis.StateRoot {
 		panic(fmt.Errorf("genesis state hash and block state root does not match, state hash: %v, blocks state root: %v", genesisState.Hash(), genesis.StateRoot))
 	}
@@ -90,6 +91,7 @@ func NewChain(genesis *Block, genesisState State, seed Rand, cfg Config, txnPool
 	store.AddBlock(genesis, gh)
 	return &Chain{
 		cfg:                   cfg,
+		proposerPK:            proposerPK,
 		store:                 store,
 		updater:               u,
 		txnPool:               txnPool,
@@ -157,7 +159,7 @@ func (c *Chain) ProposeBlock(ctx context.Context, sk SK, round uint64) *BlockPro
 		return nil
 	}
 
-	trans := state.Transition(round)
+	trans := state.Transition(round, c.proposerPK)
 loop:
 	for i := range txns {
 		select {
@@ -168,7 +170,7 @@ loop:
 
 		err := trans.Record(txns[i])
 		if err != nil && err != ErrTxnNonceTooBig {
-			log.Warn("error record txn", "err", err)
+			log.Warn("error record txn", "err", err, "miner", txns[i].MinerFeeTxn)
 			// TODO: handle "lost" txn due to reorg.
 			c.txnPool.Remove(SHA3(txns[i].Raw))
 		}

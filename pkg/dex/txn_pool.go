@@ -87,14 +87,23 @@ func parseTxn(b []byte, pker pker) (*consensus.Txn, error) {
 		var txn BurnTokenTxn
 		err := dec.Decode(&txn)
 		if err != nil {
-			return nil, fmt.Errorf("BurnToken decode failed: %v", err)
+			return nil, fmt.Errorf("BurnTokenTxn decode failed: %v", err)
 		}
 		ret.Decoded = &txn
+	case MinerFee:
+		dec := gob.NewDecoder(bytes.NewReader(txn.Data))
+		var txn MinerFeeTxn
+		err := dec.Decode(&txn)
+		if err != nil {
+			return nil, fmt.Errorf("MinerFeeTxn decode failed: %v", err)
+		}
+		ret.Decoded = &txn
+		ret.MinerFeeTxn = true
 	default:
 		return nil, fmt.Errorf("unknown txn type: %v", txn.T)
 	}
 
-	if !txn.Sig.Verify(txn.Encode(false), pker.PK(txn.Owner)) {
+	if !ret.MinerFeeTxn && !txn.Sig.Verify(txn.Encode(false), pker.PK(txn.Owner)) {
 		return nil, fmt.Errorf("txn signature verification failed")
 	}
 
@@ -116,9 +125,11 @@ func (t *TxnPool) Add(b []byte) (r *consensus.Txn, boardcast bool) {
 		return nil, false
 	}
 
-	t.mu.Lock()
-	t.txns[hash] = ret
-	t.mu.Unlock()
+	if !ret.MinerFeeTxn {
+		t.mu.Lock()
+		t.txns[hash] = ret
+		t.mu.Unlock()
+	}
 	return ret, true
 }
 

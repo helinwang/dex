@@ -149,18 +149,17 @@ func (s *syncer) syncBlock(addr unicastAddr, hash Hash, round uint64) (b *Block,
 	weight = rankToWeight(rank)
 
 	state := s.chain.BlockState(b.PrevBlock)
-	trans, count, err := recordTxns(state, s.chain.txnPool, bp.Txns, bp.Round)
+	newState, count, err := state.CommitTxns(bp.Txns, s.chain.txnPool, bp.Round)
 	if err != nil {
 		return
 	}
 
-	if trans.StateHash() != b.StateRoot {
+	if newState.Hash() != b.StateRoot {
 		err = errors.New("invalid state root")
 		return
 	}
 
-	state = trans.Commit()
-	broadcast, err = s.chain.addBlock(b, state, weight, count)
+	broadcast, err = s.chain.addBlock(b, newState, weight, count)
 	if err != nil {
 		return
 	}

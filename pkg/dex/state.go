@@ -608,7 +608,7 @@ func (s *State) Hash() consensus.Hash {
 }
 
 // Transition returns the state change transition.
-func (s *State) Transition(round uint64) consensus.Transition {
+func (s *State) Transition(round uint64, proposer []byte) consensus.Transition {
 	s.CommitCache()
 
 	s.mu.Lock()
@@ -616,7 +616,23 @@ func (s *State) Transition(round uint64) consensus.Transition {
 	s.mu.Unlock()
 
 	state := newState(&newTrie, s.db, s.diskDB)
-	return newTransition(state, round)
+	return newTransition(state, round, PK(proposer))
+}
+
+func (s *State) CommitTxns(txns []byte, pool consensus.TxnPool, round uint64) (consensus.State, int, error) {
+	// use nil as the proposer argument, since currently is
+	// replaying block txns, rather than proposing block.
+	trans := s.Transition(round, nil).(*Transition)
+	if len(txns) == 0 {
+		return trans.Commit(), 0, nil
+	}
+
+	count, err := trans.RecordSerialized(txns, pool)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return trans.Commit(), count, nil
 }
 
 type orderExpiration struct {

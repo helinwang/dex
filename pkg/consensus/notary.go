@@ -101,22 +101,6 @@ func (n *Notary) Notarize(ctx, cancel context.Context, bCh chan *BlockProposal, 
 	}
 }
 
-func recordTxns(state State, pool TxnPool, txnData []byte, round uint64) (trans Transition, count int, err error) {
-	trans = state.Transition(round)
-
-	if len(txnData) == 0 {
-		return
-	}
-
-	count, err = trans.RecordSerialized(txnData, pool)
-	if err != nil {
-		err = fmt.Errorf("failed to record transactions: %v", err)
-		return
-	}
-
-	return
-}
-
 func (n *Notary) notarize(bp *BlockProposal, pool TxnPool) (*NtShare, time.Duration) {
 	bpHash := bp.Hash()
 	nts := &NtShare{
@@ -135,7 +119,7 @@ func (n *Notary) notarize(bp *BlockProposal, pool TxnPool) (*NtShare, time.Durat
 	}
 
 	start := time.Now()
-	trans, _, err := recordTxns(state, pool, bp.Txns, bp.Round)
+	newState, _, err := state.CommitTxns(bp.Txns, pool, bp.Round)
 	if err != nil {
 		panic("should not happen, record block proposal transaction error, could be due to adversary: " + err.Error())
 	}
@@ -143,7 +127,7 @@ func (n *Notary) notarize(bp *BlockProposal, pool TxnPool) (*NtShare, time.Durat
 	dur := time.Now().Sub(start)
 	log.Info("notarize record txns done", "round", nts.Round, "bp", nts.BP, "dur", dur)
 
-	stateRoot := trans.StateHash()
+	stateRoot := newState.Hash()
 	blk := &Block{
 		Owner:         bp.Owner,
 		Round:         bp.Round,

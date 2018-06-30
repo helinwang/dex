@@ -250,7 +250,7 @@ func (n *Node) SendTxn(t []byte) {
 }
 
 // MakeNode makes a new node with the given configurations.
-func MakeNode(credentials NodeCredentials, cfg Config, genesis Genesis, state State, txnPool TxnPool, u Updater) *Node {
+func MakeNode(credentials NodeCredentials, cfg Config, genesis Genesis, state State, txnPool TxnPool, u Updater, proposerPK []byte) *Node {
 	randSeed := Rand(SHA3([]byte("dex")))
 	err := state.Deserialize(genesis.State)
 	if err != nil {
@@ -258,7 +258,7 @@ func MakeNode(credentials NodeCredentials, cfg Config, genesis Genesis, state St
 	}
 
 	store := newStorage()
-	chain := NewChain(&genesis.Block, state, randSeed, cfg, txnPool, u, store)
+	chain := NewChain(&genesis.Block, state, randSeed, cfg, txnPool, u, store, proposerPK)
 	net := newNetwork(credentials.SK)
 	gateway := newGateway(net, chain, store, cfg.GroupThreshold)
 	node := NewNode(chain, credentials.SK, gateway, cfg, store)

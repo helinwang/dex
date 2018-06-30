@@ -5,10 +5,11 @@ import "errors"
 // State is the blockchain state.
 type State interface {
 	Hash() Hash
-	Transition(round uint64) Transition
+	Transition(round uint64, proposerPK []byte) Transition
 	Serialize() (TrieBlob, error)
 	Deserialize(TrieBlob) error
 	CommitCache()
+	CommitTxns([]byte, TxnPool, uint64) (State, int, error)
 }
 
 var ErrTxnNonceTooBig = errors.New("txn's nonce is too big, but txn can be used for future")
@@ -17,9 +18,6 @@ var ErrTxnNonceTooBig = errors.New("txn's nonce is too big, but txn can be used 
 type Transition interface {
 	// Record records a transition to the state transition.
 	Record(*Txn) error
-
-	// RecordSerialized records the serialized transactions.
-	RecordSerialized([]byte, TxnPool) (count int, err error)
 
 	// Txns returns the serialized recorded transactions.
 	Txns() []byte
@@ -34,10 +32,11 @@ type Transition interface {
 
 // Txn is a transaction.
 type Txn struct {
-	Decoded interface{}
-	Owner   Addr
-	Nonce   uint64
-	Raw     []byte
+	Decoded     interface{}
+	MinerFeeTxn bool
+	Owner       Addr
+	Nonce       uint64
+	Raw         []byte
 }
 
 // TxnPool is the pool that stores the received transactions.

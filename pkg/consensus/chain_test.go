@@ -22,7 +22,7 @@ func (s *myState) Hash() Hash {
 func (s *myState) CommitCache() {
 }
 
-func (s *myState) Transition(round uint64) Transition {
+func (s *myState) Transition(uint64, []byte) Transition {
 	return nil
 }
 
@@ -34,8 +34,12 @@ func (s *myState) Deserialize(TrieBlob) error {
 	return nil
 }
 
+func (s *myState) CommitTxns([]byte, TxnPool, uint64) (State, int, error) {
+	return nil, 0, nil
+}
+
 func TestGraphviz(t *testing.T) {
-	chain := NewChain(&Block{}, &myState{}, Rand{}, Config{}, nil, &myUpdater{}, newStorage())
+	chain := NewChain(&Block{}, &myState{}, Rand{}, Config{}, nil, &myUpdater{}, newStorage(), nil)
 	chain.finalized = append(chain.finalized, Hash{1})
 	chain.finalized = append(chain.finalized, Hash{2})
 	chain.finalized = append(chain.finalized, Hash{3})

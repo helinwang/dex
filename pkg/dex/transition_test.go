@@ -32,9 +32,9 @@ func TestSendToken(t *testing.T) {
 	acc := s.NewAccount(pk)
 	acc.UpdateBalance(0, Balance{Available: 100})
 
-	to, _ := RandKeyPair()
-	txn := MakeSendTokenTxn(sk, addr, to, 0, 20, 0)
-	trans := s.Transition(1)
+	pkTo, _ := RandKeyPair()
+	txn := MakeSendTokenTxn(sk, addr, pkTo, 0, 20, 0)
+	trans := s.Transition(1, nil)
 	pt, err := parseTxn(txn, &myPKer{m: map[consensus.Addr]PK{
 		addr: pk,
 	}})
@@ -48,7 +48,7 @@ func TestSendToken(t *testing.T) {
 
 	send := s.Account(addr)
 	assert.Equal(t, 80, int(send.Balance(0).Available))
-	recv := s.Account(to.Addr())
+	recv := s.Account(pkTo.Addr())
 	assert.Equal(t, 20, int(recv.Balance(0).Available))
 }
 
@@ -61,7 +61,7 @@ func TestFreezeToken(t *testing.T) {
 	addr := pk.Addr()
 	txn := MakeFreezeTokenTxn(sk, addr, FreezeTokenTxn{TokenID: 0, AvailableRound: 3, Quant: 50}, 0)
 
-	trans := s.Transition(1)
+	trans := s.Transition(1, nil)
 	pt, err := parseTxn(txn, &myPKer{m: map[consensus.Addr]PK{
 		addr: pk,
 	}})
@@ -77,7 +77,7 @@ func TestFreezeToken(t *testing.T) {
 	assert.Equal(t, 50, int(acc.Balance(0).Available))
 	assert.Equal(t, []Frozen([]Frozen{Frozen{AvailableRound: 3, Quant: 50}}), acc.Balance(0).Frozen)
 
-	trans = s.Transition(2)
+	trans = s.Transition(2, nil)
 	s = trans.Commit().(*State)
 	acc = s.Account(addr)
 	assert.Equal(t, 100, int(acc.Balance(0).Available))
@@ -95,7 +95,7 @@ func TestIssueToken(t *testing.T) {
 	s.UpdateToken(Token{ID: 0, TokenInfo: BNBInfo})
 	pk, sk := RandKeyPair()
 	acc := s.NewAccount(pk)
-	trans := s.Transition(1)
+	trans := s.Transition(1, nil)
 	addr := pk.Addr()
 	txn := MakeIssueTokenTxn(sk, addr, btcInfo, 0)
 	pt, err := parseTxn(txn, &myPKer{m: map[consensus.Addr]PK{
@@ -133,7 +133,7 @@ func TestOrderAlreadyExpired(t *testing.T) {
 		Market:      MarketSymbol{Quote: 0, Base: 1},
 	}
 
-	trans := s.Transition(1)
+	trans := s.Transition(1, nil)
 	pt, err := parseTxn(MakePlaceOrderTxn(sk, addr, order, 0), &myPKer{m: map[consensus.Addr]PK{
 		addr: pk,
 	}})
@@ -164,7 +164,7 @@ func TestBuyOrderExpire(t *testing.T) {
 		ExpireRound: 3,
 		Market:      MarketSymbol{Quote: 1, Base: 0},
 	}
-	trans := s.Transition(1)
+	trans := s.Transition(1, nil)
 	pt, err := parseTxn(MakePlaceOrderTxn(sk, addr, order, 0), &myPKer{m: map[consensus.Addr]PK{
 		addr: pk,
 	}})
@@ -181,7 +181,7 @@ func TestBuyOrderExpire(t *testing.T) {
 	assert.Equal(t, 200, int(acc.Balance(1).Pending))
 	assert.Equal(t, 100, int(acc.Balance(1).Available))
 
-	trans = s.Transition(2)
+	trans = s.Transition(2, nil)
 	s = trans.Commit().(*State)
 	acc = s.Account(addr)
 	assert.Equal(t, 0, len(acc.PendingOrders()))
@@ -205,7 +205,7 @@ func TestSellOrderExpire(t *testing.T) {
 		ExpireRound: 3,
 		Market:      MarketSymbol{Quote: 1, Base: 0},
 	}
-	trans := s.Transition(1)
+	trans := s.Transition(1, nil)
 	pt, err := parseTxn(MakePlaceOrderTxn(sk, addr, order, 0), &myPKer{m: map[consensus.Addr]PK{
 		addr: pk,
 	}})
@@ -222,7 +222,7 @@ func TestSellOrderExpire(t *testing.T) {
 	assert.Equal(t, 100, int(acc.Balance(0).Pending))
 	assert.Equal(t, 200, int(acc.Balance(0).Available))
 
-	trans = s.Transition(2)
+	trans = s.Transition(2, nil)
 	s = trans.Commit().(*State)
 	acc = s.Account(addr)
 	assert.Equal(t, 0, len(acc.PendingOrders()))
@@ -236,7 +236,7 @@ func TestNonce(t *testing.T) {
 	addr := pk.Addr()
 	acc := s.NewAccount(pk)
 	acc.UpdateBalance(0, Balance{Available: 100})
-	trans := s.Transition(1)
+	trans := s.Transition(1, nil)
 
 	to, _ := RandKeyPair()
 	txn := MakeSendTokenTxn(sk, addr, to, 0, 20, 0)
@@ -251,7 +251,7 @@ func TestNonce(t *testing.T) {
 	assert.Nil(t, err)
 	s = trans.Commit().(*State)
 
-	trans = s.Transition(2)
+	trans = s.Transition(2, nil)
 	err = trans.Record(pt)
 	assert.Contains(t, err.Error(), "nonce not valid")
 
@@ -264,6 +264,40 @@ func TestNonce(t *testing.T) {
 	}
 	err = trans.Record(pt)
 	assert.Nil(t, err)
+}
+
+func TestMinerFee(t *testing.T) {
+	miner, _ := RandKeyPair()
+	s := NewState(ethdb.NewMemDatabase())
+	pk, sk := RandKeyPair()
+	addr := pk.Addr()
+	acc := s.NewAccount(pk)
+	acc.UpdateBalance(0, Balance{Available: uint64(100 * math.Pow10(int(BNBInfo.Decimals)))})
+
+	pkTo, _ := RandKeyPair()
+	txn := MakeSendTokenTxn(sk, addr, pkTo, 0, 20, 0)
+	trans := s.Transition(1, miner)
+	pker := &myPKer{m: map[consensus.Addr]PK{
+		addr: pk,
+	}}
+	pt, err := parseTxn(txn, pker)
+	if err != nil {
+		panic(err)
+	}
+
+	err = trans.Record(pt)
+	assert.Nil(t, err)
+	newState := trans.Commit()
+	root := newState.Hash()
+
+	minerAcc := newState.(*State).Account(miner.Addr())
+	assert.Equal(t, flatFee, minerAcc.Balance(0).Available)
+
+	body := trans.Txns()
+	newState0, count, err := s.CommitTxns(body, NewTxnPool(pker), 1)
+	assert.Nil(t, err)
+	assert.Equal(t, 2, count)
+	assert.Equal(t, root, newState0.Hash())
 }
 
 func TestBurnToken(t *testing.T) {
@@ -294,7 +328,7 @@ func TestBurnToken(t *testing.T) {
 		panic(err)
 	}
 
-	trans := s.Transition(1)
+	trans := s.Transition(1, nil)
 	err = trans.Record(pt)
 	assert.Nil(t, err)
 	s = trans.Commit().(*State)
@@ -320,7 +354,7 @@ func TestPlaceOrder(t *testing.T) {
 		pkBuy.Addr():  pkBuy,
 		pkSell.Addr(): pkSell,
 	}}
-	trans := s.Transition(1)
+	trans := s.Transition(1, nil)
 
 	// buy 40
 	order := PlaceOrderTxn{
@@ -345,7 +379,7 @@ func TestPlaceOrder(t *testing.T) {
 	assert.Equal(t, 1, len(buyAcc.PendingOrders()))
 
 	// buy 20, sell 55
-	trans = s.Transition(2)
+	trans = s.Transition(2, nil)
 	order = PlaceOrderTxn{
 		SellSide: false,
 		// will be pending 20*3

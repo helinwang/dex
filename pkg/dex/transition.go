@@ -11,11 +11,17 @@ import (
 	"github.com/helinwang/dex/pkg/consensus"
 )
 
+var flatFee = uint64(0.0001 * math.Pow10(int(BNBInfo.Decimals)))
+
 type Transition struct {
-	round           uint64
+	round uint64
+	fee   uint64
+	// don't collect fee if proposer is nil, this is only
+	// used in tests
+	proposer        PK
 	finalized       bool
 	tokenCreations  []Token
-	txns            []*consensus.Txn
+	txns            [][]byte
 	expirations     map[uint64][]orderExpiration
 	filledOrders    []PendingOrder
 	state           *State
@@ -24,10 +30,11 @@ type Transition struct {
 	tokenCache      *TokenCache
 }
 
-func newTransition(s *State, round uint64) *Transition {
+func newTransition(s *State, round uint64, proposer PK) *Transition {
 	return &Transition{
 		state:           s,
 		round:           round,
+		proposer:        proposer,
 		expirations:     make(map[uint64][]orderExpiration),
 		orderBooks:      make(map[MarketSymbol]*orderBook),
 		dirtyOrderBooks: make(map[MarketSymbol]bool),
@@ -49,7 +56,13 @@ func (t *Transition) RecordSerialized(blob []byte, pool consensus.TxnPool) (int,
 		if txn == nil {
 			txn, _ = pool.Add(b)
 		}
-		err = t.Record(txn)
+
+		if txn.MinerFeeTxn {
+			t.giveMinerFee(*txn.Decoded.(*MinerFeeTxn))
+			continue
+		}
+
+		err = t.RecordImpl(txn, true)
 		if err != nil {
 			return 0, err
 		}
@@ -60,11 +73,14 @@ func (t *Transition) RecordSerialized(blob []byte, pool consensus.TxnPool) (int,
 }
 
 // Record records a transition to the state transition.
-func (t *Transition) Record(txn *consensus.Txn) error {
+func (t *Transition) Record(txn *consensus.Txn) (err error) {
+	return t.RecordImpl(txn, false)
+}
+
+func (t *Transition) RecordImpl(txn *consensus.Txn, forceFee bool) (err error) {
 	if t.finalized {
 		panic("record should never be called after finalized")
 	}
-
 	acc := t.state.Account(txn.Owner)
 	if acc == nil {
 		return errors.New("txn owner not found")
@@ -75,6 +91,31 @@ func (t *Transition) Record(txn *consensus.Txn) error {
 	} else if txn.Nonce > nonce {
 		return consensus.ErrTxnNonceTooBig
 	}
+
+	payFee := forceFee || t.proposer != nil
+
+	if payFee {
+		nativeCoin := acc.Balance(0)
+		if nativeCoin.Available < flatFee {
+			return errors.New("account don't have sufficient balance to pay fee")
+		}
+
+		nativeCoin.Available -= flatFee
+		acc.UpdateBalance(0, nativeCoin)
+		t.fee += flatFee
+	}
+	defer func() {
+		if payFee && err != nil {
+			nativeCoin := acc.Balance(0)
+			nativeCoin.Available += flatFee
+			acc.UpdateBalance(0, nativeCoin)
+			t.fee -= flatFee
+		}
+
+		// increment nonce for txn no matter if it failed or
+		// succeeded.
+		acc.IncrementNonce()
+	}()
 
 	// TODO: encode txn's data more efficiently to save network
 	// bandwidth.
@@ -107,8 +148,7 @@ func (t *Transition) Record(txn *consensus.Txn) error {
 		return fmt.Errorf("unknown txn type: %T", txn.Decoded)
 	}
 
-	t.txns = append(t.txns, txn)
-	acc.IncrementNonce()
+	t.txns = append(t.txns, txn.Raw)
 	return nil
 }
 
@@ -300,7 +340,6 @@ func (t *Transition) placeOrder(owner *Account, txn *PlaceOrderTxn, round uint64
 	if len(executions) > 0 {
 		for _, exec := range executions {
 			acc := t.state.Account(exec.Owner)
-			// TODO: report fee
 			orderID := OrderID{ID: exec.ID, Market: txn.Market}
 			report := ExecutionReport{
 				Round:      round,
@@ -403,16 +442,13 @@ func (t *Transition) sendToken(owner *Account, txn *SendTokenTxn) error {
 }
 
 func (t *Transition) Txns() []byte {
+	t.finalizeState()
+
 	if len(t.txns) == 0 {
 		return nil
 	}
 
-	bs := make([][]byte, len(t.txns))
-	for i := range bs {
-		bs[i] = t.txns[i].Raw
-	}
-
-	b, err := rlp.EncodeToBytes(bs)
+	b, err := rlp.EncodeToBytes(t.txns)
 	if err != nil {
 		panic(err)
 	}
@@ -420,8 +456,47 @@ func (t *Transition) Txns() []byte {
 	return b
 }
 
-func (t *Transition) finalizeState(round uint64) {
+func (t *Transition) giveMinerFee(txn MinerFeeTxn) {
+	pk := txn.Miner
+	addr := pk.Addr()
+	acc := t.state.Account(addr)
+	if acc == nil {
+		acc = t.state.NewAccount(pk)
+	}
+	nativeCoin := acc.Balance(0)
+	nativeCoin.Available += txn.Fee
+	acc.UpdateBalance(0, nativeCoin)
+}
+
+func (t *Transition) appendFeeTxn() {
+	if t.proposer != nil {
+		if t.fee == 0 {
+			return
+		}
+
+		feeTxn := MinerFeeTxn{
+			Miner: t.proposer,
+			Fee:   t.fee,
+		}
+		txn := Txn{
+			T:    MinerFee,
+			Data: gobEncode(feeTxn),
+		}
+
+		b, err := rlp.EncodeToBytes(txn)
+		if err != nil {
+			panic(err)
+		}
+
+		t.fee = 0
+		t.txns = append(t.txns, b)
+		t.giveMinerFee(feeTxn)
+	}
+}
+
+func (t *Transition) finalizeState() {
 	if !t.finalized {
+		t.appendFeeTxn()
 		t.removeFilledOrderFromExpiration()
 		// must be called after
 		// t.removeFilledOrderFromExpiration
@@ -564,12 +639,12 @@ func (t *Transition) freezeToken(acc *Account, txn *FreezeTokenTxn) error {
 }
 
 func (t *Transition) StateHash() consensus.Hash {
-	t.finalizeState(t.round)
+	t.finalizeState()
 	return t.state.Hash()
 }
 
 func (t *Transition) Commit() consensus.State {
-	t.finalizeState(t.round)
+	t.finalizeState()
 	for _, v := range t.tokenCreations {
 		t.tokenCache.Update(v.ID, v.TokenInfo)
 	}

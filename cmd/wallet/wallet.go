@@ -175,7 +175,7 @@ func printAccount(c *cli.Context) error {
 
 	fmt.Println("\nExecution Reports:")
 	tw = tabwriter.NewWriter(os.Stdout, 0, 0, 1, ' ', tabwriter.Debug)
-	_, err = fmt.Fprintln(tw, "\tBlock\tID\tMarket\tSide\tTrade Price\tAmount\tFee\t")
+	_, err = fmt.Fprintln(tw, "\tBlock\tID\tMarket\tSide\tTrade Price\tAmount\t")
 	if err != nil {
 		return err
 	}
@@ -189,8 +189,7 @@ func printAccount(c *cli.Context) error {
 		market := idToToken[exec.ID.Market.Base].Symbol + "_" + idToToken[exec.ID.Market.Quote].Symbol
 		price := quantToStr(exec.TradePrice, dex.OrderPriceDecimals)
 		quant := quantToStr(exec.Quant, int(idToToken[exec.ID.Market.Base].Decimals))
-		fee := quantToStr(exec.Fee, int(idToToken[0].Decimals))
-		_, err = fmt.Fprintf(tw, "\t%d\t%s\t%s\t%s\t%s\t%s\t%s\t\n", exec.Round, exec.ID.Encode(), market, side, price, quant, fee)
+		_, err = fmt.Fprintf(tw, "\t%d\t%s\t%s\t%s\t%s\t%s\t\n", exec.Round, exec.ID.Encode(), market, side, price, quant)
 		if err != nil {
 			return err
 		}

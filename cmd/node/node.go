@@ -32,7 +32,8 @@ func decodeFromFile(path string, v interface{}) {
 
 func createNode(c consensus.NodeCredentials, genesis consensus.Genesis, u consensus.Updater, cfg consensus.Config) *consensus.Node {
 	state := dex.NewState(ethdb.NewMemDatabase())
-	return consensus.MakeNode(c, cfg, genesis, state, dex.NewTxnPool(state), u)
+	pk, _ := dex.RandKeyPair()
+	return consensus.MakeNode(c, cfg, genesis, state, dex.NewTxnPool(state), u, pk)
 }
 
 func main() {

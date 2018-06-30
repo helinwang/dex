@@ -16,7 +16,7 @@ func (m *myPKer) PK(addr consensus.Addr) PK {
 	return m.m[addr]
 }
 
-func genTransTxns(p *myPKer) (consensus.Transition, []byte) {
+func genStateTxns(p *myPKer) (consensus.State, []byte) {
 	const (
 		accountCount = 10000
 		orderCount   = 10000
@@ -37,7 +37,6 @@ func genTransTxns(p *myPKer) (consensus.Transition, []byte) {
 		TotalUnits: 200000000 * 100000000,
 	}
 	state := CreateGenesisState(accountPKs, []TokenInfo{BTCInfo})
-	trans := state.Transition(1)
 	var txns [][]byte
 	for i := 0; i < orderCount; i++ {
 		idx := rand.Intn(len(accountSKs))
@@ -57,20 +56,20 @@ func genTransTxns(p *myPKer) (consensus.Transition, []byte) {
 		panic(err)
 	}
 
-	return trans, body
+	return state, body
 }
 
 // TODO: test nonce
 
 func BenchmarkPlaceOrder(b *testing.B) {
 	p := &myPKer{m: make(map[consensus.Addr]PK)}
-	trans, body := genTransTxns(p)
+	state, body := genStateTxns(p)
 	pool := NewTxnPool(p)
-	// make sure everything is in pool
-	trans.RecordSerialized(body, pool)
+	// warm up txn pool
+	_, _, _ = state.CommitTxns(body, pool, 1)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		trans.RecordSerialized(body, pool)
+		_, _, _ = state.CommitTxns(body, pool, 1)
 	}
 }
