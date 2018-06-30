@@ -5,8 +5,10 @@ import (
 	"encoding/gob"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/ethereum/go-ethereum/rlp"
+	lru "github.com/hashicorp/golang-lru"
 	"github.com/helinwang/dex/pkg/consensus"
 	log "github.com/helinwang/log15"
 )
@@ -15,17 +17,29 @@ type pker interface {
 	PK(addr consensus.Addr) PK
 }
 
+type txnItem struct {
+	txn  *consensus.Txn
+	time time.Time
+}
+
 type TxnPool struct {
 	pker pker
 
-	mu   sync.Mutex
-	txns map[consensus.Hash]*consensus.Txn
+	mu    sync.Mutex
+	txns  map[consensus.Hash]*consensus.Txn
+	cache *lru.Cache
 }
 
 func NewTxnPool(pker pker) *TxnPool {
+	cache, err := lru.New(50000)
+	if err != nil {
+		panic(err)
+	}
+
 	return &TxnPool{
-		pker: pker,
-		txns: make(map[consensus.Hash]*consensus.Txn),
+		pker:  pker,
+		txns:  make(map[consensus.Hash]*consensus.Txn),
+		cache: cache,
 	}
 }
 
@@ -110,12 +124,20 @@ func parseTxn(b []byte, pker pker) (*consensus.Txn, error) {
 	return ret, nil
 }
 
-func (t *TxnPool) Add(b []byte) (r *consensus.Txn, boardcast bool) {
+func (t *TxnPool) Add(b []byte) (*consensus.Txn, bool) {
 	hash := consensus.SHA3(b)
+	v, inCache := t.cache.Get(hash)
 	t.mu.Lock()
-	if _, ok := t.txns[hash]; ok {
+	if r, ok := t.txns[hash]; ok {
 		t.mu.Unlock()
-		return
+		return r, false
+	}
+
+	if inCache {
+		r := v.(*consensus.Txn)
+		t.txns[hash] = r
+		t.mu.Unlock()
+		return r, false
 	}
 	t.mu.Unlock()
 
@@ -125,11 +147,15 @@ func (t *TxnPool) Add(b []byte) (r *consensus.Txn, boardcast bool) {
 		return nil, false
 	}
 
-	if !ret.MinerFeeTxn {
-		t.mu.Lock()
-		t.txns[hash] = ret
-		t.mu.Unlock()
+	if ret.MinerFeeTxn {
+		return ret, false
 	}
+
+	t.cache.Add(hash, ret)
+
+	t.mu.Lock()
+	t.txns[hash] = ret
+	t.mu.Unlock()
 	return ret, true
 }
 
@@ -145,6 +171,10 @@ func (t *TxnPool) NotSeen(h consensus.Hash) bool {
 }
 
 func (t *TxnPool) Get(h consensus.Hash) *consensus.Txn {
+	v, ok := t.cache.Get(h)
+	if ok {
+		return v.(*consensus.Txn)
+	}
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	return t.txns[h]
@@ -160,8 +190,8 @@ func (t *TxnPool) Txns() []*consensus.Txn {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	txns := make([]*consensus.Txn, len(t.txns))
 	i := 0
+	txns := make([]*consensus.Txn, len(t.txns))
 	for _, v := range t.txns {
 		txns[i] = v
 		i++

@@ -9,6 +9,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/helinwang/dex/pkg/consensus"
+	log "github.com/helinwang/log15"
 )
 
 var flatFee = uint64(0.0001 * math.Pow10(int(BNBInfo.Decimals)))
@@ -50,10 +51,14 @@ func (t *Transition) RecordSerialized(blob []byte, pool consensus.TxnPool) (int,
 		return 0, err
 	}
 
+	total := 0
+	missCount := 0
 	for _, b := range txns {
 		hash := consensus.SHA3(b)
 		txn := pool.Get(hash)
+		total++
 		if txn == nil {
+			missCount++
 			txn, _ = pool.Add(b)
 		}
 
@@ -69,6 +74,7 @@ func (t *Transition) RecordSerialized(blob []byte, pool consensus.TxnPool) (int,
 		pool.Remove(hash)
 	}
 
+	log.Warn("miss ratio", "ratio", float64(missCount)/float64(total))
 	return len(txns), nil
 }
 
@@ -86,10 +92,12 @@ func (t *Transition) RecordImpl(txn *consensus.Txn, forceFee bool) (err error) {
 		return errors.New("txn owner not found")
 	}
 
-	if nonce := acc.Nonce(); txn.Nonce < nonce {
-		return errors.New("nonce not valid")
-	} else if txn.Nonce > nonce {
-		return consensus.ErrTxnNonceTooBig
+	if !txn.MinerFeeTxn {
+		if nonce := acc.Nonce(); txn.Nonce < nonce {
+			return errors.New("nonce not valid")
+		} else if txn.Nonce > nonce {
+			return consensus.ErrTxnNonceTooBig
+		}
 	}
 
 	payFee := forceFee || t.proposer != nil
@@ -112,9 +120,9 @@ func (t *Transition) RecordImpl(txn *consensus.Txn, forceFee bool) (err error) {
 			t.fee -= flatFee
 		}
 
-		// increment nonce for txn no matter if it failed or
-		// succeeded.
-		acc.IncrementNonce()
+		if !txn.MinerFeeTxn && err == nil {
+			acc.IncrementNonce()
+		}
 	}()
 
 	// TODO: encode txn's data more efficiently to save network

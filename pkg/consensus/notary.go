@@ -117,6 +117,7 @@ func (n *Notary) notarize(bp *BlockProposal, pool TxnPool) (*NtShare, time.Durat
 	if state == nil {
 		panic(fmt.Errorf("should not happen: can not find the state of pre block %v, bp: %v", bp.PrevBlock, bpHash))
 	}
+	log.Info("notarize starting state hash", "root", state.Hash())
 
 	start := time.Now()
 	newState, _, err := state.CommitTxns(bp.Txns, pool, bp.Round)

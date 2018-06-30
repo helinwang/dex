@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethdb"
@@ -627,7 +628,9 @@ func (s *State) CommitTxns(txns []byte, pool consensus.TxnPool, round uint64) (c
 		return trans.Commit(), 0, nil
 	}
 
+	start := time.Now()
 	count, err := trans.RecordSerialized(txns, pool)
+	log.Warn("record took", "dur", time.Now().Sub(start))
 	if err != nil {
 		return nil, 0, err
 	}

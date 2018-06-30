@@ -121,6 +121,7 @@ func main() {
 
 	defer f.Close()
 
+	nonces := make(map[consensus.Addr]uint64)
 	perm := rand.Perm(len(credentials))
 	credIdx := 0
 	s := bufio.NewScanner(f)
@@ -130,7 +131,7 @@ func main() {
 		if err != nil {
 			panic(err)
 		}
-		if poolSize > 10000 {
+		if poolSize > 20000 {
 			time.Sleep(10 * time.Millisecond)
 			goto retry
 		}
@@ -183,9 +184,13 @@ func main() {
 		quantMul := math.Pow10(int(quoteToken.Decimals))
 		quantUnit := uint64(quant * quantMul)
 
-		n, err := nonce(client, credential.PK.Addr())
-		if err != nil {
-			panic(err)
+		n, ok := nonces[credential.PK.Addr()]
+		if !ok {
+			n, err = nonce(client, credential.PK.Addr())
+			if err != nil {
+				panic(err)
+			}
+			nonces[credential.PK.Addr()] = n
 		}
 
 		t := dex.PlaceOrderTxn{
@@ -200,6 +205,7 @@ func main() {
 		if err != nil {
 			panic(err)
 		}
+		nonces[credential.PK.Addr()]++
 	}
 
 	if s.Err() != nil {

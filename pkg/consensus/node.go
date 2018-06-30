@@ -87,8 +87,7 @@ func (n *Node) Start(host string, port int, seedAddr string) error {
 	return n.gateway.Start(host, port, seedAddr)
 }
 
-func (n *Node) proposeBlock(round uint64, group int) {
-	startTime := time.Now()
+func (n *Node) proposeBlock(round uint64, group int, lastRoundEndTime time.Time) {
 	n.chain.WaitUntil(round)
 	n.mu.Lock()
 	nodeRound := n.round
@@ -106,11 +105,11 @@ func (n *Node) proposeBlock(round uint64, group int) {
 	defer cancel()
 
 	start := time.Now()
-	log.Debug("start propose block", "owner", n.addr, "round", round, "group", group, "since round start", time.Now().Sub(startTime))
+	log.Debug("start propose block", "owner", n.addr, "round", round, "group", group, "since last round end", time.Now().Sub(lastRoundEndTime))
 	bp := n.chain.ProposeBlock(ctx, n.sk, round)
 	h := bp.Hash()
 	if bp != nil {
-		log.Info("propose block done", "owner", n.addr, "round", round, "bp round", bp.Round, "hash", h, "group", group, "dur", time.Now().Sub(start), "since round start", time.Now().Sub(startTime))
+		log.Info("propose block done", "owner", n.addr, "round", round, "bp round", bp.Round, "hash", h, "group", group, "dur", time.Now().Sub(start), "since last round end", time.Now().Sub(lastRoundEndTime))
 		n.gateway.recvBlockProposal(n.gateway.addr, bp, h)
 	}
 
@@ -118,20 +117,21 @@ func (n *Node) proposeBlock(round uint64, group int) {
 
 func (n *Node) notarizeBlock(notary *Notary, inCh chan *BlockProposal, cancelCtx context.Context, lastRoundEndTime time.Time, round uint64, group int) {
 	log.Debug("begin notarize", "group", group, "round", round)
-	startTime := time.Now()
 	onNotarize := func(s *NtShare, spentTime time.Duration) {
 		h := s.Hash()
-		log.Info("produced one notarization share", "group", group, "bp", s.BP, "share round", s.Round, "round", round, "hash", h, "since round start", time.Now().Sub(startTime))
-		if diff := time.Now().Sub(lastRoundEndTime); diff >= n.cfg.BlockTime-spentTime {
+		sinceLastRoundEnd := time.Now().Sub(lastRoundEndTime)
+		remainTime := n.cfg.BlockTime - spentTime - sinceLastRoundEnd
+		log.Info("produced one notarization share", "group", group, "bp", s.BP, "share round", s.Round, "round", round, "hash", h, "since last round end", sinceLastRoundEnd, "remain time", remainTime)
+		if remainTime <= 0 {
 			go n.gateway.recvNtShare(n.gateway.addr, s, h)
 		} else {
-			time.AfterFunc(n.cfg.BlockTime-spentTime-diff, func() {
+			time.AfterFunc(remainTime, func() {
 				n.gateway.recvNtShare(n.gateway.addr, s, h)
 			})
 		}
 	}
 
-	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(n.cfg.BlockTime))
+	ctx, cancel := context.WithDeadline(context.Background(), lastRoundEndTime.Add(n.cfg.BlockTime))
 	defer cancel()
 	notary.Notarize(ctx, cancelCtx, inCh, onNotarize)
 }
@@ -146,9 +146,9 @@ func (n *Node) StartRound(round uint64) {
 		return
 	}
 
-	lastRoundEndTime, ok := n.recvBlockTime[round-1]
+	recvLastRoundBlock, ok := n.recvBlockTime[round-1]
 	if !ok {
-		lastRoundEndTime = time.Now()
+		recvLastRoundBlock = time.Now()
 	}
 
 	n.round = round
@@ -158,7 +158,7 @@ func (n *Node) StartRound(round uint64) {
 
 	for _, m := range n.memberships {
 		if m.groupID == bpGroup {
-			go n.proposeBlock(round, bpGroup)
+			go n.proposeBlock(round, bpGroup, recvLastRoundBlock)
 		}
 
 		if m.groupID == ntGroup {
@@ -169,7 +169,7 @@ func (n *Node) StartRound(round uint64) {
 			notary := NewNotary(n.addr, n.sk, m.skShare, n.chain, n.store)
 			inCh := make(chan *BlockProposal, 20)
 			n.notarizeChs[round] = append(n.notarizeChs[round], inCh)
-			go n.notarizeBlock(notary, inCh, ntCancelCtx, lastRoundEndTime, round, ntGroup)
+			go n.notarizeBlock(notary, inCh, ntCancelCtx, recvLastRoundBlock, round, ntGroup)
 		}
 	}
 
@@ -190,6 +190,7 @@ func (n *Node) BlockForRoundProduced(round uint64) {
 	defer n.mu.Unlock()
 
 	if _, ok := n.recvBlockTime[round]; !ok {
+		log.Warn("recv block", "round", round)
 		n.recvBlockTime[round] = time.Now()
 	}
 }

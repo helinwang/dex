@@ -7,6 +7,8 @@ import (
 	"math"
 	"sync"
 	"time"
+
+	log "github.com/helinwang/log15"
 )
 
 const (
@@ -98,6 +100,10 @@ func (s *syncer) SyncBlock(addr unicastAddr, hash Hash, round uint64) (b *Block,
 }
 
 func (s *syncer) syncBlock(addr unicastAddr, hash Hash, round uint64) (b *Block, broadcast bool, err error) {
+	start := time.Now()
+	defer func() {
+		log.Warn("sync block dur", "dur", time.Now().Sub(start), "round", b.Round)
+	}()
 	b = s.store.Block(hash)
 	if b != nil {
 		// already connected to the chain
@@ -110,7 +116,9 @@ func (s *syncer) syncBlock(addr unicastAddr, hash Hash, round uint64) (b *Block,
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
+	a := time.Now()
 	b, err = s.requester.RequestBlock(ctx, addr, hash)
+	log.Warn("request block took", "dur", time.Now().Sub(a))
 	cancel()
 	if err != nil {
 		return
@@ -148,11 +156,13 @@ func (s *syncer) syncBlock(addr unicastAddr, hash Hash, round uint64) (b *Block,
 	}
 	weight = rankToWeight(rank)
 
+	start = time.Now()
 	state := s.chain.BlockState(b.PrevBlock)
 	newState, count, err := state.CommitTxns(bp.Txns, s.chain.txnPool, bp.Round)
 	if err != nil {
 		return
 	}
+	log.Warn("apply block txns took", "dur", time.Now().Sub(start))
 
 	if newState.Hash() != b.StateRoot {
 		err = errors.New("invalid state root")
@@ -175,12 +185,19 @@ func rankToWeight(rank uint16) float64 {
 }
 
 func (s *syncer) SyncBlockProposal(addr unicastAddr, hash Hash) (bp *BlockProposal, broadcast bool, err error) {
+	defer func(start time.Time) {
+		log.Warn("sync bp took", "dur", time.Now().Sub(start))
+	}(time.Now())
+
 	if bp = s.store.BlockProposal(hash); bp != nil {
 		return
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
+	a := time.Now()
 	bp, err = s.requester.RequestBlockProposal(ctx, addr, hash)
+	log.Warn("request bp took", "dur", time.Now().Sub(a))
+
 	cancel()
 	if err != nil {
 		return

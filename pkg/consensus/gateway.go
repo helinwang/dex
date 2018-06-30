@@ -276,7 +276,6 @@ func (n *gateway) recvData() {
 			h := v.Hash()
 			log.Debug("recvBlock", "round", v.Round, "hash", h, "state root", v.StateRoot)
 			go n.recvBlock(addr, v, h)
-			go n.node.BlockForRoundProduced(v.Round)
 		case *BlockProposal:
 			h := v.Hash()
 			log.Debug("recvBlockProposal", "round", v.Round, "hash", h, "block", v.PrevBlock)
@@ -300,9 +299,9 @@ func (n *gateway) broadcast(item Item) {
 }
 
 func (n *gateway) recvTxn(t []byte) {
-	txn, broadcast := n.chain.txnPool.Add(t)
+	_, broadcast := n.chain.txnPool.Add(t)
 	if broadcast {
-		go n.broadcast(Item{T: txnItem, Hash: SHA3(txn.Raw)})
+		go n.broadcast(Item{T: txnItem, Hash: SHA3(t)})
 	}
 }
 
@@ -408,6 +407,7 @@ func (n *gateway) recvRandBeaconSigShare(addr unicastAddr, r *RandBeaconSigShare
 }
 
 func (n *gateway) recvBlock(addr unicastAddr, b *Block, h Hash) {
+	go n.node.BlockForRoundProduced(b.Round)
 	n.blockCache.Add(h, b)
 
 	n.mu.Lock()
@@ -417,7 +417,9 @@ func (n *gateway) recvBlock(addr unicastAddr, b *Block, h Hash) {
 	n.blockWaiters[h] = nil
 	n.mu.Unlock()
 
+	start := time.Now()
 	_, broadcast, err := n.syncer.SyncBlock(addr, h, b.Round)
+	log.Warn("sync block took", "dur", time.Now().Sub(start), "round", b.Round)
 	if err != nil {
 		log.Warn("sync block error", "err", err)
 		return
