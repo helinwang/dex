@@ -3,9 +3,9 @@
 DEX is a decentralized exchange implementation that focuses on
 low-latency and high-throughput.
 
-- Block time: 1s on normal load, ~2s on high load
-- Time to	finalization: 2x block time on normal operations [1]
-- Transaction per second: ~2000 benchmarked on a local machine
+- Block time: 1s on normal load, ~3s on high load [1]
+- Time to	finalization: 2x block time on normal operations [2]
+- Transaction per second: ~2000 [1]
 
 ## Features
 
@@ -71,4 +71,5 @@ $ go build ./cmd/node/
 
 GPLv3
 
-[1] TODO: explain normal operation
+[1] Benchmark performed on my local machine, steps [here](./commands.md#pressure-testing). Machine configuration: 16core, 32GB. Please note these are preliminary results, the system has a lot of room for optimization. The block time can be more stable with some improvements.
+[2] TODO: explain normal operation
