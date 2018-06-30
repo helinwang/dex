@@ -1,6 +1,6 @@
 # Commands
 
-The options for all the binaries can be viewed with `./binary_name -h`.
+Let's go through the commands by examples. The options for all the binaries can be viewed with `./binary_name -h`.
 
 ## Node
 
@@ -194,13 +194,42 @@ Issue HELIN_COIN, total supply 999999, decimals 8:
 
 Due to time constraint, I only implemented send to public key, send to address is easy to add.
 
-1. Get the public key of the account to send to:
+1. Get the public key of the account 1
     ```
     ./credential_info -c credentials/node-1
     credential info (bytes encoded using base64):
     SK: hDTgUQxmwGCaG/abozy/iIMHiT1S3OtlxFAa5TRmmRU=
-    PK: IgeElpP8xcLaKuq7HIfKN0LARUXgpFWNky7b2oLe8AvqC3epDAzjWVt4dfZ1b7fSdeMnX1RTdbIKBKuoJX3LCg==
-    Addr: 61493edcbd98328d3652e82b3327e84176ae5696
+    PK: BAv9dVwsREUF5dn1iIiGAioDB7bvE/fiXopXiFkj58eO7VlXzF9srrnNy1d4c7Kcqm8Niv4yeBQKRlwQLnUFDBQ=
+    Addr: c09676fdec88c1e960e6398f1c281defdd1cb4fa
     ```
-1. Send to public key:
+1. Send to account 1's public key:
+    ```
+    ./wallet -c ./credentials/node-0 send BAv9dVwsREUF5dn1iIiGAioDB7bvE/fiXopXiFkj58eO7VlXzF9srrnNy1d4c7Kcqm8Niv4yeBQKRlwQLnUFDBQ= HELIN_COIN 20
+    ```
     
+    Verify account 1 received it:
+    ```
+    ./wallet -c ./credentials/node-1 account
+    Addr:
+    c09676fdec88c1e960e6398f1c281defdd1cb4fa
+
+    Balances:
+     |Symbol     |Available        |Pending    |Frozen |
+     |BNB        |20000.00000000   |0.00000000 |       |
+     |BTC        |9000000.00000000 |0.00000000 |       |
+     |ETH        |9000000.00000000 |0.00000000 |       |
+     |XRP        |9000000.00000000 |0.00000000 |       |
+     |EOS        |9000000.00000000 |0.00000000 |       |
+     |ICX        |9000000.00000000 |0.00000000 |       |
+     |TRX        |9000000.00000000 |0.00000000 |       |
+     |XLM        |9000000.00000000 |0.00000000 |       |
+     |BCC        |9000000.00000000 |0.00000000 |       |
+     |LTC        |9000000.00000000 |0.00000000 |       |
+     |HELIN_COIN |20.00000000      |0.00000000 |       |
+    
+    Pending Orders:
+     |ID |Market |Side |Price |Amount |Executed |Expiry Block Height |
+
+    Execution Reports:
+     |Block |ID |Market |Side |Trade Price |Amount |
+    ```
