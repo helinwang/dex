@@ -1,3 +1,12 @@
+# DEX
+
+DEX is decentralized exchange implementation that focuses on
+low-latency and high-throughput.
+
+- Block time: 1s on normal load, ~2s on high load
+- Time to	finalization: 2x block time on normal operations [1]
+- Transaction per second: ~2000 benchmarked on a local machine
+
 ## Build
 
 ### Build with Docker
@@ -49,3 +58,5 @@ $ go build ./cmd/node/
 ## License
 
 GPLv3
+
+[1] TODO: explain normal operation
