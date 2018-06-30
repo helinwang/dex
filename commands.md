@@ -304,4 +304,5 @@ block_2d04 -> block_54e3
 
 It prints the blockchain representation in the graphviz format.
 You can paste it to http://www.webgraphviz.com/ to see the visualization.
+Some blocks in the middle will be omitted (indicated by "num_blocks_omitted_to_save_space_148").
 The green block is the finalized block. The blue block is the non-finalized block.
