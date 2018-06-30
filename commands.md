@@ -54,3 +54,102 @@ The options for all the binaries can be viewed with `./binary_name -h`.
         ```
     Now you will see the random beacon running, and empty blocks being produced.
 
+## Wallet
+
+The `wallet` binary is a CLI, it talks with the node through the node's wallet RPC service.
+
+### Check Account
+
+```
+$ ./wallet -c ./credentials/node-0 account
+
+Addr:
+9278552d23bb4cad6e9b1210853f6b9af107f720
+
+Balances:
+ |Symbol |Available        |Pending    |Frozen |
+ |BNB    |20000.00000000   |0.00000000 |       |
+ |BTC    |9000000.00000000 |0.00000000 |       |
+ |ETH    |9000000.00000000 |0.00000000 |       |
+ |XRP    |9000000.00000000 |0.00000000 |       |
+ |EOS    |9000000.00000000 |0.00000000 |       |
+ |ICX    |9000000.00000000 |0.00000000 |       |
+ |TRX    |9000000.00000000 |0.00000000 |       |
+ |XLM    |9000000.00000000 |0.00000000 |       |
+ |BCC    |9000000.00000000 |0.00000000 |       |
+ |LTC    |9000000.00000000 |0.00000000 |       |
+
+Pending Orders:
+ |ID |Market |Side |Price |Amount |Executed |Expiry Block Height |
+
+Execution Reports:
+ |Block |ID |Market |Side |Trade Price |Amount |
+```
+
+### Trade
+
+Sell 15 ETH at 0.07 BTC, expire after 300 blocks:
+```
+./wallet -c ./credentials/node-0 order ETH_BTC sell 0.07 15 300
+```
+
+Check account:
+```
+$ ./wallet -c ./credentials/node-0 account   
+Addr:
+9278552d23bb4cad6e9b1210853f6b9af107f720
+
+Balances:
+ |Symbol |Available        |Pending     |Frozen |
+ |BNB    |19999.99990000   |0.00000000  |       |
+ |BTC    |9000000.00000000 |0.00000000  |       |
+ |ETH    |8999985.00000000 |15.00000000 |       |
+ |XRP    |9000000.00000000 |0.00000000  |       |
+ |EOS    |9000000.00000000 |0.00000000  |       |
+ |ICX    |9000000.00000000 |0.00000000  |       |
+ |TRX    |9000000.00000000 |0.00000000  |       |
+ |XLM    |9000000.00000000 |0.00000000  |       |
+ |BCC    |9000000.00000000 |0.00000000  |       |
+ |LTC    |9000000.00000000 |0.00000000  |       |
+
+Pending Orders:
+ |ID    |Market  |Side |Price      |Amount      |Executed   |Expiry Block Height |
+ |2_1_0 |ETH_BTC |SELL |0.07000000 |15.00000000 |0.00000000 |305                 |
+
+Execution Reports:
+ |Block |ID |Market |Side |Trade Price |Amount |
+```
+
+Buy 10 ETH at 0.08 BTC, expire after 300 blocks:
+```
+./wallet -c ./credentials/node-0 order ETH_BTC buy 0.08 10 300
+```
+
+Check account:
+```
+$ ./wallet -c ./credentials/node-0 account                         
+Addr:
+9278552d23bb4cad6e9b1210853f6b9af107f720
+
+Balances:
+ |Symbol |Available        |Pending    |Frozen |
+ |BNB    |19999.99980000   |0.00000000 |       |
+ |BTC    |9000000.00000000 |0.00000000 |       |
+ |ETH    |8999995.00000000 |5.00000000 |       |
+ |XRP    |9000000.00000000 |0.00000000 |       |
+ |EOS    |9000000.00000000 |0.00000000 |       |
+ |ICX    |9000000.00000000 |0.00000000 |       |
+ |TRX    |9000000.00000000 |0.00000000 |       |
+ |XLM    |9000000.00000000 |0.00000000 |       |
+ |BCC    |9000000.00000000 |0.00000000 |       |
+ |LTC    |9000000.00000000 |0.00000000 |       |
+
+Pending Orders:
+ |ID    |Market  |Side |Price      |Amount      |Executed    |Expiry Block Height |
+ |2_1_0 |ETH_BTC |SELL |0.07000000 |15.00000000 |10.00000000 |305                 |
+
+Execution Reports:
+ |Block |ID    |Market  |Side |Trade Price |Amount      |
+ |31    |2_1_1 |ETH_BTC |BUY  |0.07000000  |10.00000000 |
+ |31    |2_1_0 |ETH_BTC |SELL |0.07000000  |10.00000000 |
+```
