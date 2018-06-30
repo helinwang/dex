@@ -26,6 +26,10 @@ type Balance struct {
 	Frozen    []Frozen
 }
 
+func (b Balance) Empty() bool {
+	return b.Available == 0 && b.Pending == 0 && len(b.Frozen) == 0
+}
+
 type OrderID struct {
 	ID     uint64
 	Market MarketSymbol
@@ -186,6 +190,9 @@ func (a *Account) CommitCache(s *State) {
 		ids := make([]TokenID, len(a.balances))
 		i := 0
 		for id := range a.balances {
+			if a.balances[id].Empty() {
+				continue
+			}
 			ids[i] = id
 			i++
 		}

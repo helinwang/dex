@@ -118,7 +118,7 @@ func (t *Transition) burnToken(acc *Account, txn *BurnTokenTxn) error {
 	}
 
 	info := t.tokenCache.Info(txn.ID)
-	if info == nil {
+	if info == zeroInfo {
 		return fmt.Errorf("trying to burn non-existent token: %d", txn.ID)
 	}
 
@@ -134,7 +134,7 @@ func (t *Transition) burnToken(acc *Account, txn *BurnTokenTxn) error {
 	balance.Available -= txn.Quant
 	info.TotalUnits -= txn.Quant
 	acc.UpdateBalance(txn.ID, balance)
-	t.state.UpdateToken(Token{ID: txn.ID, TokenInfo: *info})
+	t.state.UpdateToken(Token{ID: txn.ID, TokenInfo: info})
 	return nil
 }
 
@@ -234,12 +234,12 @@ func (t *Transition) placeOrder(owner *Account, txn *PlaceOrderTxn, round uint64
 	}
 
 	baseInfo := t.tokenCache.Info(txn.Market.Base)
-	if baseInfo == nil {
+	if baseInfo == zeroInfo {
 		return fmt.Errorf("trying to place order on nonexistent token: %d", txn.Market.Base)
 	}
 
 	quoteInfo := t.tokenCache.Info(txn.Market.Quote)
-	if quoteInfo == nil {
+	if quoteInfo == zeroInfo {
 		return fmt.Errorf("trying to place order on nonexistent token: %d", txn.Market.Quote)
 	}
 
@@ -571,7 +571,7 @@ func (t *Transition) StateHash() consensus.Hash {
 func (t *Transition) Commit() consensus.State {
 	t.finalizeState(t.round)
 	for _, v := range t.tokenCreations {
-		t.tokenCache.Update(v.ID, &v.TokenInfo)
+		t.tokenCache.Update(v.ID, v.TokenInfo)
 	}
 
 	return t.state

@@ -507,6 +507,64 @@ func printGraphviz(c *cli.Context) error {
 	return nil
 }
 
+func burnToken(c *cli.Context) error {
+	args := c.Args()
+	if len(args) < 2 {
+		return fmt.Errorf("burn token needs 2 arguments (received: %d), please check usage using ./wallet -h", len(args))
+	}
+
+	credential, err := loadCredential(credentialPath)
+	if err != nil {
+		return err
+	}
+
+	symbol := args[0]
+	quant, err := strconv.ParseFloat(args[1], 64)
+	if err != nil {
+		return fmt.Errorf("error parse freeze token amount: %v", err)
+	}
+
+	client, err := rpc.DialHTTP("tcp", rpcAddr)
+	if err != nil {
+		return err
+	}
+
+	tokens, err := getTokens(client)
+	if err != nil {
+		return err
+	}
+
+	var tokenID dex.TokenID
+	var mul float64
+	found := false
+	for _, t := range tokens {
+		if strings.ToLower(string(t.Symbol)) == strings.ToLower(symbol) {
+			tokenID = t.ID
+			mul = math.Pow10(int(t.Decimals))
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		return fmt.Errorf("symbol not found: %s", symbol)
+	}
+
+	n, err := nonce(client, credential.PK.Addr())
+	if err != nil {
+		return err
+	}
+
+	t := dex.BurnTokenTxn{ID: tokenID, Quant: uint64(quant * mul)}
+	txn := dex.MakeBurnTokenTxn(credential.SK, credential.PK.Addr(), t, n)
+	err = client.Call("WalletService.SendTxn", txn, nil)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func freezeToken(c *cli.Context) error {
 	args := c.Args()
 	if len(args) < 3 {
@@ -768,6 +826,11 @@ func main() {
 			Name:   "freeze",
 			Usage:  "Freeze token: ./wallet -c NODE_CREDENTIAL_FILE_PATH freeze SYMBOL AMOUNT AVAILABLE_HEIGHT",
 			Action: freezeToken,
+		},
+		{
+			Name:   "burn",
+			Usage:  "Burn token: ./wallet -c NODE_CREDENTIAL_FILE_PATH burn SYMBOL AMOUNT",
+			Action: burnToken,
 		},
 	}
 

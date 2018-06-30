@@ -21,19 +21,19 @@ type Token struct {
 }
 
 type TokenCache struct {
-	idToInfo map[TokenID]*TokenInfo
+	idToInfo map[TokenID]TokenInfo
 	exists   map[TokenSymbol]bool
 }
 
 func newTokenCache(s *State) *TokenCache {
 	c := &TokenCache{
-		idToInfo: make(map[TokenID]*TokenInfo),
+		idToInfo: make(map[TokenID]TokenInfo),
 		exists:   make(map[TokenSymbol]bool),
 	}
 
 	tokens := s.Tokens()
 	for _, t := range tokens {
-		c.idToInfo[t.ID] = &t.TokenInfo
+		c.idToInfo[t.ID] = t.TokenInfo
 		c.exists[t.Symbol] = true
 	}
 	return c
@@ -43,11 +43,13 @@ func (t *TokenCache) Exists(s TokenSymbol) bool {
 	return t.exists[s]
 }
 
-func (t *TokenCache) Info(id TokenID) *TokenInfo {
+var zeroInfo TokenInfo
+
+func (t *TokenCache) Info(id TokenID) TokenInfo {
 	return t.idToInfo[id]
 }
 
-func (t *TokenCache) Update(id TokenID, info *TokenInfo) {
+func (t *TokenCache) Update(id TokenID, info TokenInfo) {
 	t.idToInfo[id] = info
 	t.exists[TokenSymbol(strings.ToUpper(string(info.Symbol)))] = true
 }
@@ -71,7 +73,7 @@ func (t *TokenCache) Tokens() []Token {
 	i = 0
 	tokens := make([]Token, len(keys))
 	for _, k := range keys {
-		tokens[i] = Token{ID: k, TokenInfo: *t.idToInfo[k]}
+		tokens[i] = Token{ID: k, TokenInfo: t.idToInfo[k]}
 		i++
 	}
 

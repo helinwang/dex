@@ -111,7 +111,7 @@ func TestIssueToken(t *testing.T) {
 	assert.Equal(t, 2, len(s.Tokens()))
 	cache := newTokenCache(s)
 	assert.True(t, cache.Exists(btcInfo.Symbol))
-	assert.Equal(t, &btcInfo, cache.Info(1))
+	assert.Equal(t, btcInfo, cache.Info(1))
 
 	acc = s.Account(addr)
 	assert.Equal(t, btcInfo.TotalUnits, acc.Balance(1).Available)
@@ -270,6 +270,17 @@ func TestBurnToken(t *testing.T) {
 	const burn = 1000
 	s := NewState(ethdb.NewMemDatabase())
 	s.UpdateToken(Token{ID: 0, TokenInfo: BNBInfo})
+	s.UpdateToken(Token{ID: 1, TokenInfo: TokenInfo{
+		Symbol:     "BTC",
+		Decimals:   8,
+		TotalUnits: 300000000 * 100000000,
+	}})
+	s.UpdateToken(Token{ID: 2, TokenInfo: TokenInfo{
+		Symbol:     "ETH",
+		Decimals:   8,
+		TotalUnits: 400000000 * 100000000,
+	}})
+
 	pk, sk := RandKeyPair()
 	acc := s.NewAccount(pk)
 	acc.UpdateBalance(0, Balance{Available: burn + 100})
@@ -291,6 +302,7 @@ func TestBurnToken(t *testing.T) {
 	assert.Equal(t, 100, int(acc.Balance(0).Available))
 	cache := newTokenCache(s)
 	assert.Equal(t, int(BNBInfo.TotalUnits-burn), int(cache.Info(0).TotalUnits))
+	assert.Equal(t, BNBInfo.Symbol, cache.Info(0).Symbol)
 }
 
 func TestPlaceOrder(t *testing.T) {
