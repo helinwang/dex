@@ -3,9 +3,9 @@
 DEX is a decentralized exchange implementation that focuses on
 low-latency and high-throughput.
 
-- Block time: 1s on normal load, ~3s on high load [1]
+- Block time: 1s on normal load, ~2.7s on high load [1]
 - Time to	finalization: 2x block time on normal operations [2]
-- Transaction per second: ~2000 [1]
+- Transaction per second: ~2500 [1]
 
 ## Features
 
