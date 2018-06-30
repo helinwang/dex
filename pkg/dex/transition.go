@@ -9,6 +9,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/helinwang/dex/pkg/consensus"
+	log "github.com/helinwang/log15"
 )
 
 var flatFee = uint64(0.0001 * math.Pow10(int(BNBInfo.Decimals)))
@@ -606,7 +607,8 @@ func (t *Transition) expireOrders() {
 
 		order, ok := acc.PendingOrder(o.ID)
 		if !ok {
-			panic("can not find expiring order")
+			log.Error("can not find expiring order", "order", o.ID)
+			continue
 		}
 
 		acc.RemovePendingOrder(o.ID)
