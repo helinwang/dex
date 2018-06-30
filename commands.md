@@ -210,7 +210,9 @@ Due to time constraint, I only implemented send to public key, send to address i
 
 ### Freeze Token
 
-Freeze 10000 BNB at round (round is same as block height) 500
+Freeze 10000 BNB at round (round is same as block height) 500.
+Please make sure the expiration round is bigger than the current round.
+You can check the current round using `./wallet status`.
 ```
 $ ./wallet -c ./credentials/node-0 freeze BNB 10000 500
 
@@ -309,6 +311,37 @@ You can paste it to http://www.webgraphviz.com/ to see the visualization.
 Some blocks in the middle will be omitted (indicated by "num_blocks_omitted_to_save_space_148").
 The green block is the finalized block. The blue block is the non-finalized block.
 
-### Pressure Testing
+## Pressure Testing
 
-`gen_order_replay` is the tool to generate the replay
+`gen_order_replay` is the tool to generate the order replay file, and `order_replayer` replays it.
+
+1. Generate the replay file
+    ```
+    $ ./gen_order_replay -count 100000 > replay.txt
+    ```
+1. Replay the orders
+    ```
+    $ ./order_replayer -c credentials -path replay.txt
+    ```
+1. Check the system status
+    ```
+    In sync, round: 28
+    Metrics of last 10 rounds:
+     | Round|   Block Time| Transaction Count|
+     |    27| 2.751737504s|              7298|
+     |    26|   2.7696228s|              7423|
+     |    25| 2.588793648s|              6822|
+     |    24| 4.248830805s|              7266|
+     |    23| 2.080992962s|              7489|
+     |    22| 3.175358088s|              7115|
+     |    21| 2.444535555s|              5621|
+     |    20| 1.948121139s|              4418|
+     |    19| 1.153477902s|              4337|
+     |    18| 1.836077878s|              4398|
+    Stats
+     | Number of Rounds| Average Block Time| Transaction per Second|
+     |                3|        2.70338465s|            2656.350185|
+     |               10|       2.499754828s|            2487.778533|
+     |               30|                N/A|                    N/A|
+     |              100|                N/A|                    N/A|
+     ```
