@@ -26,11 +26,7 @@ The example for pressure testing the system is at the end of this document.
     to all the trading accounts insider the `./credentials` folder.
     
     ```
-    $ ./gen_genesis -N 3 -t 2 -g 3 -tokens tokens.txt -distribute-to ./credentials -dir ./genesis
-    ```
-    
-    Example tokens.txt (can be found in folder `cmd/gen_genesis/`):
-    ```
+    $ cat > tokens.txt
     BTC,90000000000,8
     ETH,90000000000,8
     XRP,90000000000,8
@@ -40,7 +36,9 @@ The example for pressure testing the system is at the end of this document.
     XLM,90000000000,8
     BCC,90000000000,8
     LTC,90000000000,8
+    $ ./gen_genesis -N 3 -t 2 -g 3 -tokens tokens.txt -distribute-to ./credentials -dir ./genesis
     ```
+
     Each row is `SYMBOL,SUPPLY,DECIMALS`. BNB is generated as the native token by default, so no need to specify here.
 
 1. Start nodes.
