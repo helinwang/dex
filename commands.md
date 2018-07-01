@@ -41,6 +41,8 @@ The example for pressure testing the system is at the end of this document.
 
     Each row is `SYMBOL,SUPPLY,DECIMALS`. BNB is generated as the native token by default, so no need to specify here.
 
+1. If testing on different machines, please make sure to use the same generated files.
+
 1. Start nodes.
     The total node count is three, and the group threshold is two,
     so running two nodes is sufficient for the demonstration purpose.
