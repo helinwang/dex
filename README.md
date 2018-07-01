@@ -21,11 +21,7 @@ detailed steps of reproducing the features, and how to pressure test the system.
 
 You can find the [White Paper](https://github.com/helinwang/dex/wiki/White-Paper) in the wiki.
 
-## Build
-
-### Prebuilt Binaries
-
-#### Running Prebuilt Binaries
+## Running Prebuilt Binaries
 
 1. Install [Barreto-Naehrig curves](https://github.com/dfinity/bn)
 
@@ -34,6 +30,8 @@ You can find the [White Paper](https://github.com/helinwang/dex/wiki/White-Paper
     1. Install the dependency libgmp `apt get install libgmp-dev`.
 
 1. Download and run the prebuilt binaries (built on Ubuntu 16.04) from the [release page](https://github.com/helinwang/dex/releases).
+
+## Build
 
 ### Build with Docker
 
