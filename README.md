@@ -25,8 +25,6 @@ You can find the [White Paper](https://github.com/helinwang/dex/wiki/White-Paper
 
 ### Prebuilt Binaries
 
-Please see [release page](https://github.com/helinwang/dex/releases) for the prebuilt binaries (built on Ubuntu 16.04).
-
 #### Running Prebuilt Binaries
 
 1. Install [Barreto-Naehrig curves](https://github.com/dfinity/bn)
@@ -35,7 +33,7 @@ Please see [release page](https://github.com/helinwang/dex/releases) for the pre
   
     1. Install the dependency libgmp `apt get install libgmp-dev`.
 
-1. Download and run the prebuilt binaries from the [release page](https://github.com/helinwang/dex/releases).
+1. Download and run the prebuilt binaries (built on Ubuntu 16.04) from the [release page](https://github.com/helinwang/dex/releases).
 
 ### Build with Docker
 
