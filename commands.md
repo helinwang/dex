@@ -21,7 +21,7 @@ The example for pressure testing the system is at the end of this document.
     any node can join the mining groups providing proof of frozen fund. Please see the
     [White Paper](https://github.com/helinwang/dex/wiki/White-Paper) for details.
     
-    The command below configures three nodes and three groups with the group threshold set to two.
+    The command below configures three nodes and three groups with the group threshold set to two (group size needs to be around 400 for the network to be safe with a very high probability. We are using three for demonstration purpose).
     The BNB native token and the tokens specified in `tokens.txt` are distributed evenly
     to all the trading accounts insider the `./credentials` folder.
     
