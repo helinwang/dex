@@ -23,6 +23,19 @@ You can find the [White Paper](https://github.com/helinwang/dex/wiki/White-Paper
 
 ## Build
 
+### Build with Docker
+
+```
+$ docker pull helinwang/dex:build
+$ git clone git@github.com:helinwang/dex.git
+$ cd dex
+$ docker run -v `pwd`:/root/env/gopath/src/github.com/helinwang/dex -it helinwang/dex:build bash
+$ cd /root/env/gopath/src/github.com/helinwang/dex
+$ glide install
+$ go test ./pkg/...
+$ go build ./cmd/node/
+```
+
 ### Build from Source
 
 - Install the latest version of [Go](https://golang.org/doc/install#install)
