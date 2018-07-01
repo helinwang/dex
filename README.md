@@ -23,6 +23,10 @@ You can find the [White Paper](https://github.com/helinwang/dex/wiki/White-Paper
 
 ## Build
 
+### Prebuilt Binaries
+
+Prebuilt binaries for Linux is provided (built on Ubuntu 17.10). Please see the [release page](https://github.com/helinwang/dex/releases).
+
 ### Build with Docker
 
 ```
