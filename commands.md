@@ -135,7 +135,7 @@ Cancel Order:
 ```
 $ ./wallet -c ./credentials/node-0 cancel 2_1_0
 ```
-Please note that cancelling an order will not generate execution report.
+Please note that cancelling an order will not generate an execution report.
 
 ### Issue Token
 
