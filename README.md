@@ -25,7 +25,7 @@ You can find the [White Paper](https://github.com/helinwang/dex/wiki/White-Paper
 
 1. Install [Barreto-Naehrig curves](https://github.com/dfinity/bn)
 
-    1. Install the prebuilt libraries in the readme page into `/usr/lib`.
+    1. Install the prebuilt libraries in their readme page into `/usr/lib`.
   
     1. Install the dependency libgmp `apt get install libgmp-dev`.
 
