@@ -19,7 +19,7 @@ And it implements native on-chain matching engine.
 Please see [here](./commands.md) for how to run the nodes, use the wallet CLI, the
 detailed steps of reproducing the features, and how to pressure test the system.
 
-You can find the [White Paper](https://github.com/helinwang/dex/wiki/White-Paper) in the wiki.
+You can find the [White Paper](https://github.com/helinwang/dex/wiki/White-Paper) in the wiki. It has system overview and the plan to solve the scalability problem.
 
 ## Running Prebuilt Binaries
 
