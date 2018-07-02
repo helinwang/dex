@@ -84,6 +84,6 @@ $ go build ./cmd/node/
 
 GPLv3
 
-[1] Benchmark performed on my local machine, steps [here](./commands.md#pressure-testing). Machine configuration: 16core, 32GB. Please note these are preliminary results, the system has a lot of room for optimization. The block time can be more stable with some improvements.
+[1] Benchmark performed by running multiple nodes on my local machine, steps [here](./commands.md#pressure-testing). Machine configuration: 16core, 32GB. Please note these are preliminary results, the system has a lot of room for optimization. The block time can be more stable with some improvements.
 
 [2] Normal operation is a likely event that happens when there is only one notarized block produced in the round. For more detail please see the [Dfinity Consensus Paper](https://dfinity.org/pdf-viewer/library/dfinity-consensus.pdf).
