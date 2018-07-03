@@ -17,8 +17,9 @@ var flatFee = uint64(0.0001 * math.Pow10(int(BNBInfo.Decimals)))
 type Transition struct {
 	round uint64
 	fee   uint64
-	// don't collect fee if proposer is nil, this is only
-	// used in tests
+	// don't collect fee if proposer is nil, this happens when:
+	// a. replaying a block rather than proposing a block
+	// b. in unit test
 	proposer        PK
 	finalized       bool
 	tokenCreations  []Token
@@ -120,8 +121,6 @@ func (t *Transition) RecordImpl(txn *consensus.Txn, forceFee bool) (err error) {
 		}
 	}()
 
-	// TODO: encode txn's data more efficiently to save network
-	// bandwidth.
 	switch tx := txn.Decoded.(type) {
 	case *PlaceOrderTxn:
 		if err := t.placeOrder(acc, tx, t.round); err != nil {
@@ -409,7 +408,6 @@ func (t *Transition) issueToken(owner *Account, txn *IssueTokenTxn) error {
 		}
 	}
 
-	// TODO: fiture out how to pay fee.
 	id := TokenID(t.tokenCache.Size() + len(t.tokenCreations))
 	token := Token{ID: id, TokenInfo: txn.Info}
 	t.tokenCreations = append(t.tokenCreations, token)
@@ -418,8 +416,6 @@ func (t *Transition) issueToken(owner *Account, txn *IssueTokenTxn) error {
 	return nil
 }
 
-// TODO: all elements in trie should be serialized using rlp, not gob,
-// since gob is not deterministic.
 func (t *Transition) sendToken(owner *Account, txn *SendTokenTxn) error {
 	if txn.Quant == 0 {
 		return errors.New("send token quantity is 0")

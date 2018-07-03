@@ -4,12 +4,6 @@ import (
 	"sync"
 )
 
-// DB is the database used to save the blockchain data.
-type DB interface {
-	Put(Hash, []byte)
-	Get(Hash) []byte
-}
-
 // storage stores the blockchain data.
 type storage struct {
 	mu                          sync.Mutex

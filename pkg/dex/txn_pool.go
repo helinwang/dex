@@ -159,10 +159,7 @@ func (t *TxnPool) Add(b []byte) (*consensus.Txn, bool) {
 	return ret, true
 }
 
-// TODO: remove txn which is no longer valid.
-
 func (t *TxnPool) NotSeen(h consensus.Hash) bool {
-	// TODO: return false for txn that are already in the block.
 	t.mu.Lock()
 	defer t.mu.Unlock()
 

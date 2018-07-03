@@ -10,9 +10,27 @@ import (
 	log "github.com/helinwang/log15"
 )
 
-const (
-	connectPeerCount = 8
-)
+// gateway is the gateway through which the node talks with its peers
+// in the network.
+type gateway struct {
+	addr                     unicastAddr
+	net                      *network
+	chain                    *Chain
+	syncer                   *syncer
+	blockCache               *lru.Cache
+	bpCache                  *lru.Cache
+	randBeaconSigCache       *lru.Cache
+	node                     *Node
+	store                    *storage
+	ntShareCollector         *collector
+	randBeaconShareCollector *collector
+
+	mu             sync.Mutex
+	rbSigWaiters   map[uint64][]chan *RandBeaconSig
+	blockWaiters   map[Hash][]chan *Block
+	bpWaiters      map[Hash][]chan *BlockProposal
+	requestingItem map[Item]bool
+}
 
 // Item is the identification of an item that the current node owns.
 type Item struct {
@@ -67,28 +85,6 @@ func (i itemType) String() string {
 	default:
 		panic("unknown item")
 	}
-}
-
-// gateway is the gateway through which the node talks with its peers
-// in the network.
-type gateway struct {
-	addr                     unicastAddr
-	net                      *network
-	chain                    *Chain
-	syncer                   *syncer
-	blockCache               *lru.Cache
-	bpCache                  *lru.Cache
-	randBeaconSigCache       *lru.Cache
-	node                     *Node
-	store                    *storage
-	ntShareCollector         *collector
-	randBeaconShareCollector *collector
-
-	mu             sync.Mutex
-	rbSigWaiters   map[uint64][]chan *RandBeaconSig
-	blockWaiters   map[Hash][]chan *Block
-	bpWaiters      map[Hash][]chan *BlockProposal
-	requestingItem map[Item]bool
 }
 
 func newGateway(net *network, chain *Chain, store *storage, groupThreshold int) *gateway {
@@ -591,8 +587,6 @@ func recoverBlock(shares []*NtShare, bp *BlockProposal, bpHash Hash, rb *RandomB
 	return b
 }
 
-// TODO: fix lint
-// nolint: gocyclo
 func (n *gateway) recvInventory(addr unicastAddr, item Item) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
@@ -653,8 +647,6 @@ func (n *gateway) recvInventory(addr unicastAddr, item Item) {
 	}
 }
 
-// TODO: fix lint
-// nolint: gocyclo
 func (n *gateway) serveData(addr unicastAddr, item Item) {
 	switch item.T {
 	case txnItem:

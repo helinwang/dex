@@ -81,11 +81,10 @@ type PendingOrder struct {
 // Account is a cached proxy to the account data inside the state
 // trie.
 type Account struct {
-	state   *State
-	addr    consensus.Addr
-	pk      PK
-	pkDirty bool
-	// a vector of nonce that enables concurrent transactions.
+	state          *State
+	addr           consensus.Addr
+	pk             PK
+	pkDirty        bool
 	nonce          uint64
 	nonceLoaded    bool
 	nonceDirty     bool

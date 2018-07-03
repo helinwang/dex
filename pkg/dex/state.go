@@ -15,7 +15,6 @@ import (
 )
 
 // MarketSymbol is the symbol of a trading pair.
-//
 type MarketSymbol struct {
 	Base  TokenID // the unit of the order's quantity
 	Quote TokenID // the unit of the order's price
@@ -27,11 +26,6 @@ func (m *MarketSymbol) Valid() bool {
 }
 
 // Encode returns the bytes representation of the market symbol.
-//
-// The bytes is used as a prefix of a path of a patricia tree, It will
-// be concatinated with the account addr path postfix to get the tree
-// path. The path lead to the pending orders of an account in the
-// market.
 func (m *MarketSymbol) Encode() []byte {
 	buf := make([]byte, 128)
 	n0 := binary.PutUvarint(buf, uint64(m.Quote))
@@ -56,8 +50,6 @@ type State struct {
 	trie         *trie.Trie
 	accountCache map[consensus.Addr]*Account
 }
-
-// TODO: add receipt for create, send, freeze, burn token.
 
 var BNBInfo = TokenInfo{
 	Symbol:     "BNB",

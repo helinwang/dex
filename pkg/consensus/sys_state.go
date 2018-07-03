@@ -11,8 +11,8 @@ import (
 type SysState struct {
 	nodeIDToPK map[int]PK
 	addrToPK   map[Addr]PK
-	idToGroup  map[int]*Group
-	groups     []*Group
+	idToGroup  map[int]*group
+	groups     []*group
 }
 
 // NewSysState creates a new system state.
@@ -20,7 +20,7 @@ func NewSysState() *SysState {
 	return &SysState{
 		nodeIDToPK: make(map[int]PK),
 		addrToPK:   make(map[Addr]PK),
-		idToGroup:  make(map[int]*Group),
+		idToGroup:  make(map[int]*group),
 	}
 }
 
@@ -76,7 +76,7 @@ func (s *SysState) applyReadyJoinGroup(t ReadyJoinGroupTxn) error {
 }
 
 func (s *SysState) applyRegGroup(t RegGroupTxn) error {
-	g := NewGroup(t.PK)
+	g := newGroup(t.PK)
 	for _, id := range t.MemberIDs {
 		pk, ok := s.nodeIDToPK[id]
 		if !ok {
@@ -91,14 +91,12 @@ func (s *SysState) applyRegGroup(t RegGroupTxn) error {
 		g.MemberPK[addr] = t.MemberVVec[i]
 	}
 
-	// TODO: parse vvec
-
 	s.idToGroup[t.ID] = g
 	return nil
 }
 
 func (s *SysState) applyListGroups(t ListGroupsTxn) error {
-	gs := make([]*Group, len(t.GroupIDs))
+	gs := make([]*group, len(t.GroupIDs))
 	for i, id := range t.GroupIDs {
 		g, ok := s.idToGroup[id]
 		if !ok {
@@ -110,10 +108,8 @@ func (s *SysState) applyListGroups(t ListGroupsTxn) error {
 	return nil
 }
 
-// nolint: gocyclo
 func (s *SysState) applySysTxns(txns []SysTxn) error {
 	for _, txn := range txns {
-		// TODO: check signature, endorsement proof, etc.
 		dec := gob.NewDecoder(bytes.NewReader(txn.Data))
 		switch txn.Type {
 		case ReadyJoinGroup:

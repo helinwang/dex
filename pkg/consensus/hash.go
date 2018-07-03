@@ -10,8 +10,6 @@ const (
 	hashBytes = 32
 )
 
-var ZeroHash = Hash{}
-
 // Hash is the hash of a piece of data.
 type Hash [hashBytes]byte
 

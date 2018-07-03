@@ -7,10 +7,9 @@ import (
 	log "github.com/helinwang/log15"
 )
 
-// RandomBeacon is the round information.
-//
-// The random beacon, block proposal, block notarization advance to
-// the next round in lockstep.
+// RandomBeacon generates one random value at each round, selecting
+// the active random beacon generation group, block proposing group
+// and the notarization group for this round.
 type RandomBeacon struct {
 	cfg               Config
 	n                 *Node
@@ -20,7 +19,7 @@ type RandomBeacon struct {
 	nextNtCmteHistory []int
 	nextBPCmteHistory []int
 	nextBPRandHistory []Rand
-	groups            []*Group
+	groups            []*group
 
 	rbRand Rand
 	ntRand Rand
@@ -30,7 +29,7 @@ type RandomBeacon struct {
 }
 
 // NewRandomBeacon creates a new random beacon
-func NewRandomBeacon(seed Rand, groups []*Group, cfg Config) *RandomBeacon {
+func NewRandomBeacon(seed Rand, groups []*group, cfg Config) *RandomBeacon {
 	mod := len(groups)
 	if mod == 0 {
 		mod = 1
@@ -127,14 +126,6 @@ func (r *RandomBeacon) round() uint64 {
 }
 
 // Round returns the round of the random beacon.
-//
-// Comparison of round with Chain.Round():
-// - round >= Chain.Round() + 2: when the node is synchronizing. It
-// will synchronize the random beacon first, and then synchronize the
-// chain's blocks.
-// - round >= Chain.Round() && round <= Chain.Round() + 1: when the
-// node is synchronized.
-// - round < Chain.Round(): random beacon is synchronizing.
 func (r *RandomBeacon) Round() uint64 {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -200,7 +191,7 @@ func (r *RandomBeacon) deriveRand(h Hash) {
 }
 
 // Committees returns the current random beacon, block proposal,
-// notarization committees.
+// notarization groups.
 func (r *RandomBeacon) Committees(round uint64) (rb, bp, nt int) {
 	r.mu.Lock()
 	rb = r.nextRBCmteHistory[round]

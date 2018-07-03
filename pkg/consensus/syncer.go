@@ -13,18 +13,8 @@ const (
 	requestTimeout = time.Minute
 )
 
-// syncer downloads blocks and block proposals, validates them
-// and connect them to the chain.
-//
-// The synchronization steps:
-// 1. got a new block hash
-// 2. get the block B corresponding to the hash
-// 3. get all prev block of the block, until connected to the chain,
-// or reached the finalized block in the chain but can not connect to
-// the chain, stop if can not connect to the chain
-// 4. validate B and all it's prev blocks, then connect to the chain
-// if valid
-// 5. validate BP, then connect to the chain if validate
+// syncer downloads data using the gateway, and validates them and
+// connect them to the chain.
 type syncer struct {
 	chain     *Chain
 	requester requester
@@ -159,7 +149,7 @@ func (s *syncer) syncBlock(addr unicastAddr, hash Hash, round uint64) (b *Block,
 		return
 	}
 
-	broadcast, err = s.chain.addBlock(b, newState, weight, count)
+	broadcast, err = s.chain.AddBlock(b, newState, weight, count)
 	if err != nil {
 		return
 	}
@@ -287,84 +277,3 @@ func (s *syncer) syncRandBeaconSigImpl(addr unicastAddr, round uint64, syncDone 
 
 	return true, nil
 }
-
-/*
-
-How does observer validate each block and update the state?
-
-a. create token, send token, ICO:
-
-  replay txns.
-
-b. orders:
-
-  replay each order txn to update the pending orders state, and then
-  replay the trade receipts.
-
-  observer does not need to do order matching, it can just replay the
-  order matchin result according to the trade receipts.
-
-  Order book: for the markets that the observer cares, he can
-  reconstruct the order book of that market from the pending orders.
-
-  Trade report: can be constructed from trade receipts.
-
-steps:
-
-  1. replay block proposal, but do not do order matching
-
-  2. replay the trade receipts (order matching results)
-
-  3. block proposals and trade receipts will be discarded after x
-  blocks, we can have archiving nodes who persists them to disk or
-  IPFS.
-
-*/
-
-/*
-
-data structure related to state updates:
-
-block:
-  - state root hash
-    state is a patricia merkle trie, it contains: token infos,
-    accounts, pending orders.
-  - receipt root hash
-    receipt is a patricia merkle trie, it contains: trade receipts and
-    token creation, send, freeze, burn receipts.
-
-*/
-
-/*
-
-Stale client synchronization:
-
-  a. download random beacon item from genesis to tip.
-
-  b. download all key frames (contains group publications) from
-  genesis to tip. The key frame is the first block of an epoch. L (a
-  system parameter) consecutive blocks form an epoch. The genesis
-  block is a key frame since it is the first block of the first
-  epoch. Currently there is no open participation (groups are fixed),
-  so only one key frame is necessary, L is set to infinity.
-
-  c. download all the blocks, verify the block notarization. The block
-  notarization is a threshold signature signed collected by a randomly
-  selected group in each round. We can derive the group from the
-  random beacon, and the group public key from the latest key frame.
-
-  d. downloading the state of the (tip - n) block, replay the block
-  proposal and trade receipts to tip, and verify that the state root
-  hashes matches.
-
-*/
-
-/*
-
-Do we need to shard block producers?
-
-  Matching order should be way slower than collecting transactions:
-  collecting transactions only involes transactions in the current
-  block, while matching orders involves all past orders.
-
-*/

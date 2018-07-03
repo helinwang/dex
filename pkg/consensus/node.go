@@ -12,10 +12,7 @@ import (
 	log "github.com/helinwang/log15"
 )
 
-// Node is a node in the consensus infrastructure.
-//
-// Nodes form a group randomly, the randomness comes from the random
-// beacon.
+// Node is a node participating in the consensus protocol.
 type Node struct {
 	addr    Addr
 	cfg     Config
@@ -46,7 +43,7 @@ type membership struct {
 	groupID int
 }
 
-// Config is the consensus layer configuration.
+// Config is the configuration for the consensus protocol.
 type Config struct {
 	BlockTime      time.Duration
 	GroupSize      int
@@ -98,9 +95,9 @@ func (n *Node) proposeBlock(round uint64, group int, lastRoundEndTime time.Time)
 		return
 	}
 
-	// at most spend blockTime/3 for proposing block, to avoid the
-	// case that there are too many transactions to be included in
-	// the block proposal
+	// at most spend blockTime/3 for proposing block, to avoid
+	// delayed block time when there are too many transactions to
+	// be included in the block proposal
 	ctx, cancel := context.WithTimeout(context.Background(), n.cfg.BlockTime/3)
 	defer cancel()
 

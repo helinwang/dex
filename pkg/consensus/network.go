@@ -19,9 +19,6 @@ const (
 	intialConn = 8
 )
 
-// TODO: periodically sync with peer about the public nodes it knows
-// TODO: periodically ping peer
-// TODO: rename Networking
 type unicastAddr struct {
 	Addr  string
 	PKStr string
@@ -56,6 +53,9 @@ func newNetwork(sk SK) *network {
 		conns: make(map[unicastAddr]*conn),
 	}
 }
+
+// TODO: periodically sync with peer about the public nodes it knows
+// TODO: periodically ping peer and remove peer if offline
 
 func (n *network) acceptPeerOrDisconnect(c net.Conn) {
 	conn := newConn(c)
@@ -350,7 +350,6 @@ func (n *network) readConn(addr unicastAddr, conn *conn) {
 
 		switch v := pac.Data.(type) {
 		case []unicastAddr:
-			// TODO: update public node list
 			_ = v
 		case *connectRequest:
 			// connection already established, discard
@@ -409,9 +408,6 @@ type connectRequest struct {
 	PK           PK
 	Sig          Sig
 }
-
-// TODO: create similar functions for other types that needs
-// signature.
 
 func (c *connectRequest) ByteToSign() []byte {
 	dup := *c

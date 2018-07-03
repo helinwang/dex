@@ -164,8 +164,8 @@ func (r *RPCServer) nonce(addr consensus.Addr, nonce *uint64) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	// TODO: returns a slot that does not collide with the ones in
-	// the pending txns.
+	// TODO: returns a nonce that does not collide with the ones
+	// in the pending txns.
 
 	if r.s == nil {
 		return errors.New("waiting for reaching consensus")

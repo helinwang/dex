@@ -6,7 +6,8 @@ import (
 	lru "github.com/hashicorp/golang-lru"
 )
 
-// collector collects items
+// collector collects items and releases them once the count threshold
+// is reached. It is used to collect the signature shares.
 type collector struct {
 	threshold int
 	merged    *lru.Cache

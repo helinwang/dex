@@ -44,7 +44,7 @@ func (a Addr) ID() bls.ID {
 type RandVal Hash
 
 // RandBeaconSig is the random beacon signature produced by the random
-// beacon committe.
+// beacon group.
 type RandBeaconSig struct {
 	Round       uint64
 	LastSigHash Hash
@@ -161,6 +161,7 @@ func (bp *BlockProposal) Hash() Hash {
 	return SHA3(bp.Encode(true))
 }
 
+// Genesis is the genesis block and the serialized genesis state.
 type Genesis struct {
 	Block Block
 	State TrieBlob

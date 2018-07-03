@@ -59,8 +59,6 @@ func genStateTxns(p *myPKer) (consensus.State, []byte) {
 	return state, body
 }
 
-// TODO: test nonce
-
 func BenchmarkPlaceOrder(b *testing.B) {
 	p := &myPKer{m: make(map[consensus.Addr]PK)}
 	state, body := genStateTxns(p)

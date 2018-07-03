@@ -125,10 +125,12 @@ func (c *Chain) ChainStatus() ChainStatus {
 	return s
 }
 
+// TxnPoolSize returns the size of the transaction pool.
 func (c *Chain) TxnPoolSize() int {
 	return c.txnPool.Size()
 }
 
+// WaitUntil will not return until the given round is reached.
 func (c *Chain) WaitUntil(round uint64) {
 	c.mu.Lock()
 	curRound := c.round()
@@ -310,7 +312,8 @@ func (c *Chain) blockState(h Hash) State {
 	return c.unFinalizedState[h]
 }
 
-func (c *Chain) addBlock(b *Block, s State, weight float64, txnCount int) (bool, error) {
+// AddBlock adds a block to the chain.
+func (c *Chain) AddBlock(b *Block, s State, weight float64, txnCount int) (bool, error) {
 	hash := b.Hash()
 	log.Debug("add block to chain", "hash", hash)
 	if saved := c.store.Block(hash); saved != nil {
@@ -362,8 +365,6 @@ func (c *Chain) addBlock(b *Block, s State, weight float64, txnCount int) (bool,
 		// finalized. See corollary 9.19 in page 15 of
 		// https://arxiv.org/abs/1805.04548
 		if startingRound > 2 {
-			// TODO: use less aggressive finalize block count
-			// (currently 2).
 			c.finalize(startingRound - 2)
 		}
 
@@ -458,9 +459,6 @@ func (c *Chain) finalize(round uint64) {
 	}
 
 	depth := int(round - count)
-
-	// TODO: release finalized state/bp/block from memory, since
-	// its persisted on disk, peers can still ask for them.
 
 	if forkWidth(c.fork, depth) > 1 {
 		// more than one block in the finalized round,

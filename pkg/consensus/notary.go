@@ -23,11 +23,13 @@ func NewNotary(owner Addr, sk, share SK, chain *Chain, store *storage) *Notary {
 	return &Notary{owner: owner, sk: sk, share: share, chain: chain, store: store}
 }
 
-// Notarize returns the notarized blocks of the current round,
-// produced by the highest rank block proposer until ctx is cancelled.
+// Notarize notarizes block proposals.
 //
-// ctx will be cancelled when reaching the next round: when a
-// notarized block of the current round is received.
+// It will collect block proposals to notarize until ctx is done, then
+// it will notarize the highest weight accumulated block
+// proposals. And it will keep notarizing the newly collected block
+// proposal if the weight is equal to or greater than the collected
+// block proposals until cancel context is done.
 func (n *Notary) Notarize(ctx, cancel context.Context, bCh chan *BlockProposal, onNotarize func(*NtShare, time.Duration)) {
 	var bestRankBPs []*BlockProposal
 	bestRank := uint16(math.MaxUint16)
